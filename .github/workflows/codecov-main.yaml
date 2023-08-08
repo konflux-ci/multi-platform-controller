@@ -1,0 +1,19 @@
+name: Codecov report on push to the "main" branch
+on:
+  push:
+    branches: [ main ]
+jobs:
+  coverage:
+    name: Unit tests and coverage report
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version-file: './go.mod'
+      - name: Build
+        run: make build
+      - name: Run tests
+        run: make test
+      - name: Codecov
+        uses: codecov/codecov-action@v3

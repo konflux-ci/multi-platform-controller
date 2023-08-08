@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: multi-arch-operator
+  namespace: multi-arch-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apheleia-operator
+  template:
+    metadata:
+      labels:
+        app: apheleia-operator
+    spec:
+      containers:
+        - name: multi-arch-operator
+          image: multi-arch-operator
+          imagePullPolicy: Always
+          args:
+            - "--v=4"
+            - "--zap-log-level=4"
+            - "--zap-devel=true"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "500m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+      serviceAccountName: multi-arch-operator

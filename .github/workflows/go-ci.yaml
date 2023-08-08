@@ -1,0 +1,89 @@
+name: Validate PR - golang CI
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version-file: './go.mod'
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          args: "--timeout=10m --build-tags='normal periodic'"
+  go:
+    name: Check sources
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.18.x #we need 1.18 for KCP
+      - name: Check out code
+        uses: actions/checkout@v3
+      - name: Check go mod status
+        run: |
+          go mod tidy
+          if [[ ! -z $(git status -s) ]]
+          then
+            echo "Go mod state is not clean:"
+            git --no-pager diff
+            exit 1
+          fi
+      - name: Check format
+        run: |
+          make fmt
+          if [[ ! -z $(git status -s) ]]
+          then
+            echo "not all golang files properly gofmt'ed:"
+            git --no-pager diff
+            exit 1
+          fi
+      - name: Check generated
+        run: |
+          make generate
+          if [[ ! -z $(git status -s) ]]
+          then
+            echo "generated sources are not up to date:"
+            git --no-pager diff
+            exit 1
+          fi
+  unit:
+    name: Golang Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.18.x
+      - name: Check out code
+        uses: actions/checkout@v3
+      - name: Build
+        run: make build
+      - name: Test
+        run: make test
+      - name: Codecov
+        uses: codecov/codecov-action@v3
+  security_scan:
+    name: Security scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version-file: './go.mod'
+      # https://github.com/securego/gosec/blob/12be14859bc7d4b956b71bef0b443694aa519d8a/README.md#integrating-with-code-scanning
+      - name: Run Gosec Security Scanner
+        uses: securego/gosec@master
+        with:
+          # we let the report trigger content trigger a failure using the GitHub Security features.
+          args: '-tags normal,periodic -no-fail -fmt sarif -out results.sarif ./...'
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          # Path to SARIF file relative to the root of the repository
+          sarif_file: results.sarif
