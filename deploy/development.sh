@@ -11,8 +11,7 @@ fi
 oc new-project multi-arch-operator
 kubectl config set-context --current --namespace=multi-arch-operator
 
-oc create secret generic hard-coded-host --from-file=id_rsa=/home/stuart/.ssh/armtest.pem --from-literal=host=ec2-user@ec2-44-202-128-18.compute-1.amazonaws.com \
-  --from-literal=build-dir=/tmp/tmpbuild
+oc create secret generic aws-keys --from-file=id_rsa=/home/stuart/.ssh/sdouglas-arm-test.pem
 
 kubectl label secrets hard-coded-host appstudio.io/build-host-pool=arm64
 

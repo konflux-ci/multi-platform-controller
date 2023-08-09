@@ -7,6 +7,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
+	"os"
 	"time"
 
 	jvmbs "github.com/redhat-appstudio/jvm-build-service/pkg/apis/jvmbuildservice/v1alpha1"
@@ -74,13 +75,14 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 			&v1.Secret{}:               {Label: multiArchPipelines},
 		}})
 
+	operatorNamespace := os.Getenv("POD_NAMESPACE")
 	mgr, err = ctrl.NewManager(cfg, options)
 
 	if err != nil {
 		return nil, err
 	}
-
-	if err := taskrun.SetupNewReconcilerWithManager(mgr); err != nil {
+	controllerLog.Info("deployed in namespace", "namespace", operatorNamespace)
+	if err := taskrun.SetupNewReconcilerWithManager(mgr, operatorNamespace); err != nil {
 		return nil, err
 	}
 

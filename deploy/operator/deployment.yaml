@@ -16,6 +16,11 @@ spec:
       containers:
         - name: multi-arch-operator
           image: multi-arch-operator
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           imagePullPolicy: Always
           args:
             - "--v=4"
