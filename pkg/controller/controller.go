@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"github.com/stuartwdouglas/multi-arch-host-resolver/pkg/apis/hostpool/v1alpha1"
 	"github.com/stuartwdouglas/multi-arch-host-resolver/pkg/reconciler/taskrun"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -59,10 +58,6 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 	if err := pipelinev1beta1.AddToScheme(options.Scheme); err != nil {
 		return nil, err
 	}
-	if err := v1alpha1.AddToScheme(options.Scheme); err != nil {
-		return nil, err
-	}
-
 	var mgr ctrl.Manager
 	var err error
 
