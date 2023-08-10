@@ -1,12 +1,13 @@
 module github.com/stuartwdouglas/multi-arch-host-resolver
 
-go 1.18
+go 1.19
 
 require (
 	github.com/go-logr/logr v1.2.4
 	github.com/google/uuid v1.3.0
 	github.com/onsi/gomega v1.27.10
 	github.com/tektoncd/pipeline v0.41.1
+	go.uber.org/zap v1.23.0
 	k8s.io/api v0.25.3
 	k8s.io/apiextensions-apiserver v0.25.2
 	k8s.io/apimachinery v0.25.3
@@ -71,7 +72,6 @@ require (
 	go.opencensus.io v0.23.0 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
-	go.uber.org/zap v1.23.0 // indirect
 	golang.org/x/mod v0.10.0 // indirect
 	golang.org/x/net v0.12.0 // indirect
 	golang.org/x/oauth2 v0.1.0 // indirect
