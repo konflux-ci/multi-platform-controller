@@ -11,7 +11,7 @@ fi
 oc new-project multi-arch-controller
 kubectl config set-context --current --namespace=multi-arch-controller
 
-oc create secret generic aws-keys --from-file=id_rsa=/home/stuart/.ssh/sdouglas-arm-test.pem
+oc create secret generic awskeys --from-file=id_rsa=/home/stuart/.ssh/sdouglas-arm-test.pem
 
 echo "Installing the Operator"
 rm -r $DIR/overlays/development

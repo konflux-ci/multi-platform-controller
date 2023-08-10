@@ -20,5 +20,5 @@ spec:
   workspaces:
     - name: ssh
       secret:
-        secretName: aws-keys
+        secretName: awskeys
   serviceAccountName: multi-arch-controller

@@ -158,18 +158,15 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 				break
 			}
 		}
-
-		secret := v12.Secret{}
-		secret.Labels = map[string]string{TargetArchitectureLabel: tr.Labels[TargetArchitectureLabel]}
-		secret.Namespace = tr.Namespace
-		secret.Name = secretName
-
-		secret.Data = map[string][]byte{
-			"error": []byte("provisioning failed"),
-		}
-		err := r.client.Create(ctx, &secret)
+		userTr := v1beta1.TaskRun{}
+		err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Labels[ProvisionTaskNamespace], Name: tr.Labels[ProvisionTaskName]}, &userTr)
 		if err != nil {
 			return reconcile.Result{}, err
+		}
+
+		result, err2 := r.createErrorSecret(ctx, &userTr, secretName, "provisioning task failed")
+		if err2 != nil {
+			return result, err2
 		}
 	} else {
 		log.Info("provision task succeeded")
@@ -177,6 +174,35 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 
 	return reconcile.Result{}, r.client.Delete(ctx, tr)
 
+}
+
+// This creates an secret with the 'error' field set
+// This will result in the pipeline run immediately failing with the message printed in the logs
+func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, tr *v1beta1.TaskRun, secretName string, msg string) (reconcile.Result, error) {
+	if controllerutil.AddFinalizer(tr, PipelineFinalizer) {
+		err := r.client.Update(ctx, tr)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+	}
+
+	secret := v12.Secret{}
+	secret.Labels = map[string]string{TargetArchitectureLabel: tr.Labels[TargetArchitectureLabel]}
+	secret.Namespace = tr.Namespace
+	secret.Name = secretName
+	err := controllerutil.SetOwnerReference(tr, &secret, r.scheme)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	secret.Data = map[string][]byte{
+		"error": []byte(msg),
+	}
+	err = r.client.Create(ctx, &secret)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+	return reconcile.Result{}, nil
 }
 
 func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun) (reconcile.Result, error) {
@@ -202,11 +228,19 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.L
 	//lets allocate a host, get the map with host info
 	hosts, err := r.hostConfig(ctx, log)
 	if err != nil {
+		//no host config means we can't proceed
+		//no point retrying
+		if errors.IsNotFound(err) {
+			return r.createErrorSecret(ctx, tr, secretName, "failed to read host config")
+		}
 		return reconcile.Result{}, err
+	}
+	if len(hosts) == 0 {
+		//no hosts configured
+		return r.createErrorSecret(ctx, tr, secretName, "no hosts configured")
 	}
 	//get all existing runs that are assigned to a host
 	taskList := v1beta1.TaskRunList{}
-
 	err = r.client.List(ctx, &taskList, client.HasLabels{AssignedHost})
 	if err != nil {
 		return reconcile.Result{}, err
@@ -225,11 +259,13 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.L
 
 	var selected *Host
 	freeSpots := 0
+	hostWithOurArch := false
 	for k, v := range hosts {
 		if v.Arch != targetArch {
 			log.Info("ignoring host", "host", k, "targetArch", targetArch, "hostArch", v.Arch)
 			continue
 		}
+		hostWithOurArch = true
 		free := v.Concurrency - hostCount[k]
 
 		log.Info("considering host", "host", k, "freeSlots", free)
@@ -238,21 +274,29 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.L
 			freeSpots = free
 		}
 	}
+	if !hostWithOurArch {
+		return r.createErrorSecret(ctx, tr, secretName, "no hosts configured for arch "+targetArch)
+	}
 	if selected == nil {
+		if tr.Labels[WaitingForArchLabel] == targetArch {
+			//we are already in a waiting state
+			return reconcile.Result{}, nil
+		}
 		log.Info("no host found, waiting for one to become available")
 		//no host available
 		//add the waiting label
 		//TODO: is the requeue actually a good idea?
+		//TODO: timeout
 		tr.Labels[WaitingForArchLabel] = targetArch
 		return reconcile.Result{RequeueAfter: time.Minute}, r.client.Update(ctx, tr)
 	}
-	tr.Labels[AssignedHost] = selected.Name
 
 	//kick off the provisioning task
+	//note that we can't use owner refs here because this task runs in a different namespace
 	provision := v1beta1.TaskRun{}
 	provision.GenerateName = "provision-task"
 	provision.Namespace = r.operatorNamespace
-	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, TargetArchitectureLabel: targetArch}
+	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, TargetArchitectureLabel: targetArch, ProvisionTaskNamespace: tr.Namespace, ProvisionTaskName: tr.Name}
 	provision.Spec.TaskRef = &v1beta1.TaskRef{Name: "provision-shared-host"}
 	provision.Spec.Workspaces = []v1beta1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: selected.Secret}}}
 	provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
@@ -284,6 +328,7 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.L
 	}
 
 	log.Info("allocated host", "host", selected.Name)
+	tr.Labels[AssignedHost] = selected.Name
 	delete(tr.Labels, WaitingForArchLabel)
 	//add a finalizer to clean up the secret
 	controllerutil.AddFinalizer(tr, PipelineFinalizer)

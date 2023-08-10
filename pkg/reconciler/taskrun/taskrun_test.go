@@ -47,12 +47,12 @@ func createHostConfig() v1.ConfigMap {
 	cm.Labels = map[string]string{ConfigMapLabel: "hosts"}
 	cm.Data = map[string]string{
 		"host1.address":     "ec2-54-165-44-192.compute-1.amazonaws.com",
-		"host1.secret":      "aws-keys",
+		"host1.secret":      "awskeys",
 		"host1.concurrency": "4",
 		"host1.user":        "ec2-user",
 		"host1.arch":        "arm64",
 		"host2.address":     "ec2-34-227-115-211.compute-1.amazonaws.com",
-		"host2.secret":      "aws-keys",
+		"host2.secret":      "awskeys",
 		"host2.concurrency": "4",
 		"host2.user":        "ec2-user",
 		"host2.arch":        "arm64",
