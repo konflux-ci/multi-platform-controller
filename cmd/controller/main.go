@@ -2,6 +2,8 @@ package main
 
 import (
 	"flag"
+	zap2 "go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"k8s.io/klog/v2"
 	"os"
 
@@ -34,17 +36,20 @@ func main() {
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
 	opts := zap.Options{
-		Development: true,
+		TimeEncoder: zapcore.RFC3339TimeEncoder,
+		ZapOpts:     []zap2.Option{zap2.WithCaller(true)},
 	}
 	opts.BindFlags(flag.CommandLine)
 	klog.InitFlags(flag.CommandLine)
 	flag.Parse()
 
 	logger := zap.New(zap.UseFlagOptions(&opts))
+
 	ctrl.SetLogger(logger)
 	mainLog = ctrl.Log.WithName("main")
 	ctx := ctrl.SetupSignalHandler()
 	restConfig := ctrl.GetConfigOrDie()
+	klog.SetLogger(mainLog)
 
 	var mgr ctrl.Manager
 	var err error

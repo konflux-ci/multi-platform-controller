@@ -64,15 +64,24 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 
 	//if we are running this locally on the same cluster as the ckcp we want to ignore any synced pipeline runs
 	multiArchPipelines := labels.NewSelector()
-	requirement, lerr := labels.NewRequirement(taskrun.TargetArchitectureLabel, selection.Exists, []string{})
+	requirement, lerr := labels.NewRequirement(taskrun.TargetArchitectureLabel, selection.Exists, nil)
 	if lerr != nil {
 		return nil, lerr
 	}
 	multiArchPipelines.Add(*requirement)
+
+	configMapSelector := labels.NewSelector()
+	configMapLabels, lerr := labels.NewRequirement(taskrun.ConfigMapLabel, selection.Exists, []string{})
+	if lerr != nil {
+		return nil, lerr
+	}
+	configMapSelector.Add(*configMapLabels)
+
 	options.NewCache = cache.BuilderWithOptions(cache.Options{
 		SelectorsByObject: cache.SelectorsByObject{
 			&pipelinev1beta1.TaskRun{}: {Label: multiArchPipelines},
 			&v1.Secret{}:               {Label: multiArchPipelines},
+			&v1.ConfigMap{}:            {Label: configMapSelector},
 		}})
 
 	operatorNamespace := os.Getenv("POD_NAMESPACE")

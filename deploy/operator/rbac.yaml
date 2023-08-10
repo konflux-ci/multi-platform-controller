@@ -34,8 +34,6 @@ rules:
       - update
   - apiGroups:
       - ""
-    resourceNames:
-      - host-config
     resources:
       - configmaps
     verbs:

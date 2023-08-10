@@ -23,6 +23,7 @@ import (
 const (
 	//TODO eventually we'll need to decide if we want to make this tuneable
 	contextTimeout          = 300 * time.Second
+	ConfigMapLabel          = "build.appstudio.redhat.com/multi-arch-config"
 	TaskTypeLabel           = "build.appstudio.redhat.com/task-type"
 	TargetArchitectureLabel = "build.appstudio.redhat.com/target-architecture"
 	MultiArchLabel          = "build.appstudio.redhat.com/multi-arch-required"
@@ -77,13 +78,13 @@ func (r *ReconcileTaskRun) Reconcile(ctx context.Context, request reconcile.Requ
 
 	switch {
 	case prerr == nil:
-		return r.handleTaskRunReceived(ctx, log, &pr)
+		return r.handleTaskRunReceived(ctx, &log, &pr)
 	}
 
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, log logr.Logger, tr *v1beta1.TaskRun) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun) (reconcile.Result, error) {
 	if tr.Labels == nil {
 		return reconcile.Result{}, nil
 	}
@@ -109,46 +110,44 @@ func (r *ReconcileTaskRun) handleWaitingTasks(arch string) (reconcile.Result, er
 
 }
 
-func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, log logr.Logger, tr *v1beta1.TaskRun) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun) (reconcile.Result, error) {
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log logr.Logger, tr *v1beta1.TaskRun) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun) (reconcile.Result, error) {
 	return reconcile.Result{}, nil
 
 }
 
-func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, log logr.Logger, tr *v1beta1.TaskRun) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun) (reconcile.Result, error) {
 
-	//now check the state
-	secret := v12.Secret{}
 	secretName := "multi-arch-ssl-" + tr.Name
-	err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: secretName}, &secret)
-	if err == nil {
-		return r.handleExistingSecret(ctx, log, tr, &secret)
-	} else if errors.IsNotFound(err) {
+	if tr.Labels[AssignedHost] != "" {
+		return r.handleHostAssigned(ctx, log, tr, secretName)
+	} else {
 		//if the PR is done we ignore it
 		if tr.Status.CompletionTime != nil || tr.GetDeletionTimestamp() != nil {
+			log.Info("task run already finished, not creating secret")
 			return reconcile.Result{}, nil
 		}
 
-		return r.handleHostAllocation(ctx, tr, secret, secretName)
-	} else {
-		return reconcile.Result{}, err
+		return r.handleHostAllocation(ctx, log, tr, secretName)
 	}
 }
 
-func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *v1beta1.TaskRun, secret v12.Secret, secretName string) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string) (reconcile.Result, error) {
+	log.Info("attempting to allocate host")
 	targetArch := tr.Labels[TargetArchitectureLabel]
 
 	//lets allocate a host, get the map with host info
-	hosts, err := r.hostConfig(ctx)
+	hosts, err := r.hostConfig(ctx, log)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 	//get all existing runs that are assigned to a host
 	taskList := v1beta1.TaskRunList{}
-	err = r.client.List(ctx, &taskList, client.HasLabels{AssignedHost}, client.MatchingLabels{TargetArchitectureLabel: targetArch})
+
+	err = r.client.List(ctx, &taskList, client.HasLabels{AssignedHost})
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -156,6 +155,9 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *v1beta1
 	for _, tr := range taskList.Items {
 		host := tr.Labels[AssignedHost]
 		hostCount[host] = hostCount[host] + 1
+	}
+	for k, v := range hostCount {
+		log.Info("host count", "host", k, "count", v)
 	}
 
 	//now select the host with the most free spots
@@ -165,15 +167,19 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *v1beta1
 	freeSpots := 0
 	for k, v := range hosts {
 		if v.Arch != targetArch {
+			log.Info("ignoring host", "host", k, "targetArch", targetArch, "hostArch", v.Arch)
 			continue
 		}
 		free := v.Concurrency - hostCount[k]
+
+		log.Info("considering host", "host", k, "freeSlots", free)
 		if free > freeSpots {
 			selected = v
 			freeSpots = free
 		}
 	}
 	if selected == nil {
+		log.Info("no host found, waiting for one to become available")
 		//no host available
 		//add the waiting label
 		//TODO: is the requeue actually a good idea?
@@ -184,35 +190,55 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *v1beta1
 
 	//create the host secret
 	arch := targetArch
+	secret := v12.Secret{}
 	secret.Labels = map[string]string{TargetArchitectureLabel: arch}
 	secret.Namespace = tr.Namespace
 	secret.Name = secretName
 
-	hardCoded := v12.Secret{}
-	err = r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: selected.Secret}, &hardCoded)
+	hostSecret := v12.Secret{}
+	err = r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: selected.Secret}, &hostSecret)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
-	secret.Data["id_rsa"] = secret.Data["id_rsa"]
-	secret.Data["host"] = []byte(selected.User + "@" + selected.Address)
-	secret.Data["build-dir"] = []byte("/tmp/" + uuid.New().String())
+	bytes := hostSecret.Data["id_rsa"]
+	secret.Data = map[string][]byte{
+		"id_rsa":    bytes,
+		"host":      []byte(selected.User + "@" + selected.Address),
+		"build-dir": []byte("/tmp/" + uuid.New().String()),
+	}
 	err = r.client.Create(ctx, &secret)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
+	log.Info("allocated host", "host", selected.Name)
+	delete(tr.Labels, WaitingForArchLabel)
 	//add a finalizer to clean up the secret
 	controllerutil.AddFinalizer(tr, PipelineFinalizer)
 	return reconcile.Result{}, r.client.Update(ctx, tr)
 }
 
-func (r *ReconcileTaskRun) handleExistingSecret(ctx context.Context, log logr.Logger, tr *v1beta1.TaskRun, secret *v12.Secret) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string) (reconcile.Result, error) {
 	//already exists
 	if tr.Status.CompletionTime != nil || tr.GetDeletionTimestamp() != nil {
-		//PR is done, clean up the secret
-		err := r.client.Delete(ctx, secret)
-		if err != nil {
-			log.Error(err, "Unable to delete secret")
+		log.Info("unassigning host from task")
+
+		secret := v12.Secret{}
+		//delete the secret
+		err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: secretName}, &secret)
+		if err == nil {
+			log.Info("deleting secret from task")
+			//PR is done, clean up the secret
+			err := r.client.Delete(ctx, &secret)
+			if err != nil {
+				log.Error(err, "unable to delete secret")
+			}
+		} else if !errors.IsNotFound(err) {
+			log.Error(err, "error deleting secret", "secret", secretName)
+			return reconcile.Result{}, err
+		} else {
+			log.Info("could not find secret", "secret", secretName)
 		}
+
 		controllerutil.RemoveFinalizer(tr, PipelineFinalizer)
 		delete(tr.Labels, AssignedHost)
 		err = r.client.Update(ctx, tr)
@@ -224,7 +250,7 @@ func (r *ReconcileTaskRun) handleExistingSecret(ctx context.Context, log logr.Lo
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileTaskRun) hostConfig(ctx context.Context) (map[string]*Host, error) {
+func (r *ReconcileTaskRun) hostConfig(ctx context.Context, log *logr.Logger) (map[string]*Host, error) {
 	cm := v12.ConfigMap{}
 	err := r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: HostConfig}, &cm)
 	if err != nil {
@@ -233,15 +259,18 @@ func (r *ReconcileTaskRun) hostConfig(ctx context.Context) (map[string]*Host, er
 	ret := map[string]*Host{}
 	for k, v := range cm.Data {
 		pos := strings.LastIndex(k, ".")
+		if pos == -1 {
+			continue
+		}
 		name := k[0:pos]
 		key := k[pos+1:]
-		host := ret[key]
+		host := ret[name]
 		if host == nil {
 			host = &Host{}
 			ret[name] = host
 			host.Name = name
 		}
-		switch name {
+		switch key {
 		case "address":
 			host.Address = v
 		case "user":
@@ -256,6 +285,8 @@ func (r *ReconcileTaskRun) hostConfig(ctx context.Context) (map[string]*Host, er
 				return nil, err
 			}
 			host.Concurrency = atoi
+		default:
+			log.Info("unknown key", "key", key)
 		}
 
 	}
