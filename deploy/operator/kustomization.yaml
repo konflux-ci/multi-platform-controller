@@ -8,4 +8,5 @@ resources:
   - sa.yaml
   - rbac.yaml
   - provision-shared-host.yaml
+  - clean-shared-host.yaml
   - openshift-specific-rbac.yaml

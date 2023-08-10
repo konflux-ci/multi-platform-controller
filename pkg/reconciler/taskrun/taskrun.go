@@ -2,13 +2,13 @@ package taskrun
 
 import (
 	"context"
-	"github.com/google/uuid"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	v12 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"knative.dev/pkg/apis"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -40,6 +40,8 @@ const (
 	TaskTypeLabel     = "build.appstudio.redhat.com/task-type"
 	TaskTypeProvision = "provision"
 	TaskTypeClean     = "clean"
+
+	ServiceAccountName = "multi-arch-controller"
 )
 
 type ReconcileTaskRun struct {
@@ -108,7 +110,29 @@ func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, log *logr.
 
 // called when a task has finished, we look for waiting tasks
 // and then potentially requeue one of them
-func (r *ReconcileTaskRun) handleWaitingTasks(arch string) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, log *logr.Logger, arch string) (reconcile.Result, error) {
+
+	//try and requeue a waiting task if one exists
+	taskList := v1beta1.TaskRunList{}
+
+	err := r.client.List(ctx, &taskList, client.MatchingLabels{WaitingForArchLabel: arch})
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+	var oldest *v1beta1.TaskRun
+	var oldestTs time.Time
+	for i := range taskList.Items {
+		tr := taskList.Items[i]
+		if oldest == nil || oldestTs.After(tr.CreationTimestamp.Time) {
+			oldestTs = tr.CreationTimestamp.Time
+			oldest = &tr
+		}
+	}
+	if oldest != nil {
+		//remove the waiting label, which will trigger a requeue
+		delete(oldest.Labels, WaitingForArchLabel)
+		return reconcile.Result{}, r.client.Update(ctx, oldest)
+	}
 	return reconcile.Result{}, nil
 
 }
@@ -118,7 +142,40 @@ func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, log *logr.Logger
 }
 
 func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun) (reconcile.Result, error) {
-	return reconcile.Result{}, nil
+
+	if tr.Status.CompletionTime == nil {
+		return reconcile.Result{}, nil
+	}
+	success := tr.Status.GetCondition(apis.ConditionSucceeded).IsTrue()
+	if !success {
+		log.Info("provision task failed")
+		//TODO: retries with different hosts
+		//create a failure secret
+		secretName := ""
+		for _, i := range tr.Spec.Params {
+			if i.Name == "SECRET_NAME" {
+				secretName = i.Value.StringVal
+				break
+			}
+		}
+
+		secret := v12.Secret{}
+		secret.Labels = map[string]string{TargetArchitectureLabel: tr.Labels[TargetArchitectureLabel]}
+		secret.Namespace = tr.Namespace
+		secret.Name = secretName
+
+		secret.Data = map[string][]byte{
+			"error": []byte("provisioning failed"),
+		}
+		err := r.client.Create(ctx, &secret)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+	} else {
+		log.Info("provision task succeeded")
+	}
+
+	return reconcile.Result{}, r.client.Delete(ctx, tr)
 
 }
 
@@ -191,28 +248,41 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.L
 	}
 	tr.Labels[AssignedHost] = selected.Name
 
-	//create the host secret
-	arch := targetArch
-	secret := v12.Secret{}
-	secret.Labels = map[string]string{TargetArchitectureLabel: arch}
-	secret.Namespace = tr.Namespace
-	secret.Name = secretName
+	//kick off the provisioning task
+	provision := v1beta1.TaskRun{}
+	provision.GenerateName = "provision-task"
+	provision.Namespace = r.operatorNamespace
+	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, TargetArchitectureLabel: targetArch}
+	provision.Spec.TaskRef = &v1beta1.TaskRef{Name: "provision-shared-host"}
+	provision.Spec.Workspaces = []v1beta1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: selected.Secret}}}
+	provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
+	provision.Spec.Params = []v1beta1.Param{
+		{
+			Name:  "SECRET_NAME",
+			Value: *v1beta1.NewStructuredValues(secretName),
+		},
+		{
+			Name:  "TASKRUN_NAME",
+			Value: *v1beta1.NewStructuredValues(tr.Name),
+		},
+		{
+			Name:  "NAMESPACE",
+			Value: *v1beta1.NewStructuredValues(tr.Namespace),
+		},
+		{
+			Name:  "HOST",
+			Value: *v1beta1.NewStructuredValues(selected.Address),
+		},
+		{
+			Name:  "USER",
+			Value: *v1beta1.NewStructuredValues(selected.User),
+		},
+	}
+	err = r.client.Create(ctx, &provision)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
 
-	hostSecret := v12.Secret{}
-	err = r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: selected.Secret}, &hostSecret)
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-	bytes := hostSecret.Data["id_rsa"]
-	secret.Data = map[string][]byte{
-		"id_rsa":    bytes,
-		"host":      []byte(selected.User + "@" + selected.Address),
-		"build-dir": []byte("/tmp/" + uuid.New().String()),
-	}
-	err = r.client.Create(ctx, &secret)
-	if err != nil {
-		return reconcile.Result{}, err
-	}
 	log.Info("allocated host", "host", selected.Name)
 	delete(tr.Labels, WaitingForArchLabel)
 	//add a finalizer to clean up the secret
@@ -225,9 +295,55 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, log *logr.Log
 	if tr.Status.CompletionTime != nil || tr.GetDeletionTimestamp() != nil {
 		log.Info("unassigning host from task")
 
+		selectedHost := tr.Labels[AssignedHost]
+		config, err := r.hostConfig(ctx, log)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		selected := config[selectedHost]
+		if selected != nil {
+			log.Info("starting cleanup task")
+			//kick off the clean task
+			//kick off the provisioning task
+			provision := v1beta1.TaskRun{}
+			provision.GenerateName = "cleanup-task"
+			provision.Namespace = r.operatorNamespace
+			provision.Labels = map[string]string{TaskTypeLabel: TaskTypeClean, TargetArchitectureLabel: tr.Labels[TargetArchitectureLabel]}
+			provision.Spec.TaskRef = &v1beta1.TaskRef{Name: "clean-shared-host"}
+			provision.Spec.Workspaces = []v1beta1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: selected.Secret}}}
+			provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
+			provision.Spec.Params = []v1beta1.Param{
+				{
+					Name:  "SECRET_NAME",
+					Value: *v1beta1.NewStructuredValues(secretName),
+				},
+				{
+					Name:  "TASKRUN_NAME",
+					Value: *v1beta1.NewStructuredValues(tr.Name),
+				},
+				{
+					Name:  "NAMESPACE",
+					Value: *v1beta1.NewStructuredValues(tr.Namespace),
+				},
+				{
+					Name:  "HOST",
+					Value: *v1beta1.NewStructuredValues(selected.Address),
+				},
+				{
+					Name:  "USER",
+					Value: *v1beta1.NewStructuredValues(selected.User),
+				},
+			}
+			err = r.client.Create(ctx, &provision)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+
+		}
+
 		secret := v12.Secret{}
 		//delete the secret
-		err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: secretName}, &secret)
+		err = r.client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: secretName}, &secret)
 		if err == nil {
 			log.Info("deleting secret from task")
 			//PR is done, clean up the secret
@@ -248,7 +364,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, log *logr.Log
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		return r.handleWaitingTasks(tr.Labels[TargetArchitectureLabel])
+		return r.handleWaitingTasks(ctx, log, tr.Labels[TargetArchitectureLabel])
 	}
 	return reconcile.Result{}, nil
 }

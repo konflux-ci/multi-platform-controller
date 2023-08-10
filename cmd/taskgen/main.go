@@ -105,10 +105,9 @@ cp /ssh/id_rsa ~/.ssh
 chmod 0400 ~/.ssh/id_rsa
 export SSH_HOST=$(cat /ssh/host)
 export BUILD_DIR=$(cat /ssh/build-dir)
-export BUILD_ID=$(context.pipelineRun.name)
 export SSH_ARGS="-o StrictHostKeyChecking=no"
 mkdir -p scripts
-ssh $SSH_ARGS $SSH_HOST sudo rm -rf $BUILD_DIR
+echo $BUILD_DIR
 ssh $SSH_ARGS $SSH_HOST  mkdir -p $BUILD_DIR/workspaces $BUILD_DIR/scripts`
 		//before the build we sync the contents of the workspace to the remote host
 		for _, workspace := range task.Spec.Workspaces {
@@ -122,7 +121,7 @@ ssh $SSH_ARGS $SSH_HOST  mkdir -p $BUILD_DIR/workspaces $BUILD_DIR/scripts`
 			ret += "#!/bin/sh\nset -o verbose\n"
 		}
 		if step.WorkingDir != "" {
-			ret += "cd " + step.WorkingDir + " && ls -l\n"
+			ret += "cd " + step.WorkingDir + "\n"
 
 		}
 
