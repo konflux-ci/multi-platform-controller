@@ -1,8 +1,8 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: multi-arch-operator
-  namespace: multi-arch-operator
+  name: multi-arch-controller
+  namespace: multi-arch-controller
 spec:
   replicas: 1
   selector:
@@ -14,8 +14,8 @@ spec:
         app: apheleia-operator
     spec:
       containers:
-        - name: multi-arch-operator
-          image: multi-arch-operator
+        - name: multi-arch-controller
+          image: multi-arch-controller
           env:
             - name: POD_NAMESPACE
               valueFrom:
@@ -33,4 +33,4 @@ spec:
             limits:
               memory: "256Mi"
               cpu: "500m"
-      serviceAccountName: multi-arch-operator
+      serviceAccountName: multi-arch-controller

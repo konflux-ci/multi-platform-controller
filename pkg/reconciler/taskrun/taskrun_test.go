@@ -16,7 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
-const namespace = "multi-arch-operator"
+const namespace = "multi-arch-controller"
 
 func setupClientAndReconciler(objs ...runtimeclient.Object) (runtimeclient.Client, *ReconcileTaskRun) {
 	scheme := runtime.NewScheme()

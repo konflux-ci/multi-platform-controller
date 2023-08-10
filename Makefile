@@ -44,8 +44,8 @@ verify-generate-deepcopy-client: generate-deepcopy-client
 	hack/verify-codegen.sh
 
 dev-image:
-	docker build . -t quay.io/$(QUAY_USERNAME)/multi-arch-operator:dev
-	docker push quay.io/$(QUAY_USERNAME)/multi-arch-operator:dev
+	docker build . -t quay.io/$(QUAY_USERNAME)/multi-arch-controller:dev
+	docker push quay.io/$(QUAY_USERNAME)/multi-arch-controller:dev
 
 
 dev: dev-image

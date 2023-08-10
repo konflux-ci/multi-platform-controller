@@ -4,7 +4,7 @@ metadata:
   labels:
     build.appstudio.redhat.com/multi-arch-config: hosts
   name: host-config
-  namespace: multi-arch-operator
+  namespace: multi-arch-controller
 data:
   host1.address: "ec2-54-165-44-192.compute-1.amazonaws.com"
   host1.secret: "aws-keys"

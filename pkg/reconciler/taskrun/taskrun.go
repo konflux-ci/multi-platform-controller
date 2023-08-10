@@ -22,19 +22,22 @@ import (
 
 const (
 	//TODO eventually we'll need to decide if we want to make this tuneable
-	contextTimeout          = 300 * time.Second
-	ConfigMapLabel          = "build.appstudio.redhat.com/multi-arch-config"
-	TaskTypeLabel           = "build.appstudio.redhat.com/task-type"
+	contextTimeout = 300 * time.Second
+
+	ConfigMapLabel = "build.appstudio.redhat.com/multi-arch-config"
+
+	//user level labels that specify a task needs to be executed on a remote host
 	TargetArchitectureLabel = "build.appstudio.redhat.com/target-architecture"
 	MultiArchLabel          = "build.appstudio.redhat.com/multi-arch-required"
-	AssignedHost            = "build.appstudio.redhat.com/assigned-host"
-	ProvisionTaskName       = "build.appstudio.redhat.com/provision-task-name"
-	ProvisionTaskNamespace  = "build.appstudio.redhat.com/provision-task-namespace"
-	WaitingForArchLabel     = "build.appstudio.redhat.com/waiting-for-arch"
-	PipelineFinalizer       = "appstudio.io/multi-arch-finalizer"
-	HostConfig              = "host-config"
-	OurNamespace            = "host-config"
 
+	AssignedHost           = "build.appstudio.redhat.com/assigned-host"
+	ProvisionTaskName      = "build.appstudio.redhat.com/provision-task-name"
+	ProvisionTaskNamespace = "build.appstudio.redhat.com/provision-task-namespace"
+	WaitingForArchLabel    = "build.appstudio.redhat.com/waiting-for-arch"
+	PipelineFinalizer      = "appstudio.io/multi-arch-finalizer"
+	HostConfig             = "host-config"
+
+	TaskTypeLabel     = "build.appstudio.redhat.com/task-type"
 	TaskTypeProvision = "provision"
 	TaskTypeClean     = "clean"
 )
