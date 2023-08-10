@@ -4,7 +4,6 @@ go 1.19
 
 require (
 	github.com/go-logr/logr v1.2.4
-	github.com/google/uuid v1.3.0
 	github.com/onsi/gomega v1.27.10
 	github.com/tektoncd/pipeline v0.41.1
 	go.uber.org/zap v1.23.0
@@ -15,6 +14,7 @@ require (
 	k8s.io/client-go v0.25.3
 	k8s.io/code-generator v0.25.2
 	k8s.io/klog/v2 v2.70.2-0.20220707122935-0990e81f1a8f
+	knative.dev/pkg v0.0.0-20221011175852-714b7630a836
 	sigs.k8s.io/controller-runtime v0.15.1
 )
 
@@ -47,6 +47,7 @@ require (
 	github.com/google/gnostic v0.5.7-v3refs // indirect
 	github.com/google/go-cmp v0.5.9 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
+	github.com/google/uuid v1.3.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
@@ -94,7 +95,6 @@ require (
 	k8s.io/gengo v0.0.0-20220613173612-397b4ae3bce7 // indirect
 	k8s.io/kube-openapi v0.0.0-20220803162953-67bda5d908f1 // indirect
 	k8s.io/utils v0.0.0-20220728103510-ee6ede2d64ed // indirect
-	knative.dev/pkg v0.0.0-20221011175852-714b7630a836 // indirect
 	sigs.k8s.io/json v0.0.0-20220713155537-f223a00ba0e2 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
