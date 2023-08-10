@@ -1,0 +1,55 @@
+apiVersion: tekton.dev/v1
+kind: TaskRun
+metadata:
+  annotations:
+    appstudio.openshift.io/snapshot: my-app-w92sw
+    build.appstudio.openshift.io/repo: https://github.com/nodeshift-starters/devfile-sample?rev=1879fa9159b28f63265dad2cd618c3d0ffd03e79
+    build.appstudio.redhat.com/bundle: quay.io/redhat-appstudio-tekton-catalog/pipeline-docker-build:35642514a64075bbfed77db63d5bcdf81fab1da0
+    build.appstudio.redhat.com/commit_sha: 1879fa9159b28f63265dad2cd618c3d0ffd03e79
+    build.appstudio.redhat.com/pipeline_name: docker-build
+    build.appstudio.redhat.com/target_branch: main
+    chains.tekton.dev/signed: "true"
+    pipeline.tekton.dev/release: c8ef1db
+    tekton.dev/pipelines.minVersion: 0.12.1
+    tekton.dev/tags: image-build, appstudio, hacbs
+  finalizers:
+    - chains.tekton.dev
+  labels:
+    app.kubernetes.io/managed-by: tekton-pipelines
+    app.kubernetes.io/version: "0.1"
+    appstudio.openshift.io/application: my-app
+    appstudio.openshift.io/component: devfile-sample
+    build.appstudio.redhat.com/build_type: docker
+    build.appstudio.redhat.com/target-architecture: arm64
+    pipelines.appstudio.openshift.io/type: build
+    pipelines.openshift.io/runtime: generic
+    pipelines.openshift.io/strategy: docker
+    pipelines.openshift.io/used-by: build-cloud
+    tekton.dev/memberOf: tasks
+    tekton.dev/pipeline: devfile-sample-bqttq
+    tekton.dev/pipelineRun: devfile-sample-bqttq
+    tekton.dev/pipelineTask: build-container-multiarch
+    tekton.dev/task: buildah-multiarch
+  generateName: devfile-sample-bqttq-build-container-multiarch-
+  namespace: test-jvm-namespace
+spec:
+  params:
+    - name: IMAGE
+      value: quay.io/sdouglas/multi-arch-resolver:arm-build
+    - name: COMMIT_SHA
+      value: 1879fa9159b28f63265dad2cd618c3d0ffd03e79
+    - name: ARCHS
+      value: amd64 arm64
+  podTemplate:
+    topologySpreadConstraints:
+      - labelSelector:
+          matchLabels:
+            app.kubernetes.io/managed-by: tekton-pipelines
+        maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+  serviceAccountName: pipeline
+  taskRef:
+    kind: Task
+    name: buildah-multiarch
+  timeout: 1h0m0s
