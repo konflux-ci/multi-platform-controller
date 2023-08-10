@@ -1,0 +1,37 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: clean-shared-host
+spec:
+  description: >-
+    This task will clean up after a build
+  params:
+    - name: SECRET_NAME
+      type: string
+    - name: TASKRUN_NAME
+      type: string
+    - name: NAMESPACE
+      type: string
+    - name: HOST
+      type: string
+    - name: USER
+      type: string
+  workspaces:
+    - name: ssh
+  steps:
+    - name: provision
+      image: quay.io/sdouglas/registry:multiarch
+      imagePullPolicy: Always
+      script: |
+        #!/bin/bash
+        cd /tmp
+        set -o verbose
+        set -eu
+        set -o pipefail
+        cp $(workspaces.ssh.path)/id_rsa /tmp/master_key
+        chmod 0400 /tmp/master_key
+        export SSH_HOST=$(params.USER)@$(params.HOST)
+        
+        export USERNAME=$(echo $(params.TASKRUN_NAME)$(params.NAMESPACE) | md5sum | cut -d' ' -f1)
+        
+        ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST sudo userdel -f -r -Z $USERNAME

@@ -1,0 +1,69 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: provision-shared-host
+  namespace: multi-arch-controller
+spec:
+  description: >-
+    This task will create a new user on a host, setup ssh keys, and then create the relevant secret.
+  params:
+    - name: SECRET_NAME
+      type: string
+    - name: TASKRUN_NAME
+      type: string
+    - name: NAMESPACE
+      type: string
+    - name: HOST
+      type: string
+    - name: USER
+      type: string
+  workspaces:
+    - name: ssh
+  steps:
+    - name: provision
+      image: quay.io/sdouglas/registry:multiarch
+      imagePullPolicy: Always
+      script: |
+        #!/bin/bash
+        cd /tmp
+        set -o verbose
+        set -eu
+        set -o pipefail
+        mkdir -p /root/.ssh
+        cp $(workspaces.ssh.path)/id_rsa /tmp/master_key
+        chmod 0400 /tmp/master_key
+        export SSH_HOST=$(params.USER)@$(params.HOST)
+        
+        export USERNAME=$(echo $(params.TASKRUN_NAME)$(params.NAMESPACE) | md5sum | cut -d' ' -f1)
+        
+        cat >script.sh <<EOF
+        rm -f $USERNAME $USERNAME.pub
+        sudo adduser $USERNAME
+        ssh-keygen -N '' -f $USERNAME
+        sudo su $USERNAME -c 'mkdir /home/$USERNAME/.ssh'
+        sudo su $USERNAME -c 'mkdir /home/$USERNAME/build'
+        sudo cp $USERNAME.pub /home/$USERNAME/.ssh/authorized_keys
+        sudo chown $USERNAME /home/$USERNAME/.ssh/authorized_keys
+        EOF
+        ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST "bash -s" <script.sh
+        ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST cat $USERNAME  >id_rsa
+        ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST rm $USERNAME
+        chmod 0400 id_rsa
+        ssh -i id_rsa -o StrictHostKeyChecking=no $USERNAME@$(params.HOST) echo "test"
+        KEY=$(cat id_rsa | base64 -w 0)
+        HOST=$(echo $USERNAME@$(params.HOST) | base64 -w 0)
+        DIR=$(echo /home/$USERNAME | base64 -w 0)
+
+        cat >secret.yaml <<EOF
+        apiVersion: v1
+        data:
+          id_rsa: "$KEY"
+          host: "$HOST"
+          build-dir: "$DIR"
+        kind: Secret
+        metadata:
+          name: $(params.SECRET_NAME)
+          namespace: $(params.NAMESPACE)
+        type: Opaque
+        EOF
+        kubectl create -f secret.yaml

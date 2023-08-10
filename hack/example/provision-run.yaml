@@ -1,0 +1,24 @@
+apiVersion: tekton.dev/v1beta1
+kind: TaskRun
+metadata:
+  generateName: sample-provision-
+  namespace: multi-arch-controller
+spec:
+  taskRef:
+    name: provision-shared-host
+  params:
+    - name: SECRET_NAME
+      value: foo
+    - name: TASKRUN_NAME
+      value: user1
+    - name: NAMESPACE
+      value: test-jvm-namespace
+    - name: HOST
+      value: ec2-34-227-115-211.compute-1.amazonaws.com
+    - name: USER
+      value: ec2-user
+  workspaces:
+    - name: ssh
+      secret:
+        secretName: aws-keys
+  serviceAccountName: multi-arch-controller
