@@ -17,11 +17,10 @@ limitations under the License.
 package handler
 
 import (
-	"github.com/kcp-dev/logicalcluster/v2"
+	"context"
 
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	logf "sigs.k8s.io/controller-runtime/pkg/internal/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -39,51 +38,55 @@ var _ EventHandler = &EnqueueRequestForObject{}
 type EnqueueRequestForObject struct{}
 
 // Create implements EventHandler.
-func (e *EnqueueRequestForObject) Create(evt event.CreateEvent, q workqueue.RateLimitingInterface) {
+func (e *EnqueueRequestForObject) Create(ctx context.Context, evt event.CreateEvent, q workqueue.RateLimitingInterface) {
 	if evt.Object == nil {
 		enqueueLog.Error(nil, "CreateEvent received with no metadata", "event", evt)
 		return
 	}
-	q.Add(request(evt.Object))
+	q.Add(reconcile.Request{NamespacedName: types.NamespacedName{
+		Name:      evt.Object.GetName(),
+		Namespace: evt.Object.GetNamespace(),
+	}})
 }
 
 // Update implements EventHandler.
-func (e *EnqueueRequestForObject) Update(evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
+func (e *EnqueueRequestForObject) Update(ctx context.Context, evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
 	switch {
 	case evt.ObjectNew != nil:
-		q.Add(request(evt.ObjectNew))
+		q.Add(reconcile.Request{NamespacedName: types.NamespacedName{
+			Name:      evt.ObjectNew.GetName(),
+			Namespace: evt.ObjectNew.GetNamespace(),
+		}})
 	case evt.ObjectOld != nil:
-		q.Add(request(evt.ObjectOld))
+		q.Add(reconcile.Request{NamespacedName: types.NamespacedName{
+			Name:      evt.ObjectOld.GetName(),
+			Namespace: evt.ObjectOld.GetNamespace(),
+		}})
 	default:
 		enqueueLog.Error(nil, "UpdateEvent received with no metadata", "event", evt)
 	}
 }
 
 // Delete implements EventHandler.
-func (e *EnqueueRequestForObject) Delete(evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
+func (e *EnqueueRequestForObject) Delete(ctx context.Context, evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
 	if evt.Object == nil {
 		enqueueLog.Error(nil, "DeleteEvent received with no metadata", "event", evt)
 		return
 	}
-	q.Add(request(evt.Object))
+	q.Add(reconcile.Request{NamespacedName: types.NamespacedName{
+		Name:      evt.Object.GetName(),
+		Namespace: evt.Object.GetNamespace(),
+	}})
 }
 
 // Generic implements EventHandler.
-func (e *EnqueueRequestForObject) Generic(evt event.GenericEvent, q workqueue.RateLimitingInterface) {
+func (e *EnqueueRequestForObject) Generic(ctx context.Context, evt event.GenericEvent, q workqueue.RateLimitingInterface) {
 	if evt.Object == nil {
 		enqueueLog.Error(nil, "GenericEvent received with no metadata", "event", evt)
 		return
 	}
-	q.Add(request(evt.Object))
-}
-
-func request(obj client.Object) reconcile.Request {
-	return reconcile.Request{
-		// TODO(kcp) Need to implement a non-kcp-specific way to support this
-		ClusterName: logicalcluster.From(obj).String(),
-		NamespacedName: types.NamespacedName{
-			Namespace: obj.GetNamespace(),
-			Name:      obj.GetName(),
-		},
-	}
+	q.Add(reconcile.Request{NamespacedName: types.NamespacedName{
+		Name:      evt.Object.GetName(),
+		Namespace: evt.Object.GetNamespace(),
+	}})
 }

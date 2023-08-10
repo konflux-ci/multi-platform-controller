@@ -24,18 +24,22 @@ const (
 	//TODO eventually we'll need to decide if we want to make this tuneable
 	contextTimeout = 300 * time.Second
 
+	SecretPrefix   = "multi-arch-ssh-"
 	ConfigMapLabel = "build.appstudio.redhat.com/multi-arch-config"
 
 	//user level labels that specify a task needs to be executed on a remote host
 	TargetArchitectureLabel = "build.appstudio.redhat.com/target-architecture"
 	MultiArchLabel          = "build.appstudio.redhat.com/multi-arch-required"
 
-	AssignedHost           = "build.appstudio.redhat.com/assigned-host"
-	ProvisionTaskName      = "build.appstudio.redhat.com/provision-task-name"
-	ProvisionTaskNamespace = "build.appstudio.redhat.com/provision-task-namespace"
-	WaitingForArchLabel    = "build.appstudio.redhat.com/waiting-for-arch"
-	PipelineFinalizer      = "appstudio.io/multi-arch-finalizer"
-	HostConfig             = "host-config"
+	AssignedHost = "build.appstudio.redhat.com/assigned-host"
+
+	ProvisionTaskName = "build.appstudio.redhat.com/provision-task-name"
+	UserTaskName      = "build.appstudio.redhat.com/user-task-name"
+	UserTaskNamespace = "build.appstudio.redhat.com/user-task-namespace"
+
+	WaitingForArchLabel = "build.appstudio.redhat.com/waiting-for-arch"
+	PipelineFinalizer   = "appstudio.io/multi-arch-finalizer"
+	HostConfig          = "host-config"
 
 	TaskTypeLabel     = "build.appstudio.redhat.com/task-type"
 	TaskTypeProvision = "provision"
@@ -147,19 +151,19 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 		return reconcile.Result{}, nil
 	}
 	success := tr.Status.GetCondition(apis.ConditionSucceeded).IsTrue()
+	secretName := ""
+	for _, i := range tr.Spec.Params {
+		if i.Name == "SECRET_NAME" {
+			secretName = i.Value.StringVal
+			break
+		}
+	}
 	if !success {
 		log.Info("provision task failed")
 		//TODO: retries with different hosts
 		//create a failure secret
-		secretName := ""
-		for _, i := range tr.Spec.Params {
-			if i.Name == "SECRET_NAME" {
-				secretName = i.Value.StringVal
-				break
-			}
-		}
 		userTr := v1beta1.TaskRun{}
-		err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Labels[ProvisionTaskNamespace], Name: tr.Labels[ProvisionTaskName]}, &userTr)
+		err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Labels[UserTaskNamespace], Name: tr.Labels[UserTaskName]}, &userTr)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -170,8 +174,21 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 		}
 	} else {
 		log.Info("provision task succeeded")
+		//verify we ended up with a secret
+		secret := v12.Secret{}
+		err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Labels[UserTaskNamespace], Name: secretName}, &secret)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				userTr := v1beta1.TaskRun{}
+				err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Labels[UserTaskNamespace], Name: tr.Labels[UserTaskName]}, &userTr)
+				if err != nil {
+					return reconcile.Result{}, err
+				}
+				return r.createErrorSecret(ctx, &userTr, secretName, "provision task failed to create a secret")
+			}
+			return reconcile.Result{}, err
+		}
 	}
-
 	return reconcile.Result{}, r.client.Delete(ctx, tr)
 
 }
@@ -207,7 +224,7 @@ func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, tr *v1beta1.Ta
 
 func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun) (reconcile.Result, error) {
 
-	secretName := "multi-arch-ssl-" + tr.Name
+	secretName := SecretPrefix + tr.Name
 	if tr.Labels[AssignedHost] != "" {
 		return r.handleHostAssigned(ctx, log, tr, secretName)
 	} else {
@@ -296,7 +313,7 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.L
 	provision := v1beta1.TaskRun{}
 	provision.GenerateName = "provision-task"
 	provision.Namespace = r.operatorNamespace
-	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, TargetArchitectureLabel: targetArch, ProvisionTaskNamespace: tr.Namespace, ProvisionTaskName: tr.Name}
+	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, TargetArchitectureLabel: targetArch, UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name}
 	provision.Spec.TaskRef = &v1beta1.TaskRef{Name: "provision-shared-host"}
 	provision.Spec.Workspaces = []v1beta1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: selected.Secret}}}
 	provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
@@ -329,6 +346,7 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.L
 
 	log.Info("allocated host", "host", selected.Name)
 	tr.Labels[AssignedHost] = selected.Name
+	tr.Labels[ProvisionTaskName] = provision.Name
 	delete(tr.Labels, WaitingForArchLabel)
 	//add a finalizer to clean up the secret
 	controllerutil.AddFinalizer(tr, PipelineFinalizer)
@@ -353,7 +371,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, log *logr.Log
 			provision := v1beta1.TaskRun{}
 			provision.GenerateName = "cleanup-task"
 			provision.Namespace = r.operatorNamespace
-			provision.Labels = map[string]string{TaskTypeLabel: TaskTypeClean, TargetArchitectureLabel: tr.Labels[TargetArchitectureLabel]}
+			provision.Labels = map[string]string{TaskTypeLabel: TaskTypeClean, TargetArchitectureLabel: tr.Labels[TargetArchitectureLabel], UserTaskName: tr.Name, UserTaskNamespace: tr.Namespace}
 			provision.Spec.TaskRef = &v1beta1.TaskRef{Name: "clean-shared-host"}
 			provision.Spec.Workspaces = []v1beta1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: selected.Secret}}}
 			provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this

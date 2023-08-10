@@ -73,10 +73,9 @@ $(CONTROLLER_GEN): $(TOOLS_DIR)/go.mod # Build controller-gen from tools folder.
 	cd $(TOOLS_DIR) && go build -tags=tools -o bin/controller-gen sigs.k8s.io/controller-tools/cmd/controller-gen
 
 $(GOLANGCI_LINT): .github/workflows/golangci-lint.yml # Download golanci-lint using hack script into tools folder.
-	GOBIN=$(abspath $(TOOLS_BIN_DIR)) go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(shell cat .github/workflows/golangci-lint.yml | grep version | sed 's/.*version: //')
-
-.PHONY: tools
-tools: $(GO_APIDIFF) $(CONTROLLER_GEN) $(GOLANGCI_LINT)
+	hack/ensure-golangci-lint.sh \
+		-b $(TOOLS_BIN_DIR) \
+		$(shell cat .github/workflows/golangci-lint.yml | grep "version: v" | sed 's/.*version: //')
 
 ## --------------------------------------
 ## Linting
@@ -118,7 +117,15 @@ clean-bin: ## Remove all generated binaries.
 	rm -rf hack/tools/bin
 
 .PHONY: verify-modules
-verify-modules: modules
-	@if !(git diff --quiet HEAD -- go.sum go.mod); then \
+verify-modules: modules ## Verify go modules are up to date
+	@if !(git diff --quiet HEAD -- go.sum go.mod $(TOOLS_DIR)/go.mod $(TOOLS_DIR)/go.sum $(ENVTEST_DIR)/go.mod $(ENVTEST_DIR)/go.sum); then \
+		git diff; \
 		echo "go module files are out of date, please run 'make modules'"; exit 1; \
+	fi
+
+.PHONY: verify-generate
+verify-generate: generate ## Verify generated files are up to date
+	@if !(git diff --quiet HEAD); then \
+		git diff; \
+		echo "generated files are out of date, run make generate"; exit 1; \
 	fi

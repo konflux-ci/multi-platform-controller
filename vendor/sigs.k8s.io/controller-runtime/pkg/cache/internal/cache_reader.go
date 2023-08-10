@@ -21,19 +21,15 @@ import (
 	"fmt"
 	"reflect"
 
-	kcpcache "github.com/kcp-dev/apimachinery/pkg/cache"
-	"github.com/kcp-dev/logicalcluster/v2"
-
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/client-go/tools/cache"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/internal/field/selector"
 )
 
 // CacheReader is a client.Reader.
@@ -57,11 +53,11 @@ type CacheReader struct {
 }
 
 // Get checks the indexer for the object and writes a copy of it if found.
-func (c *CacheReader) Get(ctx context.Context, key client.ObjectKey, out client.Object) error {
+func (c *CacheReader) Get(_ context.Context, key client.ObjectKey, out client.Object, opts ...client.GetOption) error {
 	if c.scopeName == apimeta.RESTScopeNameRoot {
 		key.Namespace = ""
 	}
-	storeKey := objectKeyToStoreKey(ctx, key)
+	storeKey := objectKeyToStoreKey(key)
 
 	// Lookup the object from the indexer cache
 	obj, exists, err := c.indexer.GetByKey(storeKey)
@@ -108,20 +104,18 @@ func (c *CacheReader) Get(ctx context.Context, key client.ObjectKey, out client.
 }
 
 // List lists items out of the indexer and writes them to out.
-func (c *CacheReader) List(ctx context.Context, out client.ObjectList, opts ...client.ListOption) error {
+func (c *CacheReader) List(_ context.Context, out client.ObjectList, opts ...client.ListOption) error {
 	var objs []interface{}
 	var err error
 
 	listOpts := client.ListOptions{}
 	listOpts.ApplyOptions(opts)
 
-	clusterName, _ := logicalcluster.ClusterFromContext(ctx)
-
 	switch {
 	case listOpts.FieldSelector != nil:
 		// TODO(directxman12): support more complicated field selectors by
 		// combining multiple indices, GetIndexers, etc
-		field, val, requiresExact := requiresExactMatch(listOpts.FieldSelector)
+		field, val, requiresExact := selector.RequiresExactMatch(listOpts.FieldSelector)
 		if !requiresExact {
 			return fmt.Errorf("non-exact field matches are not supported by the cache")
 		}
@@ -130,17 +124,9 @@ func (c *CacheReader) List(ctx context.Context, out client.ObjectList, opts ...c
 		// namespace.
 		objs, err = c.indexer.ByIndex(FieldIndexName(field), KeyToNamespacedKey(listOpts.Namespace, val))
 	case listOpts.Namespace != "":
-		if clusterName.Empty() {
-			objs, err = c.indexer.ByIndex(cache.NamespaceIndex, listOpts.Namespace)
-		} else {
-			objs, err = c.indexer.ByIndex(kcpcache.ClusterAndNamespaceIndexName, kcpcache.ToClusterAwareKey(clusterName.String(), listOpts.Namespace, ""))
-		}
+		objs, err = c.indexer.ByIndex(cache.NamespaceIndex, listOpts.Namespace)
 	default:
-		if clusterName.Empty() {
-			objs = c.indexer.List()
-		} else {
-			objs, err = c.indexer.ByIndex(kcpcache.ClusterIndexName, kcpcache.ToClusterAwareKey(clusterName.String(), "", ""))
-		}
+		objs = c.indexer.List()
 	}
 	if err != nil {
 		return err
@@ -161,7 +147,7 @@ func (c *CacheReader) List(ctx context.Context, out client.ObjectList, opts ...c
 		}
 		obj, isObj := item.(runtime.Object)
 		if !isObj {
-			return fmt.Errorf("cache contained %T, which is not an Object", obj)
+			return fmt.Errorf("cache contained %T, which is not an Object", item)
 		}
 		meta, err := apimeta.Accessor(obj)
 		if err != nil {
@@ -175,7 +161,7 @@ func (c *CacheReader) List(ctx context.Context, out client.ObjectList, opts ...c
 		}
 
 		var outObj runtime.Object
-		if c.disableDeepCopy {
+		if c.disableDeepCopy || (listOpts.UnsafeDisableDeepCopy != nil && *listOpts.UnsafeDisableDeepCopy) {
 			// skip deep copy which might be unsafe
 			// you must DeepCopy any object before mutating it outside
 			outObj = obj
@@ -192,29 +178,11 @@ func (c *CacheReader) List(ctx context.Context, out client.ObjectList, opts ...c
 // It's akin to MetaNamespaceKeyFunc.  It's separate from
 // String to allow keeping the key format easily in sync with
 // MetaNamespaceKeyFunc.
-func objectKeyToStoreKey(ctx context.Context, k client.ObjectKey) string {
-	cluster, ok := logicalcluster.ClusterFromContext(ctx)
-	if ok {
-		return kcpcache.ToClusterAwareKey(cluster.String(), k.Namespace, k.Name)
-	}
-
+func objectKeyToStoreKey(k client.ObjectKey) string {
 	if k.Namespace == "" {
 		return k.Name
 	}
 	return k.Namespace + "/" + k.Name
-}
-
-// requiresExactMatch checks if the given field selector is of the form `k=v` or `k==v`.
-func requiresExactMatch(sel fields.Selector) (field, val string, required bool) {
-	reqs := sel.Requirements()
-	if len(reqs) != 1 {
-		return "", "", false
-	}
-	req := reqs[0]
-	if req.Operator != selection.Equals && req.Operator != selection.DoubleEquals {
-		return "", "", false
-	}
-	return req.Field, req.Value, true
 }
 
 // FieldIndexName constructs the name of the index over the given field,

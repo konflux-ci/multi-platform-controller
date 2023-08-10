@@ -171,7 +171,7 @@ ssh $SSH_ARGS $SSH_HOST  mkdir -p $BUILD_DIR/workspaces $BUILD_DIR/scripts`
 		Name: "ssh",
 		VolumeSource: v1.VolumeSource{
 			Secret: &v1.SecretVolumeSource{
-				SecretName: "multi-arch-ssl-$(context.taskRun.name)",
+				SecretName: "multi-arch-ssh-$(context.taskRun.name)",
 				Optional:   &faleVar,
 			},
 		},
