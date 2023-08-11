@@ -33,7 +33,6 @@ const (
 
 	AssignedHost = "build.appstudio.redhat.com/assigned-host"
 
-	ProvisionTaskName = "build.appstudio.redhat.com/provision-task-name"
 	UserTaskName      = "build.appstudio.redhat.com/user-task-name"
 	UserTaskNamespace = "build.appstudio.redhat.com/user-task-namespace"
 
@@ -162,22 +161,21 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 	secretError := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Labels[UserTaskNamespace], Name: secretName}, &secret)
 	if !success {
 
-		if secretError == nil {
+		if secretError != nil {
 			//already handled
+			log.Info("provision task failed")
+			//TODO: retries with different hosts
+			//create a failure secret
+			userTr := v1beta1.TaskRun{}
+			err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Labels[UserTaskNamespace], Name: tr.Labels[UserTaskName]}, &userTr)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
 
-		}
-		log.Info("provision task failed")
-		//TODO: retries with different hosts
-		//create a failure secret
-		userTr := v1beta1.TaskRun{}
-		err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Labels[UserTaskNamespace], Name: tr.Labels[UserTaskName]}, &userTr)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-
-		result, err2 := r.createErrorSecret(ctx, &userTr, secretName, "provisioning task failed")
-		if err2 != nil {
-			return result, err2
+			result, err2 := r.createErrorSecret(ctx, &userTr, secretName, "provisioning task failed")
+			if err2 != nil {
+				return result, err2
+			}
 		}
 	} else {
 		log.Info("provision task succeeded")
@@ -315,6 +313,16 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.L
 		return reconcile.Result{RequeueAfter: time.Minute}, r.client.Update(ctx, tr)
 	}
 
+	log.Info("allocated host", "host", selected.Name)
+	tr.Labels[AssignedHost] = selected.Name
+	delete(tr.Labels, WaitingForArchLabel)
+	//add a finalizer to clean up the secret
+	controllerutil.AddFinalizer(tr, PipelineFinalizer)
+	err = r.client.Update(ctx, tr)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
 	//kick off the provisioning task
 	//note that we can't use owner refs here because this task runs in a different namespace
 	provision := v1beta1.TaskRun{}
@@ -346,18 +354,20 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.L
 			Value: *v1beta1.NewStructuredValues(selected.User),
 		},
 	}
+
 	err = r.client.Create(ctx, &provision)
 	if err != nil {
-		return reconcile.Result{}, err
-	}
+		//ugh, try and unassign
 
-	log.Info("allocated host", "host", selected.Name)
-	tr.Labels[AssignedHost] = selected.Name
-	tr.Labels[ProvisionTaskName] = provision.Name
-	delete(tr.Labels, WaitingForArchLabel)
-	//add a finalizer to clean up the secret
-	controllerutil.AddFinalizer(tr, PipelineFinalizer)
-	return reconcile.Result{}, r.client.Update(ctx, tr)
+		delete(tr.Labels, AssignedHost)
+		err = r.client.Update(ctx, tr)
+		if err != nil {
+			log.Error(err, "Could not unassign task after provisioning failure")
+			_, _ = r.createErrorSecret(ctx, tr, secretName, "Could not unassign task after provisioning failure")
+		}
+	}
+	return reconcile.Result{}, err
+
 }
 
 func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string) (reconcile.Result, error) {

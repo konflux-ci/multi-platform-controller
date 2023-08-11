@@ -234,15 +234,20 @@ func runUserPipeline(g *WithT, client runtimeclient.Client, reconciler *Reconcil
 	g.Expect(err).ToNot(HaveOccurred())
 	tr = getUserTaskRun(g, client, name)
 	g.Expect(tr.Labels[AssignedHost]).ToNot(BeEmpty())
-	g.Expect(tr.Labels[ProvisionTaskName]).ToNot(BeEmpty())
 	return tr
 }
 
 func getProvisionTaskRun(g *WithT, client runtimeclient.Client, tr *pipelinev1beta1.TaskRun) *pipelinev1beta1.TaskRun {
-	ret := pipelinev1beta1.TaskRun{}
-	err := client.Get(context.TODO(), types.NamespacedName{Namespace: systemNamespace, Name: tr.Labels[ProvisionTaskName]}, &ret)
+	list := pipelinev1beta1.TaskRunList{}
+	err := client.List(context.TODO(), &list)
 	g.Expect(err).ToNot(HaveOccurred())
-	return &ret
+	for i := range list.Items {
+		if list.Items[i].Labels[UserTaskName] == tr.Name {
+			return &list.Items[i]
+		}
+	}
+	g.Expect("could not find task").Should(BeEmpty())
+	return nil
 }
 
 func getUserTaskRun(g *WithT, client runtimeclient.Client, name string) *pipelinev1beta1.TaskRun {

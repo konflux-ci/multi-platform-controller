@@ -214,7 +214,7 @@ spec:
         - name: build-container-amd64
           params:
             - name: IMAGE
-              value: quay.io/sdouglas/multi-arch-resolver:multiarch-build
+              value: quay.io/sdouglas/multi-arch-resolver:multiarch-build-amd64
             - name: DOCKERFILE
               value: Dockerfile
             - name: CONTEXT
@@ -245,7 +245,7 @@ spec:
         - name: build-container-arm64
           params:
             - name: IMAGE
-              value: quay.io/sdouglas/multi-arch-resolver:multiarch-build
+              value: quay.io/sdouglas/multi-arch-resolver:multiarch-build-arm64
             - name: DOCKERFILE
               value: Dockerfile
             - name: CONTEXT

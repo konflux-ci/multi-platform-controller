@@ -108,7 +108,17 @@ export BUILD_DIR=$(cat /ssh/build-dir)
 export SSH_ARGS="-o StrictHostKeyChecking=no"
 mkdir -p scripts
 echo $BUILD_DIR
-ssh $SSH_ARGS $SSH_HOST  mkdir -p $BUILD_DIR/workspaces $BUILD_DIR/scripts`
+ssh $SSH_ARGS $SSH_HOST  mkdir -p $BUILD_DIR/workspaces $BUILD_DIR/scripts
+
+PORT_FORWARD=""
+PODMAN_PORT_FORWARD=""
+if [ -n "$JVM_BUILD_WORKSPACE_ARTIFACT_CACHE_PORT_80_TCP_ADDR" ] ; then
+PORT_FORWARD=" -L 80:$JVM_BUILD_WORKSPACE_ARTIFACT_CACHE_PORT_80_TCP_ADDR:80"
+PODMAN_PORT_FORWARD=" -e JVM_BUILD_WORKSPACE_ARTIFACT_CACHE_PORT_80_TCP_ADDR=localhost"
+fi
+`
+
+		env := "$PODMAN_PORT_FORWARD"
 		//before the build we sync the contents of the workspace to the remote host
 		for _, workspace := range task.Spec.Workspaces {
 			ret += "\nrsync -ra $(workspaces." + workspace.Name + ".path)/ $SSH_HOST:$BUILD_DIR/workspaces/" + workspace.Name + "/"
@@ -130,19 +140,18 @@ ssh $SSH_ARGS $SSH_HOST  mkdir -p $BUILD_DIR/workspaces $BUILD_DIR/scripts`
 		ret += "\nREMOTESSHEOF"
 		ret += "\nchmod +x " + script
 
-		taskEnv := ""
 		if task.Spec.StepTemplate != nil {
 			for _, e := range task.Spec.StepTemplate.Env {
-				taskEnv += " -e " + e.Name + "=" + e.Value + " "
+				env += " -e " + e.Name + "=" + e.Value
 			}
 		}
 		ret += "\nrsync -ra scripts $SSH_HOST:$BUILD_DIR"
 		containerScript := "/script/script-" + step.Name + ".sh"
-		env := taskEnv
 		for _, e := range step.Env {
 			env += " -e " + e.Name + "=" + e.Value + " "
 		}
-		ret += "\nssh $SSH_ARGS $SSH_HOST podman  run " + env + " --rm " + podmanArgs + " -v $BUILD_DIR/scripts:/script:Z --user=0  " + replaceImage(step.Image) + "  " + containerScript
+
+		ret += "\nssh $SSH_ARGS $SSH_HOST $PORT_FORWARD podman  run " + env + " --rm " + podmanArgs + " -v $BUILD_DIR/scripts:/script:Z --user=0  " + replaceImage(step.Image) + "  " + containerScript
 
 		//sync the contents of the workspaces back so subsequent tasks can use them
 		for _, workspace := range task.Spec.Workspaces {
@@ -153,6 +162,11 @@ ssh $SSH_ARGS $SSH_HOST  mkdir -p $BUILD_DIR/workspaces $BUILD_DIR/scripts`
 		ret += "\nbuildah tag localhost/rhtap-final-image $IMAGE"
 		ret += "\ncontainer=$(buildah from --pull-never $IMAGE)\nbuildah mount $container | tee /workspace/container_path\necho $container > /workspace/container_name"
 
+		for _, i := range strings.Split(ret, "\n") {
+			if strings.HasSuffix(i, " ") {
+				panic(i)
+			}
+		}
 		step.Script = ret
 		step.Image = "quay.io/sdouglas/registry:multiarch"
 		step.ImagePullPolicy = v1.PullAlways
