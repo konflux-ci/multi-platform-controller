@@ -158,7 +158,14 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 			break
 		}
 	}
+	secret := v12.Secret{}
+	secretError := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Labels[UserTaskNamespace], Name: secretName}, &secret)
 	if !success {
+
+		if secretError == nil {
+			//already handled
+
+		}
 		log.Info("provision task failed")
 		//TODO: retries with different hosts
 		//create a failure secret

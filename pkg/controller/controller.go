@@ -8,6 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	"os"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"time"
 
 	jvmbs "github.com/redhat-appstudio/jvm-build-service/pkg/apis/jvmbuildservice/v1alpha1"
@@ -77,13 +78,13 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 	}
 	configMapSelector.Add(*configMapLabels)
 
-	options.NewCache = cache.BuilderWithOptions(cache.Options{
-		SelectorsByObject: cache.SelectorsByObject{
+	options.Cache = cache.Options{
+		ByObject: map[client.Object]cache.ByObject{
 			&pipelinev1beta1.TaskRun{}: {Label: multiArchPipelines},
 			&v1.Secret{}:               {Label: multiArchPipelines},
 			&v1.ConfigMap{}:            {Label: configMapSelector},
-		}})
-
+		},
+	}
 	operatorNamespace := os.Getenv("POD_NAMESPACE")
 	mgr, err = ctrl.NewManager(cfg, options)
 
