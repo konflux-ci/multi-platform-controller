@@ -2,7 +2,9 @@ package taskrun
 
 import (
 	"context"
+	"fmt"
 	"github.com/go-logr/logr"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"knative.dev/pkg/apis"
@@ -36,8 +38,7 @@ func setupClientAndReconciler(objs ...runtimeclient.Object) (runtimeclient.Clien
 
 func TestConfigMapParsing(t *testing.T) {
 	g := NewGomegaWithT(t)
-	cm := createHostConfig()
-	_, reconciler := setupClientAndReconciler(&cm)
+	_, reconciler := setupClientAndReconciler(createHostConfig())
 	discard := logr.Discard()
 	config, err := reconciler.hostConfig(context.TODO(), &discard)
 	g.Expect(err).ToNot(HaveOccurred())
@@ -47,8 +48,7 @@ func TestConfigMapParsing(t *testing.T) {
 
 func TestAllocateHost(t *testing.T) {
 	g := NewGomegaWithT(t)
-	cm := createHostConfig()
-	client, reconciler := setupClientAndReconciler(&cm)
+	client, reconciler := setupClientAndReconciler(createHostConfig())
 
 	tr := runUserPipeline(g, client, reconciler, "test")
 	provision := getProvisionTaskRun(g, client, tr)
@@ -65,8 +65,7 @@ func TestAllocateHost(t *testing.T) {
 
 func TestProvisionFailure(t *testing.T) {
 	g := NewGomegaWithT(t)
-	cm := createHostConfig()
-	client, reconciler := setupClientAndReconciler(&cm)
+	client, reconciler := setupClientAndReconciler(createHostConfig())
 	tr := runUserPipeline(g, client, reconciler, "test")
 	provision := getProvisionTaskRun(g, client, tr)
 
@@ -86,8 +85,7 @@ func TestProvisionFailure(t *testing.T) {
 
 func TestProvisionSuccessButNoSecret(t *testing.T) {
 	g := NewGomegaWithT(t)
-	cm := createHostConfig()
-	client, reconciler := setupClientAndReconciler(&cm)
+	client, reconciler := setupClientAndReconciler(createHostConfig())
 	tr := runUserPipeline(g, client, reconciler, "test")
 	provision := getProvisionTaskRun(g, client, tr)
 
@@ -107,11 +105,68 @@ func TestProvisionSuccessButNoSecret(t *testing.T) {
 
 func TestProvisionSuccess(t *testing.T) {
 	g := NewGomegaWithT(t)
-	cm := createHostConfig()
-	client, reconciler := setupClientAndReconciler(&cm)
+	client, reconciler := setupClientAndReconciler(createHostConfig())
 	tr := runUserPipeline(g, client, reconciler, "test")
 	provision := getProvisionTaskRun(g, client, tr)
 
+	runSuccessfulProvision(provision, g, client, tr, reconciler)
+
+	//now test clean up
+	tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+	tr.Status.SetCondition(&apis.Condition{
+		Type:               apis.ConditionSucceeded,
+		Status:             "True",
+		LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now()}},
+	})
+	g.Expect(client.Update(context.TODO(), tr)).ShouldNot(HaveOccurred())
+	_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
+	g.Expect(err).ShouldNot(HaveOccurred())
+	assertNoSecret(g, client, tr)
+}
+
+func TestWaitForConcurrency(t *testing.T) {
+	g := NewGomegaWithT(t)
+	client, reconciler := setupClientAndReconciler(createHostConfig())
+	runs := []*pipelinev1beta1.TaskRun{}
+	for i := 0; i < 8; i++ {
+		tr := runUserPipeline(g, client, reconciler, fmt.Sprintf("test-%d", i))
+		provision := getProvisionTaskRun(g, client, tr)
+		runSuccessfulProvision(provision, g, client, tr, reconciler)
+		runs = append(runs, tr)
+	}
+	//we are now at max concurrency
+	name := fmt.Sprintf("test-%d", 9)
+	tr := createUserTaskRun(g, client, name, "arm64")
+	_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
+	g.Expect(err).ToNot(HaveOccurred())
+	tr = getUserTaskRun(g, client, name)
+	g.Expect(tr.Labels[WaitingForArchLabel]).To(Equal("arm64"))
+
+	//now complete a task
+	//now test clean up
+	running := runs[0]
+	running.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+	running.Status.SetCondition(&apis.Condition{
+		Type:               apis.ConditionSucceeded,
+		Status:             "True",
+		LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now()}},
+	})
+	g.Expect(client.Update(context.TODO(), running)).ShouldNot(HaveOccurred())
+	_, err = reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: running.Namespace, Name: running.Name}})
+	g.Expect(err).ShouldNot(HaveOccurred())
+	assertNoSecret(g, client, running)
+
+	//task is completed, this should have removed the waiting label from our existing task
+
+	tr = getUserTaskRun(g, client, name)
+	g.Expect(tr.Labels[WaitingForArchLabel]).To(BeEmpty())
+	_, err = reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
+	g.Expect(err).ToNot(HaveOccurred())
+	tr = getUserTaskRun(g, client, name)
+	g.Expect(getProvisionTaskRun(g, client, tr)).ToNot(BeNil())
+}
+
+func runSuccessfulProvision(provision *pipelinev1beta1.TaskRun, g *WithT, client runtimeclient.Client, tr *pipelinev1beta1.TaskRun, reconciler *ReconcileTaskRun) {
 	provision.Status.CompletionTime = &metav1.Time{Time: time.Now()}
 	provision.Status.SetCondition(&apis.Condition{
 		Type:               apis.ConditionSucceeded,
@@ -134,17 +189,50 @@ func TestProvisionSuccess(t *testing.T) {
 	secret := getSecret(g, client, tr)
 	g.Expect(secret.Data["error"]).To(BeEmpty())
 }
+
+func TestNoHostConfig(t *testing.T) {
+	g := NewGomegaWithT(t)
+	client, reconciler := setupClientAndReconciler()
+	tr := createUserTaskRun(g, client, "test", "arm64")
+	_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
+	g.Expect(err).ToNot(HaveOccurred())
+	tr = getUserTaskRun(g, client, "test")
+
+	//we should have an error secret created immediately
+	secret := getSecret(g, client, tr)
+	g.Expect(secret.Data["error"]).ToNot(BeEmpty())
+}
+func TestNoHostWithOutArch(t *testing.T) {
+	g := NewGomegaWithT(t)
+	client, reconciler := setupClientAndReconciler(createHostConfig())
+	tr := createUserTaskRun(g, client, "test", "powerpc")
+	_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
+	g.Expect(err).ToNot(HaveOccurred())
+	tr = getUserTaskRun(g, client, "test")
+
+	//we should have an error secret created immediately
+	secret := getSecret(g, client, tr)
+	g.Expect(secret.Data["error"]).ToNot(BeEmpty())
+}
+
 func getSecret(g *WithT, client runtimeclient.Client, tr *pipelinev1beta1.TaskRun) *v1.Secret {
 	name := SecretPrefix + tr.Name
 	secret := v1.Secret{}
 	g.Expect(client.Get(context.TODO(), types.NamespacedName{Namespace: tr.Namespace, Name: name}, &secret)).ToNot(HaveOccurred())
 	return &secret
 }
+
+func assertNoSecret(g *WithT, client runtimeclient.Client, tr *pipelinev1beta1.TaskRun) {
+	name := SecretPrefix + tr.Name
+	secret := v1.Secret{}
+	err := client.Get(context.TODO(), types.NamespacedName{Namespace: tr.Namespace, Name: name}, &secret)
+	g.Expect(errors.IsNotFound(err)).To(BeTrue())
+}
 func runUserPipeline(g *WithT, client runtimeclient.Client, reconciler *ReconcileTaskRun, name string) *pipelinev1beta1.TaskRun {
 	tr := createUserTaskRun(g, client, name, "arm64")
-	_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
+	_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
 	g.Expect(err).ToNot(HaveOccurred())
-	tr = getUserTaskRun(g, client, "test")
+	tr = getUserTaskRun(g, client, name)
 	g.Expect(tr.Labels[AssignedHost]).ToNot(BeEmpty())
 	g.Expect(tr.Labels[ProvisionTaskName]).ToNot(BeEmpty())
 	return tr
@@ -173,7 +261,7 @@ func createUserTaskRun(g *WithT, client runtimeclient.Client, name string, arch 
 	return tr
 }
 
-func createHostConfig() v1.ConfigMap {
+func createHostConfig() *v1.ConfigMap {
 	cm := v1.ConfigMap{}
 	cm.Name = HostConfig
 	cm.Namespace = systemNamespace
@@ -190,5 +278,5 @@ func createHostConfig() v1.ConfigMap {
 		"host2.user":        "ec2-user",
 		"host2.arch":        "arm64",
 	}
-	return cm
+	return &cm
 }
