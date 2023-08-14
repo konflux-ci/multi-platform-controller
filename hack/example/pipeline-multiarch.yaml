@@ -39,7 +39,7 @@ spec:
         - name: show-sbom
           params:
             - name: IMAGE_URL
-              value: $(tasks.build-container-multiarch.results.IMAGE_URL)
+              value: $(tasks.build-container-arm64.results.IMAGE_URL)
           taskRef:
             kind: Task
             params:
