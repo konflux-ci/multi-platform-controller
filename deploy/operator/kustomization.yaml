@@ -4,6 +4,7 @@ kind: Kustomization
 commonLabels:
   app: multi-arch-controller
 resources:
+  - namespace.yaml
   - deployment.yaml
   - sa.yaml
   - rbac.yaml
