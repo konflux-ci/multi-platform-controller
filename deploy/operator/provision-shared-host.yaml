@@ -64,6 +64,8 @@ spec:
         metadata:
           name: $(params.SECRET_NAME)
           namespace: $(params.NAMESPACE)
+          labels:
+            build.appstudio.redhat.com/multi-arch-required: true
         type: Opaque
         EOF
         kubectl create -f secret.yaml

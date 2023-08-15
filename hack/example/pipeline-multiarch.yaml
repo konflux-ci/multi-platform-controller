@@ -17,7 +17,6 @@ metadata:
     pipelines.openshift.io/strategy: docker
     pipelines.openshift.io/used-by: build-cloud
     tekton.dev/pipeline: docker-build
-    build.appstudio.redhat.com/target-architecture: arm64
 spec:
   params:
   - name: dockerfile
