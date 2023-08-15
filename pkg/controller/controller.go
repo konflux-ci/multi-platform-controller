@@ -34,7 +34,7 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 	// and controller-runtime does not retry on missing CRDs.
 	// so we are going to wait on the CRDs existing before moving forward.
 	apiextensionsClient := apiextensionsclient.NewForConfigOrDie(cfg)
-	if err := wait.PollImmediate(time.Second*5, time.Minute*5, func() (done bool, err error) {
+	if err := wait.PollUntilContextTimeout(context.Background(), time.Second*5, time.Minute*5, true, func(ctx context.Context) (done bool, err error) {
 		_, err = apiextensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), "taskruns.tekton.dev", metav1.GetOptions{})
 		if err != nil {
 			controllerLog.Info(fmt.Sprintf("get of taskrun CRD failed with: %s", err.Error()))
@@ -65,7 +65,7 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 
 	//if we are running this locally on the same cluster as the ckcp we want to ignore any synced pipeline runs
 	multiArchPipelines := labels.NewSelector()
-	requirement, lerr := labels.NewRequirement(taskrun.TargetArchitectureLabel, selection.Exists, nil)
+	requirement, lerr := labels.NewRequirement(taskrun.MultiArchLabel, selection.Exists, nil)
 	if lerr != nil {
 		return nil, lerr
 	}

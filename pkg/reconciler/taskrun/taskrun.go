@@ -2,6 +2,7 @@ package taskrun
 
 import (
 	"context"
+	errors2 "github.com/pkg/errors"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	v12 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -28,8 +29,7 @@ const (
 	ConfigMapLabel = "build.appstudio.redhat.com/multi-arch-config"
 
 	//user level labels that specify a task needs to be executed on a remote host
-	TargetArchitectureLabel = "build.appstudio.redhat.com/target-architecture"
-	MultiArchLabel          = "build.appstudio.redhat.com/multi-arch-required"
+	MultiArchLabel = "build.appstudio.redhat.com/multi-arch-required"
 
 	AssignedHost = "build.appstudio.redhat.com/assigned-host"
 
@@ -45,6 +45,8 @@ const (
 	TaskTypeClean     = "clean"
 
 	ServiceAccountName = "multi-arch-controller"
+
+	ArchParam = "ARCH"
 )
 
 type ReconcileTaskRun struct {
@@ -104,7 +106,7 @@ func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, log *logr.
 		return r.handleProvisionTask(ctx, log, tr)
 	}
 
-	if tr.Labels == nil || tr.Labels[TargetArchitectureLabel] == "" || tr.Labels[MultiArchLabel] == "" {
+	if tr.Labels == nil || tr.Labels[MultiArchLabel] == "" {
 		//this is not something we need to be concerned with
 		return reconcile.Result{}, nil
 	}
@@ -209,7 +211,7 @@ func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, tr *v1beta1.Ta
 	}
 
 	secret := v12.Secret{}
-	secret.Labels = map[string]string{TargetArchitectureLabel: tr.Labels[TargetArchitectureLabel]}
+	secret.Labels = map[string]string{MultiArchLabel: tr.Labels[MultiArchLabel]}
 	secret.Namespace = tr.Namespace
 	secret.Name = secretName
 	err := controllerutil.SetOwnerReference(tr, &secret, r.scheme)
@@ -243,9 +245,22 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, log *logr.Logger,
 	}
 }
 
+func extractArch(tr *v1beta1.TaskRun) (string, error) {
+	for _, p := range tr.Spec.Params {
+		if p.Name == ArchParam {
+			return p.Value.StringVal, nil
+		}
+	}
+	return "", errors2.New("failed to determine architecture")
+}
+
 func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string) (reconcile.Result, error) {
 	log.Info("attempting to allocate host")
-	targetArch := tr.Labels[TargetArchitectureLabel]
+
+	targetArch, err := extractArch(tr)
+	if err != nil {
+		return r.createErrorSecret(ctx, tr, secretName, "failed to determine architecture, no ARCH param")
+	}
 
 	//lets allocate a host, get the map with host info
 	hosts, err := r.hostConfig(ctx, log)
@@ -328,7 +343,7 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.L
 	provision := v1beta1.TaskRun{}
 	provision.GenerateName = "provision-task"
 	provision.Namespace = r.operatorNamespace
-	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, TargetArchitectureLabel: targetArch, UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name}
+	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name}
 	provision.Spec.TaskRef = &v1beta1.TaskRef{Name: "provision-shared-host"}
 	provision.Spec.Workspaces = []v1beta1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: selected.Secret}}}
 	provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
@@ -388,7 +403,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, log *logr.Log
 			provision := v1beta1.TaskRun{}
 			provision.GenerateName = "cleanup-task"
 			provision.Namespace = r.operatorNamespace
-			provision.Labels = map[string]string{TaskTypeLabel: TaskTypeClean, TargetArchitectureLabel: tr.Labels[TargetArchitectureLabel], UserTaskName: tr.Name, UserTaskNamespace: tr.Namespace}
+			provision.Labels = map[string]string{TaskTypeLabel: TaskTypeClean, UserTaskName: tr.Name, UserTaskNamespace: tr.Namespace}
 			provision.Spec.TaskRef = &v1beta1.TaskRef{Name: "clean-shared-host"}
 			provision.Spec.Workspaces = []v1beta1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: selected.Secret}}}
 			provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
@@ -444,7 +459,8 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, log *logr.Log
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		return r.handleWaitingTasks(ctx, log, tr.Labels[TargetArchitectureLabel])
+		arch, _ := extractArch(tr) //ignore error, we know this was set if we have got here
+		return r.handleWaitingTasks(ctx, log, arch)
 	}
 	return reconcile.Result{}, nil
 }

@@ -5,6 +5,7 @@ go 1.19
 require (
 	github.com/go-logr/logr v1.2.4
 	github.com/onsi/gomega v1.27.10
+	github.com/pkg/errors v0.9.1
 	github.com/tektoncd/pipeline v0.41.1
 	go.uber.org/zap v1.24.0
 	k8s.io/api v0.27.2
@@ -61,7 +62,6 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/client_golang v1.15.1 // indirect
 	github.com/prometheus/client_model v0.4.0 // indirect
 	github.com/prometheus/common v0.42.0 // indirect

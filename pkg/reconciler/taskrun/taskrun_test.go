@@ -136,10 +136,10 @@ func TestWaitForConcurrency(t *testing.T) {
 	}
 	//we are now at max concurrency
 	name := fmt.Sprintf("test-%d", 9)
-	tr := createUserTaskRun(g, client, name, "arm64")
+	createUserTaskRun(g, client, name, "arm64")
 	_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
 	g.Expect(err).ToNot(HaveOccurred())
-	tr = getUserTaskRun(g, client, name)
+	tr := getUserTaskRun(g, client, name)
 	g.Expect(tr.Labels[WaitingForArchLabel]).To(Equal("arm64"))
 
 	//now complete a task
@@ -193,10 +193,10 @@ func runSuccessfulProvision(provision *pipelinev1beta1.TaskRun, g *WithT, client
 func TestNoHostConfig(t *testing.T) {
 	g := NewGomegaWithT(t)
 	client, reconciler := setupClientAndReconciler()
-	tr := createUserTaskRun(g, client, "test", "arm64")
+	createUserTaskRun(g, client, "test", "arm64")
 	_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
 	g.Expect(err).ToNot(HaveOccurred())
-	tr = getUserTaskRun(g, client, "test")
+	tr := getUserTaskRun(g, client, "test")
 
 	//we should have an error secret created immediately
 	secret := getSecret(g, client, tr)
@@ -205,10 +205,10 @@ func TestNoHostConfig(t *testing.T) {
 func TestNoHostWithOutArch(t *testing.T) {
 	g := NewGomegaWithT(t)
 	client, reconciler := setupClientAndReconciler(createHostConfig())
-	tr := createUserTaskRun(g, client, "test", "powerpc")
+	createUserTaskRun(g, client, "test", "powerpc")
 	_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
 	g.Expect(err).ToNot(HaveOccurred())
-	tr = getUserTaskRun(g, client, "test")
+	tr := getUserTaskRun(g, client, "test")
 
 	//we should have an error secret created immediately
 	secret := getSecret(g, client, tr)
@@ -229,10 +229,10 @@ func assertNoSecret(g *WithT, client runtimeclient.Client, tr *pipelinev1beta1.T
 	g.Expect(errors.IsNotFound(err)).To(BeTrue())
 }
 func runUserPipeline(g *WithT, client runtimeclient.Client, reconciler *ReconcileTaskRun, name string) *pipelinev1beta1.TaskRun {
-	tr := createUserTaskRun(g, client, name, "arm64")
+	createUserTaskRun(g, client, name, "arm64")
 	_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
 	g.Expect(err).ToNot(HaveOccurred())
-	tr = getUserTaskRun(g, client, name)
+	tr := getUserTaskRun(g, client, name)
 	g.Expect(tr.Labels[AssignedHost]).ToNot(BeEmpty())
 	return tr
 }
@@ -257,13 +257,15 @@ func getUserTaskRun(g *WithT, client runtimeclient.Client, name string) *pipelin
 	return &ret
 }
 
-func createUserTaskRun(g *WithT, client runtimeclient.Client, name string, arch string) *pipelinev1beta1.TaskRun {
+func createUserTaskRun(g *WithT, client runtimeclient.Client, name string, arch string) {
 	tr := &pipelinev1beta1.TaskRun{}
 	tr.Namespace = userNamespace
 	tr.Name = name
-	tr.Labels = map[string]string{MultiArchLabel: "true", TargetArchitectureLabel: arch}
+	tr.Labels = map[string]string{MultiArchLabel: "true"}
+	tr.Spec = pipelinev1beta1.TaskRunSpec{
+		Params: []pipelinev1beta1.Param{{Name: ArchParam, Value: *pipelinev1beta1.NewStructuredValues(arch)}},
+	}
 	g.Expect(client.Create(context.TODO(), tr)).ToNot(HaveOccurred())
-	return tr
 }
 
 func createHostConfig() *v1.ConfigMap {
