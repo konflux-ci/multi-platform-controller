@@ -28,9 +28,9 @@ spec:
             - "--zap-devel=true"
           resources:
             requests:
-              memory: "256Mi"
+              memory: "512Mi"
               cpu: "100m"
             limits:
-              memory: "256Mi"
+              memory: "512Mi"
               cpu: "500m"
       serviceAccountName: multi-arch-controller
