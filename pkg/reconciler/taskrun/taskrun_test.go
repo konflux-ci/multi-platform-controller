@@ -122,6 +122,39 @@ func TestProvisionSuccess(t *testing.T) {
 	_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
 	g.Expect(err).ShouldNot(HaveOccurred())
 	assertNoSecret(g, client, tr)
+
+	//make sure the task runs were cleaned up
+	list := pipelinev1beta1.TaskRunList{}
+	err = client.List(context.TODO(), &list)
+	g.Expect(err).ToNot(HaveOccurred())
+	//reconcile the provision/cleanup tasks, which should delete them
+	for idx, i := range list.Items {
+		if i.Labels[TaskTypeLabel] != "" {
+			if i.Status.CompletionTime == nil {
+				list.Items[idx].Status.CompletionTime = &metav1.Time{Time: time.Now()}
+				list.Items[idx].Status.SetCondition(&apis.Condition{
+					Type:               apis.ConditionSucceeded,
+					Status:             "True",
+					LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now()}},
+				})
+				g.Expect(client.Update(context.TODO(), &list.Items[idx])).ShouldNot(HaveOccurred())
+			}
+
+			_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: i.Namespace, Name: i.Name}})
+			g.Expect(err).ShouldNot(HaveOccurred())
+		}
+	}
+	//make sure they are gone
+	taskExists := false
+	err = client.List(context.TODO(), &list)
+	g.Expect(err).ToNot(HaveOccurred())
+	for _, i := range list.Items {
+		if i.Labels[TaskTypeLabel] != "" {
+			taskExists = true
+		}
+	}
+	g.Expect(taskExists).To(BeFalse())
+
 }
 
 func TestWaitForConcurrency(t *testing.T) {

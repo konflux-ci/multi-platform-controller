@@ -143,7 +143,14 @@ func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, log *logr.Log
 }
 
 func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun) (reconcile.Result, error) {
-	return reconcile.Result{}, nil
+	if tr.Status.CompletionTime == nil {
+		return reconcile.Result{}, nil
+	}
+	success := tr.Status.GetCondition(apis.ConditionSucceeded).IsTrue()
+	if !success {
+		log.Info("cleanup task failed", "task", tr.Name)
+	}
+	return reconcile.Result{}, r.client.Delete(ctx, tr)
 }
 
 func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun) (reconcile.Result, error) {
@@ -170,13 +177,11 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 			//create a failure secret
 			userTr := v1beta1.TaskRun{}
 			err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Labels[UserTaskNamespace], Name: tr.Labels[UserTaskName]}, &userTr)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-
-			result, err2 := r.createErrorSecret(ctx, &userTr, secretName, "provisioning task failed")
-			if err2 != nil {
-				return result, err2
+			if err == nil {
+				result, err2 := r.createErrorSecret(ctx, &userTr, secretName, "provisioning task failed")
+				if err2 != nil {
+					return result, err2
+				}
 			}
 		}
 	} else {
@@ -433,7 +438,12 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, log *logr.Log
 			if err != nil {
 				return reconcile.Result{}, err
 			}
-
+		}
+		controllerutil.RemoveFinalizer(tr, PipelineFinalizer)
+		delete(tr.Labels, AssignedHost)
+		err = r.client.Update(ctx, tr)
+		if err != nil {
+			return reconcile.Result{}, err
 		}
 
 		secret := v12.Secret{}
@@ -453,12 +463,6 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, log *logr.Log
 			log.Info("could not find secret", "secret", secretName)
 		}
 
-		controllerutil.RemoveFinalizer(tr, PipelineFinalizer)
-		delete(tr.Labels, AssignedHost)
-		err = r.client.Update(ctx, tr)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
 		arch, _ := extractArch(tr) //ignore error, we know this was set if we have got here
 		return r.handleWaitingTasks(ctx, log, arch)
 	}
