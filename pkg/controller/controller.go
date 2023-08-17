@@ -69,14 +69,14 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 	if lerr != nil {
 		return nil, lerr
 	}
-	multiArchPipelines.Add(*requirement)
+	multiArchPipelines = multiArchPipelines.Add(*requirement)
 
 	configMapSelector := labels.NewSelector()
 	configMapLabels, lerr := labels.NewRequirement(taskrun.ConfigMapLabel, selection.Exists, []string{})
 	if lerr != nil {
 		return nil, lerr
 	}
-	configMapSelector.Add(*configMapLabels)
+	configMapSelector = configMapSelector.Add(*configMapLabels)
 
 	options.Cache = cache.Options{
 		ByObject: map[client.Object]cache.ByObject{
