@@ -71,6 +71,7 @@ func (r *ReconcileTaskRun) Reconcile(ctx context.Context, request reconcile.Requ
 	ctx, cancel = context.WithTimeout(ctx, contextTimeout)
 	defer cancel()
 	log := ctrl.Log.WithName("taskrun").WithValues("request", request.NamespacedName)
+	log.Info("Reconciling")
 
 	pr := v1beta1.TaskRun{}
 	prerr := r.client.Get(ctx, request.NamespacedName, &pr)
