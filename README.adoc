@@ -25,6 +25,18 @@ The `buildah-remote` task runs the container build step of the existing buildah 
 - The `build-container` task has been modified to be run remotely over SSH. The workspace is copied to the remote host, the build is done via podman, and then the image copied back. The commands run on the remote host are largely the same as the existing buildah task, just executed via podman.
 - It expects the creation of a secret with the name `multi-arch-ssh-$(context.taskRun.name)` to be created by the controller. This secret will have an `id_rsa` private key, and the name of the host to connect to. If no host is available it contains an error message so the task does not wait forever.
 
+Other than that the `buildah-remote` task attempts to create the image in the same way as the existing buildah task. Things like creating the SBOM and pushing the image are done on cluster, so there is no need to expose credentials to the remote host.
+
+=== The Controller
+
+The controllers job is to look for `TaskRun` objects with the appropriate labels that expect a `multi-arch-ssh-$(context.taskRun.name)`, and then create this secret so the task can execute.
+
+Currently it maintains a hard coded list of hosts in a `ConfigMap`. When it observes a task it selects a host based on current utilisation, and then attempts to provision a new user to perform the build. This is done by running a Tekton task to create a new user and generate a new SSH key. Once this is complete this new unprivilidged SSH private key is put into the `multi-arch-ssh-$(context.taskRun.name)` secret, and the task starts executing.
+
+When the task is complete the user is deleted. A finaliser is used to ensure cleanup is done correctly.
+
+
+
 
 
 
