@@ -131,11 +131,12 @@ func TestProvisionSuccess(t *testing.T) {
 	for idx, i := range list.Items {
 		if i.Labels[TaskTypeLabel] != "" {
 			if i.Status.CompletionTime == nil {
-				list.Items[idx].Status.CompletionTime = &metav1.Time{Time: time.Now()}
+				endTime := time.Now().Add(time.Hour * -2)
+				list.Items[idx].Status.CompletionTime = &metav1.Time{Time: endTime}
 				list.Items[idx].Status.SetCondition(&apis.Condition{
 					Type:               apis.ConditionSucceeded,
 					Status:             "True",
-					LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now()}},
+					LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: endTime}},
 				})
 				g.Expect(client.Update(context.TODO(), &list.Items[idx])).ShouldNot(HaveOccurred())
 			}
@@ -200,11 +201,11 @@ func TestWaitForConcurrency(t *testing.T) {
 }
 
 func runSuccessfulProvision(provision *pipelinev1beta1.TaskRun, g *WithT, client runtimeclient.Client, tr *pipelinev1beta1.TaskRun, reconciler *ReconcileTaskRun) {
-	provision.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+	provision.Status.CompletionTime = &metav1.Time{Time: time.Now().Add(time.Hour * -2)}
 	provision.Status.SetCondition(&apis.Condition{
 		Type:               apis.ConditionSucceeded,
 		Status:             "True",
-		LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now()}},
+		LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now().Add(time.Hour * -2)}},
 	})
 	g.Expect(client.Update(context.TODO(), provision)).ShouldNot(HaveOccurred())
 

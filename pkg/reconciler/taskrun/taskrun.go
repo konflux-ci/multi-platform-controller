@@ -151,7 +151,11 @@ func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, log *logr.Logger
 	if !success {
 		log.Info("cleanup task failed", "task", tr.Name)
 	}
-	return reconcile.Result{}, r.client.Delete(ctx, tr)
+	//leave the TR for an hour
+	if tr.Status.CompletionTime.Add(time.Hour).Before(time.Now()) {
+		return reconcile.Result{}, r.client.Delete(ctx, tr)
+	}
+	return reconcile.Result{RequeueAfter: time.Hour}, nil
 }
 
 func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun) (reconcile.Result, error) {
@@ -202,7 +206,11 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 			return reconcile.Result{}, err
 		}
 	}
-	return reconcile.Result{}, r.client.Delete(ctx, tr)
+	//leave the TR for an hour
+	if tr.Status.CompletionTime.Add(time.Hour).Before(time.Now()) {
+		return reconcile.Result{}, r.client.Delete(ctx, tr)
+	}
+	return reconcile.Result{RequeueAfter: time.Hour}, nil
 
 }
 
@@ -318,6 +326,7 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.L
 		}
 	}
 	if !hostWithOurArch {
+		log.Info("no hosts with requested arch", "arch", targetArch)
 		return r.createErrorSecret(ctx, tr, secretName, "no hosts configured for arch "+targetArch)
 	}
 	if selected == nil {
@@ -349,7 +358,7 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.L
 	provision := v1beta1.TaskRun{}
 	provision.GenerateName = "provision-task"
 	provision.Namespace = r.operatorNamespace
-	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name}
+	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name, MultiArchLabel: "true"}
 	provision.Spec.TaskRef = &v1beta1.TaskRef{Name: "provision-shared-host"}
 	provision.Spec.Workspaces = []v1beta1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: selected.Secret}}}
 	provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
@@ -409,7 +418,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, log *logr.Log
 			provision := v1beta1.TaskRun{}
 			provision.GenerateName = "cleanup-task"
 			provision.Namespace = r.operatorNamespace
-			provision.Labels = map[string]string{TaskTypeLabel: TaskTypeClean, UserTaskName: tr.Name, UserTaskNamespace: tr.Namespace}
+			provision.Labels = map[string]string{TaskTypeLabel: TaskTypeClean, UserTaskName: tr.Name, UserTaskNamespace: tr.Namespace, MultiArchLabel: "true"}
 			provision.Spec.TaskRef = &v1beta1.TaskRef{Name: "clean-shared-host"}
 			provision.Spec.Workspaces = []v1beta1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: selected.Secret}}}
 			provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
