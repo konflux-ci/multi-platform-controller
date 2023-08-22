@@ -34,11 +34,11 @@ spec:
         chmod 0400 /tmp/master_key
         export SSH_HOST=$(params.USER)@$(params.HOST)
         
-        export USERNAME=$(echo $(params.TASKRUN_NAME)$(params.NAMESPACE) | md5sum | cut -d' ' -f1)
+        export USERNAME=u-$(echo $(params.TASKRUN_NAME)$(params.NAMESPACE) | md5sum | cut -b-28)
         
         cat >script.sh <<EOF
         rm -f $USERNAME $USERNAME.pub
-        sudo adduser $USERNAME
+        sudo useradd -m $USERNAME -p $(openssl rand -base64 12)
         ssh-keygen -N '' -f $USERNAME
         sudo su $USERNAME -c 'mkdir /home/$USERNAME/.ssh'
         sudo su $USERNAME -c 'mkdir /home/$USERNAME/build'
