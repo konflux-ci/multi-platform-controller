@@ -27,6 +27,9 @@ spec:
     value: .
   - name: revision
     value: '{{revision}}'
+  - name: infra-deployment-update-script
+    value: |
+      sed -i -E 's/[0-9a-f]{40}/{{ revision }}/g' components/multi-arch-controller/base/kustomization.yaml
   pipelineSpec:
     finally:
     - name: show-sbom
@@ -61,6 +64,31 @@ spec:
         - name: kind
           value: task
         resolver: bundles
+    - name: infra-deployments-mr
+      taskRef:
+        params:
+          - name: name
+            value: update-infra-deployments
+          - name: bundle
+            value: quay.io/redhat-appstudio-tekton-catalog/task-update-infra-deployments:0.1@sha256:61a834fe634351011e70ae4bee42ae46f5dc88e5ef62624f4609fcf6ecd2e06f
+          - name: kind
+            value: task
+        resolver: bundles
+      when:
+        - input: $(params.infra-deployment-update-script)
+          operator: notin
+          values: [ "" ]
+        - input: $(tasks.status)
+          operator: notin
+          values: [ "Failed" ]
+      params:
+        - name: ORIGIN_REPO
+          value: $(params.git-url)
+        - name: REVISION
+          value: $(params.revision)
+        - name: SCRIPT
+          value: $(params.infra-deployment-update-script)
+
     params:
     - description: Source Repository URL
       name: git-url
