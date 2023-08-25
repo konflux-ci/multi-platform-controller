@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/strings/slices"
 	"knative.dev/pkg/apis"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -32,6 +33,7 @@ const (
 	MultiArchLabel = "build.appstudio.redhat.com/multi-arch-required"
 
 	AssignedHost = "build.appstudio.redhat.com/assigned-host"
+	FailedHosts  = "build.appstudio.redhat.com/failed-hosts"
 
 	UserTaskName      = "build.appstudio.redhat.com/user-task-name"
 	UserTaskNamespace = "build.appstudio.redhat.com/user-task-namespace"
@@ -171,24 +173,33 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 			break
 		}
 	}
-	secret := v12.Secret{}
-	secretError := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Labels[UserTaskNamespace], Name: secretName}, &secret)
 	if !success {
-
-		if secretError != nil {
-			//already handled
-			log.Info("provision task failed")
-			//TODO: retries with different hosts
-			//create a failure secret
+		assigned := tr.Labels[AssignedHost]
+		if assigned != "" {
 			userTr := v1beta1.TaskRun{}
 			err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Labels[UserTaskNamespace], Name: tr.Labels[UserTaskName]}, &userTr)
 			if err == nil {
-				result, err2 := r.createErrorSecret(ctx, &userTr, secretName, "provisioning task failed")
-				if err2 != nil {
-					return result, err2
+				//add to failed hosts and remove assigned
+				//this will cause it to try again
+				failed := strings.Split(userTr.Labels[FailedHosts], ",")
+				if failed[0] == "" {
+					failed = []string{}
+				}
+				failed = append(failed, assigned)
+				userTr.Labels[FailedHosts] = strings.Join(failed, ",")
+				delete(userTr.Labels, AssignedHost)
+				err = r.client.Update(ctx, &userTr)
+				if err != nil {
+					return reconcile.Result{}, err
+				}
+				delete(tr.Labels, AssignedHost)
+				err := r.client.Update(ctx, tr)
+				if err != nil {
+					return reconcile.Result{}, err
 				}
 			}
 		}
+
 	} else {
 		log.Info("provision task succeeded")
 		//verify we ended up with a secret
@@ -290,6 +301,8 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.L
 		//no hosts configured
 		return r.createErrorSecret(ctx, tr, secretName, "no hosts configured")
 	}
+	failed := strings.Split(tr.Labels[FailedHosts], ",")
+
 	//get all existing runs that are assigned to a host
 	taskList := v1beta1.TaskRunList{}
 	err = r.client.List(ctx, &taskList, client.HasLabels{AssignedHost})
@@ -312,6 +325,10 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.L
 	freeSpots := 0
 	hostWithOurArch := false
 	for k, v := range hosts {
+		if slices.Contains(failed, k) {
+			log.Info("ignoring already failed host", "host", k, "targetArch", targetArch, "hostArch", v.Arch)
+			continue
+		}
 		if v.Arch != targetArch {
 			log.Info("ignoring host", "host", k, "targetArch", targetArch, "hostArch", v.Arch)
 			continue
@@ -358,7 +375,7 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.L
 	provision := v1beta1.TaskRun{}
 	provision.GenerateName = "provision-task"
 	provision.Namespace = r.operatorNamespace
-	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name, MultiArchLabel: "true"}
+	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name, MultiArchLabel: "true", AssignedHost: selected.Name}
 	provision.Spec.TaskRef = &v1beta1.TaskRef{Name: "provision-shared-host"}
 	provision.Spec.Workspaces = []v1beta1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: selected.Secret}}}
 	provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
