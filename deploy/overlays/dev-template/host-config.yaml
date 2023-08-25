@@ -21,7 +21,7 @@ data:
   ppc1.user: "root"
   ppc1.secret: "awskeys"
   ppc1.concurrency: "4"
-  ibmz1.address: "169.63.188.21"
+  ibmz1.address: "169.59.165.178"
   ibmz1.arch: "s390x"
   ibmz1.user: "root"
   ibmz1.secret: "awskeys"
