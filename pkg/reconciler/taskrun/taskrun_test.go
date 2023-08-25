@@ -79,6 +79,32 @@ func TestProvisionFailure(t *testing.T) {
 
 	_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: provision.Namespace, Name: provision.Name}})
 	g.Expect(err).ShouldNot(HaveOccurred())
+
+	tr = getUserTaskRun(g, client, "test")
+	g.Expect(tr.Labels[FailedHosts]).Should(BeElementOf("host1", "host2"))
+	g.Expect(tr.Labels[AssignedHost]).Should(Equal(""))
+	_, err = reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
+	g.Expect(err).ShouldNot(HaveOccurred())
+
+	provision = getProvisionTaskRun(g, client, tr)
+
+	provision.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+	provision.Status.SetCondition(&apis.Condition{
+		Type:               apis.ConditionSucceeded,
+		Status:             "False",
+		LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now()}},
+	})
+	g.Expect(client.Update(context.TODO(), provision)).ShouldNot(HaveOccurred())
+	_, err = reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: provision.Namespace, Name: provision.Name}})
+	g.Expect(err).ShouldNot(HaveOccurred())
+
+	tr = getUserTaskRun(g, client, "test")
+	g.Expect(tr.Labels[FailedHosts]).Should(ContainSubstring("host2"))
+	g.Expect(tr.Labels[FailedHosts]).Should(ContainSubstring("host1"))
+	g.Expect(tr.Labels[AssignedHost]).Should(Equal(""))
+	_, err = reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
+	g.Expect(err).ShouldNot(HaveOccurred())
+
 	secret := getSecret(g, client, tr)
 	g.Expect(secret.Data["error"]).ToNot(BeEmpty())
 }
@@ -276,6 +302,9 @@ func getProvisionTaskRun(g *WithT, client runtimeclient.Client, tr *pipelinev1be
 	err := client.List(context.TODO(), &list)
 	g.Expect(err).ToNot(HaveOccurred())
 	for i := range list.Items {
+		if list.Items[i].Labels[AssignedHost] == "" {
+			continue
+		}
 		if list.Items[i].Labels[UserTaskName] == tr.Name {
 			return &list.Items[i]
 		}
