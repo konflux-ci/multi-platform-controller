@@ -194,7 +194,7 @@ fi
 
 func replaceImage(image string) string {
 	if image == "quay.io/redhat-appstudio/buildah:v1.28" {
-		return "quay.io/buildah/stable:v1.28"
+		return "quay.io/redhat-appstudio/buildah:v1.31"
 	}
 	return image
 }
