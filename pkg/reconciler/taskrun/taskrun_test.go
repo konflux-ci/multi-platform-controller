@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/go-logr/logr"
+	"github.com/stuartwdouglas/multi-arch-host-resolver/pkg/cloud"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -26,13 +27,15 @@ import (
 const systemNamespace = "multi-arch-controller"
 const userNamespace = "default"
 
+var cloudImpl MockCloud = MockCloud{Addressses: map[cloud.InstanceIdentifier]string{}}
+
 func setupClientAndReconciler(objs ...runtimeclient.Object) (runtimeclient.Client, *ReconcileTaskRun) {
 	scheme := runtime.NewScheme()
 	_ = pipelinev1beta1.AddToScheme(scheme)
 	_ = v1.AddToScheme(scheme)
 	_ = appsv1.AddToScheme(scheme)
 	client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
-	reconciler := &ReconcileTaskRun{client: client, scheme: scheme, eventRecorder: &record.FakeRecorder{}, operatorNamespace: systemNamespace}
+	reconciler := &ReconcileTaskRun{client: client, scheme: scheme, eventRecorder: &record.FakeRecorder{}, operatorNamespace: systemNamespace, cloudProviders: map[string]func(arch string, config map[string]string) cloud.CloudProvider{"mock": MockCloudSetup}}
 	return client, reconciler
 }
 
@@ -40,10 +43,11 @@ func TestConfigMapParsing(t *testing.T) {
 	g := NewGomegaWithT(t)
 	_, reconciler := setupClientAndReconciler(createHostConfig())
 	discard := logr.Discard()
-	config, err := reconciler.hostConfig(context.TODO(), &discard)
+	configIface, err := reconciler.hostConfig(context.TODO(), &discard, "arm64")
+	config := configIface.(HostPool)
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(len(config)).To(Equal(2))
-	g.Expect(config["host1"].Arch).Should(Equal("arm64"))
+	g.Expect(len(config.hosts)).To(Equal(2))
+	g.Expect(config.hosts["host1"].Arch).Should(Equal("arm64"))
 }
 
 func TestAllocateHost(t *testing.T) {
@@ -61,6 +65,41 @@ func TestAllocateHost(t *testing.T) {
 	g.Expect(params["NAMESPACE"]).To(Equal(userNamespace))
 	g.Expect(params["USER"]).To(Equal("ec2-user"))
 	g.Expect(params["HOST"]).Should(BeElementOf("ec2-34-227-115-211.compute-1.amazonaws.com", "ec2-54-165-44-192.compute-1.amazonaws.com"))
+}
+
+func TestAllocateCloudHost(t *testing.T) {
+	g := NewGomegaWithT(t)
+	client, reconciler := setupClientAndReconciler(createDynamicHostConfig())
+
+	tr := runUserPipeline(g, client, reconciler, "test")
+	provision := getProvisionTaskRun(g, client, tr)
+	params := map[string]string{}
+	for _, i := range provision.Spec.Params {
+		params[i.Name] = i.Value.StringVal
+	}
+	g.Expect(params["SECRET_NAME"]).To(Equal("multi-arch-ssh-test"))
+	g.Expect(params["TASKRUN_NAME"]).To(Equal("test"))
+	g.Expect(params["NAMESPACE"]).To(Equal(userNamespace))
+	g.Expect(params["USER"]).To(Equal("ec2-user"))
+	g.Expect(params["HOST"]).Should(Equal("multi-arch-builder-test.host.com"))
+	g.Expect(cloudImpl.Addressses[("multi-arch-builder-test")]).Should(Equal("multi-arch-builder-test.host.com"))
+
+	runSuccessfulProvision(provision, g, client, tr, reconciler)
+
+	g.Expect(client.Get(context.TODO(), types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)).ShouldNot(HaveOccurred())
+	tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+	tr.Status.SetCondition(&apis.Condition{
+		Type:               apis.ConditionSucceeded,
+		Status:             "True",
+		LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now().Add(time.Hour * -2)}},
+	})
+	g.Expect(client.Update(context.TODO(), tr)).ShouldNot(HaveOccurred())
+
+	_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
+	g.Expect(err).ShouldNot(HaveOccurred())
+
+	g.Expect(cloudImpl.Addressses["multi-arch-builder-test"]).Should(BeEmpty())
+
 }
 
 func TestProvisionFailure(t *testing.T) {
@@ -293,6 +332,12 @@ func runUserPipeline(g *WithT, client runtimeclient.Client, reconciler *Reconcil
 	_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
 	g.Expect(err).ToNot(HaveOccurred())
 	tr := getUserTaskRun(g, client, name)
+	if tr.Labels[AssignedHost] == "" {
+		g.Expect(tr.Labels[CloudInstanceId]).ToNot(BeEmpty())
+		_, err = reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
+		g.Expect(err).ToNot(HaveOccurred())
+		tr = getUserTaskRun(g, client, name)
+	}
 	g.Expect(tr.Labels[AssignedHost]).ToNot(BeEmpty())
 	return tr
 }
@@ -349,4 +394,54 @@ func createHostConfig() *v1.ConfigMap {
 		"host2.arch":        "arm64",
 	}
 	return &cm
+}
+
+func createDynamicHostConfig() *v1.ConfigMap {
+	cm := v1.ConfigMap{}
+	cm.Name = HostConfig
+	cm.Namespace = systemNamespace
+	cm.Labels = map[string]string{ConfigMapLabel: "hosts"}
+	cm.Data = map[string]string{
+		"dynamic.architectures":       "arm64",
+		"dynamic.arm64.type":          "mock",
+		"dynamic.arm64.region":        "us-east-1",
+		"dynamic.arm64.ami":           "ami-03d6a5256a46c9feb",
+		"dynamic.arm64.instance-type": "t4g.medium",
+		"dynamic.arm64.key-name":      "sdouglas-arm-test",
+		"dynamic.arm64.aws-secret":    "awsiam",
+		"dynamic.arm64.ssh-secret":    "awskeys",
+		"dynamic.arm64.max-instances": "2",
+	}
+	return &cm
+}
+
+type MockCloud struct {
+	Running    int
+	Terminated int
+	Addressses map[cloud.InstanceIdentifier]string
+}
+
+func (m *MockCloud) LaunchInstance(kubeClient runtimeclient.Client, log *logr.Logger, ctx context.Context, name string) (cloud.InstanceIdentifier, error) {
+	m.Running++
+	return cloud.InstanceIdentifier(name), nil
+}
+
+func (m *MockCloud) TerminateInstance(kubeClient runtimeclient.Client, log *logr.Logger, ctx context.Context, instance cloud.InstanceIdentifier) error {
+	m.Running--
+	m.Terminated++
+	delete(m.Addressses, instance)
+	return nil
+}
+
+func (m *MockCloud) GetInstanceAddress(kubeClient runtimeclient.Client, log *logr.Logger, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
+	addr := m.Addressses[instanceId]
+	if addr == "" {
+		addr = string(instanceId) + ".host.com"
+		m.Addressses[instanceId] = addr
+	}
+	return addr, nil
+}
+
+func MockCloudSetup(arch string, data map[string]string) cloud.CloudProvider {
+	return &cloudImpl
 }

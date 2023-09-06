@@ -37,6 +37,7 @@ spec:
         export USERNAME=u-$(echo $(params.TASKRUN_NAME)$(params.NAMESPACE) | md5sum | cut -b-28)
         
         cat >script.sh <<EOF
+        sudo dnf install podman -y
         rm -f $USERNAME $USERNAME.pub
         sudo useradd -m $USERNAME -p $(openssl rand -base64 12)
         ssh-keygen -N '' -f $USERNAME
@@ -65,7 +66,7 @@ spec:
           name: $(params.SECRET_NAME)
           namespace: $(params.NAMESPACE)
           labels:
-            build.appstudio.redhat.com/multi-arch-required: "true"
+            build.appstudio.redhat.com/multi-arch-secret: "true"
         type: Opaque
         EOF
         kubectl create -f secret.yaml

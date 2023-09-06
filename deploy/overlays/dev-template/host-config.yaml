@@ -6,16 +6,16 @@ metadata:
   name: host-config
   namespace: multi-arch-controller
 data:
-  arm1.address: "ec2-54-165-44-192.compute-1.amazonaws.com"
-  arm1.secret: "awskeys"
-  arm1.concurrency: "4"
-  arm1.user: "ec2-user"
-  arm1.arch: "arm64"
-  arm2.address: "ec2-34-227-115-211.compute-1.amazonaws.com"
-  arm2.secret: "awskeys"
-  arm2.concurrency: "4"
-  arm2.user: "ec2-user"
-  arm2.arch: "arm64"
+  dynamic.architectures: arm64
+  dynamic.arm64.type: aws
+  dynamic.arm64.region: us-east-1
+  dynamic.arm64.ami: ami-03d6a5256a46c9feb
+  dynamic.arm64.instance-type: t4g.medium
+  dynamic.arm64.key-name: sdouglas-arm-test
+  dynamic.arm64.aws-secret: awsiam
+  dynamic.arm64.ssh-secret: awskeys
+  dynamic.arm64.max-instances: "2"
+
   ppc1.address: "150.240.147.198"
   ppc1.arch: "ppc64le"
   ppc1.user: "root"

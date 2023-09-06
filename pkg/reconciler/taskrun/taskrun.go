@@ -3,6 +3,9 @@ package taskrun
 import (
 	"context"
 	errors2 "github.com/pkg/errors"
+	"github.com/stuartwdouglas/multi-arch-host-resolver/pkg/aws"
+	"github.com/stuartwdouglas/multi-arch-host-resolver/pkg/cloud"
+
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	v12 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -30,10 +33,13 @@ const (
 	ConfigMapLabel = "build.appstudio.redhat.com/multi-arch-config"
 
 	//user level labels that specify a task needs to be executed on a remote host
-	MultiArchLabel = "build.appstudio.redhat.com/multi-arch-required"
+	MultiArchLabel       = "build.appstudio.redhat.com/multi-arch-required"
+	MultiArchSecretLabel = "build.appstudio.redhat.com/multi-arch-secret"
 
-	AssignedHost = "build.appstudio.redhat.com/assigned-host"
-	FailedHosts  = "build.appstudio.redhat.com/failed-hosts"
+	AssignedHost     = "build.appstudio.redhat.com/assigned-host"
+	FailedHosts      = "build.appstudio.redhat.com/failed-hosts"
+	CloudInstanceId  = "build.appstudio.redhat.com/cloud-instance-id"
+	CloudDynamicArch = "build.appstudio.redhat.com/cloud-dynamic-arch"
 
 	UserTaskName      = "build.appstudio.redhat.com/user-task-name"
 	UserTaskNamespace = "build.appstudio.redhat.com/user-task-namespace"
@@ -48,7 +54,8 @@ const (
 
 	ServiceAccountName = "multi-arch-controller"
 
-	ArchParam = "ARCH"
+	ArchParam            = "ARCH"
+	DynamicArchitectures = "dynamic.architectures"
 )
 
 type ReconcileTaskRun struct {
@@ -56,6 +63,8 @@ type ReconcileTaskRun struct {
 	scheme            *runtime.Scheme
 	eventRecorder     record.EventRecorder
 	operatorNamespace string
+
+	cloudProviders map[string]func(arch string, config map[string]string) cloud.CloudProvider
 }
 
 func newReconciler(mgr ctrl.Manager, operatorNamespace string) reconcile.Reconciler {
@@ -64,6 +73,7 @@ func newReconciler(mgr ctrl.Manager, operatorNamespace string) reconcile.Reconci
 		scheme:            mgr.GetScheme(),
 		eventRecorder:     mgr.GetEventRecorderFor("ComponentBuild"),
 		operatorNamespace: operatorNamespace,
+		cloudProviders:    map[string]func(arch string, config map[string]string) cloud.CloudProvider{"aws": aws.Ec2Provider},
 	}
 }
 
@@ -212,7 +222,7 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 				if err != nil {
 					return reconcile.Result{}, err
 				}
-				return r.createErrorSecret(ctx, &userTr, secretName, "provision task failed to create a secret")
+				return reconcile.Result{}, r.createErrorSecret(ctx, &userTr, secretName, "provision task failed to create a secret")
 			}
 			return reconcile.Result{}, err
 		}
@@ -227,21 +237,21 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 
 // This creates an secret with the 'error' field set
 // This will result in the pipeline run immediately failing with the message printed in the logs
-func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, tr *v1beta1.TaskRun, secretName string, msg string) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, tr *v1beta1.TaskRun, secretName string, msg string) error {
 	if controllerutil.AddFinalizer(tr, PipelineFinalizer) {
 		err := r.client.Update(ctx, tr)
 		if err != nil {
-			return reconcile.Result{}, err
+			return err
 		}
 	}
 
 	secret := v12.Secret{}
-	secret.Labels = map[string]string{MultiArchLabel: tr.Labels[MultiArchLabel]}
+	secret.Labels = map[string]string{MultiArchSecretLabel: "true"}
 	secret.Namespace = tr.Namespace
 	secret.Name = secretName
 	err := controllerutil.SetOwnerReference(tr, &secret, r.scheme)
 	if err != nil {
-		return reconcile.Result{}, err
+		return err
 	}
 
 	secret.Data = map[string][]byte{
@@ -249,9 +259,9 @@ func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, tr *v1beta1.Ta
 	}
 	err = r.client.Create(ctx, &secret)
 	if err != nil {
-		return reconcile.Result{}, err
+		return err
 	}
-	return reconcile.Result{}, nil
+	return nil
 }
 
 func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun) (reconcile.Result, error) {
@@ -263,7 +273,7 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, log *logr.Logger,
 		//if the PR is done we ignore it
 		if tr.Status.CompletionTime != nil || tr.GetDeletionTimestamp() != nil {
 			log.Info("task run already finished, not creating secret")
-			return reconcile.Result{}, nil
+			return r.removeFinalizer(ctx, log, tr)
 		}
 
 		return r.handleHostAllocation(ctx, log, tr, secretName)
@@ -284,136 +294,20 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.L
 
 	targetArch, err := extractArch(tr)
 	if err != nil {
-		return r.createErrorSecret(ctx, tr, secretName, "failed to determine architecture, no ARCH param")
+		return reconcile.Result{}, r.createErrorSecret(ctx, tr, secretName, "failed to determine architecture, no ARCH param")
 	}
 
 	//lets allocate a host, get the map with host info
-	hosts, err := r.hostConfig(ctx, log)
+	hosts, err := r.hostConfig(ctx, log, targetArch)
 	if err != nil {
 		//no host config means we can't proceed
 		//no point retrying
 		if errors.IsNotFound(err) {
-			return r.createErrorSecret(ctx, tr, secretName, "failed to read host config")
+			return reconcile.Result{}, r.createErrorSecret(ctx, tr, secretName, "failed to read host config")
 		}
 		return reconcile.Result{}, err
 	}
-	if len(hosts) == 0 {
-		//no hosts configured
-		return r.createErrorSecret(ctx, tr, secretName, "no hosts configured")
-	}
-	failed := strings.Split(tr.Labels[FailedHosts], ",")
-
-	//get all existing runs that are assigned to a host
-	taskList := v1beta1.TaskRunList{}
-	err = r.client.List(ctx, &taskList, client.HasLabels{AssignedHost})
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-	hostCount := map[string]int{}
-	for _, tr := range taskList.Items {
-		host := tr.Labels[AssignedHost]
-		hostCount[host] = hostCount[host] + 1
-	}
-	for k, v := range hostCount {
-		log.Info("host count", "host", k, "count", v)
-	}
-
-	//now select the host with the most free spots
-	//this algorithm is not very complex
-
-	var selected *Host
-	freeSpots := 0
-	hostWithOurArch := false
-	for k, v := range hosts {
-		if slices.Contains(failed, k) {
-			log.Info("ignoring already failed host", "host", k, "targetArch", targetArch, "hostArch", v.Arch)
-			continue
-		}
-		if v.Arch != targetArch {
-			log.Info("ignoring host", "host", k, "targetArch", targetArch, "hostArch", v.Arch)
-			continue
-		}
-		hostWithOurArch = true
-		free := v.Concurrency - hostCount[k]
-
-		log.Info("considering host", "host", k, "freeSlots", free)
-		if free > freeSpots {
-			selected = v
-			freeSpots = free
-		}
-	}
-	if !hostWithOurArch {
-		log.Info("no hosts with requested arch", "arch", targetArch)
-		return r.createErrorSecret(ctx, tr, secretName, "no hosts configured for arch "+targetArch)
-	}
-	if selected == nil {
-		if tr.Labels[WaitingForArchLabel] == targetArch {
-			//we are already in a waiting state
-			return reconcile.Result{}, nil
-		}
-		log.Info("no host found, waiting for one to become available")
-		//no host available
-		//add the waiting label
-		//TODO: is the requeue actually a good idea?
-		//TODO: timeout
-		tr.Labels[WaitingForArchLabel] = targetArch
-		return reconcile.Result{RequeueAfter: time.Minute}, r.client.Update(ctx, tr)
-	}
-
-	log.Info("allocated host", "host", selected.Name)
-	tr.Labels[AssignedHost] = selected.Name
-	delete(tr.Labels, WaitingForArchLabel)
-	//add a finalizer to clean up the secret
-	controllerutil.AddFinalizer(tr, PipelineFinalizer)
-	err = r.client.Update(ctx, tr)
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-
-	//kick off the provisioning task
-	//note that we can't use owner refs here because this task runs in a different namespace
-	provision := v1beta1.TaskRun{}
-	provision.GenerateName = "provision-task"
-	provision.Namespace = r.operatorNamespace
-	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name, MultiArchLabel: "true", AssignedHost: selected.Name}
-	provision.Spec.TaskRef = &v1beta1.TaskRef{Name: "provision-shared-host"}
-	provision.Spec.Workspaces = []v1beta1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: selected.Secret}}}
-	provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
-	provision.Spec.Params = []v1beta1.Param{
-		{
-			Name:  "SECRET_NAME",
-			Value: *v1beta1.NewStructuredValues(secretName),
-		},
-		{
-			Name:  "TASKRUN_NAME",
-			Value: *v1beta1.NewStructuredValues(tr.Name),
-		},
-		{
-			Name:  "NAMESPACE",
-			Value: *v1beta1.NewStructuredValues(tr.Namespace),
-		},
-		{
-			Name:  "HOST",
-			Value: *v1beta1.NewStructuredValues(selected.Address),
-		},
-		{
-			Name:  "USER",
-			Value: *v1beta1.NewStructuredValues(selected.User),
-		},
-	}
-
-	err = r.client.Create(ctx, &provision)
-	if err != nil {
-		//ugh, try and unassign
-
-		delete(tr.Labels, AssignedHost)
-		err = r.client.Update(ctx, tr)
-		if err != nil {
-			log.Error(err, "Could not unassign task after provisioning failure")
-			_, _ = r.createErrorSecret(ctx, tr, secretName, "Could not unassign task after provisioning failure")
-		}
-	}
-	return reconcile.Result{}, err
+	return hosts.Allocate(r, ctx, log, tr, secretName)
 
 }
 
@@ -423,48 +317,17 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, log *logr.Log
 		log.Info("unassigning host from task")
 
 		selectedHost := tr.Labels[AssignedHost]
-		config, err := r.hostConfig(ctx, log)
+		arch, err := extractArch(tr)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		selected := config[selectedHost]
-		if selected != nil {
-			log.Info("starting cleanup task")
-			//kick off the clean task
-			//kick off the provisioning task
-			provision := v1beta1.TaskRun{}
-			provision.GenerateName = "cleanup-task"
-			provision.Namespace = r.operatorNamespace
-			provision.Labels = map[string]string{TaskTypeLabel: TaskTypeClean, UserTaskName: tr.Name, UserTaskNamespace: tr.Namespace, MultiArchLabel: "true"}
-			provision.Spec.TaskRef = &v1beta1.TaskRef{Name: "clean-shared-host"}
-			provision.Spec.Workspaces = []v1beta1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: selected.Secret}}}
-			provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
-			provision.Spec.Params = []v1beta1.Param{
-				{
-					Name:  "SECRET_NAME",
-					Value: *v1beta1.NewStructuredValues(secretName),
-				},
-				{
-					Name:  "TASKRUN_NAME",
-					Value: *v1beta1.NewStructuredValues(tr.Name),
-				},
-				{
-					Name:  "NAMESPACE",
-					Value: *v1beta1.NewStructuredValues(tr.Namespace),
-				},
-				{
-					Name:  "HOST",
-					Value: *v1beta1.NewStructuredValues(selected.Address),
-				},
-				{
-					Name:  "USER",
-					Value: *v1beta1.NewStructuredValues(selected.User),
-				},
-			}
-			err = r.client.Create(ctx, &provision)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
+		config, err := r.hostConfig(ctx, log, arch)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		err = config.Deallocate(r, ctx, log, tr, secretName, selectedHost)
+		if err != nil {
+			log.Error(err, "Failed to deallocate host "+selectedHost)
 		}
 		controllerutil.RemoveFinalizer(tr, PipelineFinalizer)
 		delete(tr.Labels, AssignedHost)
@@ -489,20 +352,42 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, log *logr.Log
 		} else {
 			log.Info("could not find secret", "secret", secretName)
 		}
-
-		arch, _ := extractArch(tr) //ignore error, we know this was set if we have got here
 		return r.handleWaitingTasks(ctx, log, arch)
 	}
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileTaskRun) hostConfig(ctx context.Context, log *logr.Logger) (map[string]*Host, error) {
+func (r *ReconcileTaskRun) hostConfig(ctx context.Context, log *logr.Logger, targetArch string) (ArchitectureConfig, error) {
 	cm := v12.ConfigMap{}
 	err := r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: HostConfig}, &cm)
 	if err != nil {
 		return nil, err
 	}
-	ret := map[string]*Host{}
+
+	dynamic := cm.Data[DynamicArchitectures]
+	for _, arch := range strings.Split(dynamic, ",") {
+		if arch == targetArch {
+
+			typeName := cm.Data["dynamic."+arch+".type"]
+			allocfunc := r.cloudProviders[typeName]
+			if allocfunc == nil {
+				return nil, errors2.New("unknown dynamic provisioning type " + typeName)
+			}
+			maxInstances, err := strconv.Atoi(cm.Data["dynamic."+arch+".max-instances"])
+			if err != nil {
+				return nil, err
+			}
+			return DynamicResolver{
+				CloudProvider: allocfunc(arch, cm.Data),
+				SshSecret:     cm.Data["dynamic."+arch+".ssh-secret"],
+				Arch:          arch,
+				MaxInstances:  maxInstances,
+			}, nil
+
+		}
+	}
+
+	ret := HostPool{hosts: map[string]*Host{}, targetArch: targetArch}
 	for k, v := range cm.Data {
 		pos := strings.LastIndex(k, ".")
 		if pos == -1 {
@@ -510,10 +395,10 @@ func (r *ReconcileTaskRun) hostConfig(ctx context.Context, log *logr.Logger) (ma
 		}
 		name := k[0:pos]
 		key := k[pos+1:]
-		host := ret[name]
+		host := ret.hosts[name]
 		if host == nil {
 			host = &Host{}
-			ret[name] = host
+			ret.hosts[name] = host
 			host.Name = name
 		}
 		switch key {
@@ -539,6 +424,196 @@ func (r *ReconcileTaskRun) hostConfig(ctx context.Context, log *logr.Logger) (ma
 	return ret, nil
 }
 
+func (r *ReconcileTaskRun) removeFinalizer(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun) (reconcile.Result, error) {
+	if controllerutil.ContainsFinalizer(tr, PipelineFinalizer) {
+		controllerutil.RemoveFinalizer(tr, PipelineFinalizer)
+		log.Info("removing finalizer")
+		return reconcile.Result{}, r.client.Update(ctx, tr)
+	}
+	return reconcile.Result{}, nil
+}
+
+type HostPool struct {
+	hosts      map[string]*Host
+	targetArch string
+}
+
+type ArchitectureConfig interface {
+	Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string) (reconcile.Result, error)
+	Deallocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string, selectedHost string) error
+}
+
+func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string) (reconcile.Result, error) {
+	if len(hp.hosts) == 0 {
+		//no hosts configured
+		return reconcile.Result{}, r.createErrorSecret(ctx, tr, secretName, "no hosts configured")
+	}
+	failed := strings.Split(tr.Labels[FailedHosts], ",")
+
+	//get all existing runs that are assigned to a host
+	taskList := v1beta1.TaskRunList{}
+	err := r.client.List(ctx, &taskList, client.HasLabels{AssignedHost})
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+	hostCount := map[string]int{}
+	for _, tr := range taskList.Items {
+		host := tr.Labels[AssignedHost]
+		hostCount[host] = hostCount[host] + 1
+	}
+	for k, v := range hostCount {
+		log.Info("host count", "host", k, "count", v)
+	}
+
+	//now select the host with the most free spots
+	//this algorithm is not very complex
+
+	var selected *Host
+	freeSpots := 0
+	hostWithOurArch := false
+	for k, v := range hp.hosts {
+		if slices.Contains(failed, k) {
+			log.Info("ignoring already failed host", "host", k, "targetArch", hp.targetArch, "hostArch", v.Arch)
+			continue
+		}
+		if v.Arch != hp.targetArch {
+			log.Info("ignoring host", "host", k, "targetArch", hp.targetArch, "hostArch", v.Arch)
+			continue
+		}
+		hostWithOurArch = true
+		free := v.Concurrency - hostCount[k]
+
+		log.Info("considering host", "host", k, "freeSlots", free)
+		if free > freeSpots {
+			selected = v
+			freeSpots = free
+		}
+	}
+	if !hostWithOurArch {
+		log.Info("no hosts with requested arch", "arch", hp.targetArch)
+		return reconcile.Result{}, r.createErrorSecret(ctx, tr, secretName, "no hosts configured for arch "+hp.targetArch)
+	}
+	if selected == nil {
+		if tr.Labels[WaitingForArchLabel] == hp.targetArch {
+			//we are already in a waiting state
+			return reconcile.Result{}, nil
+		}
+		log.Info("no host found, waiting for one to become available")
+		//no host available
+		//add the waiting label
+		//TODO: is the requeue actually a good idea?
+		//TODO: timeout
+		tr.Labels[WaitingForArchLabel] = hp.targetArch
+		return reconcile.Result{RequeueAfter: time.Minute}, r.client.Update(ctx, tr)
+	}
+
+	log.Info("allocated host", "host", selected.Name)
+	tr.Labels[AssignedHost] = selected.Name
+	delete(tr.Labels, WaitingForArchLabel)
+	//add a finalizer to clean up the secret
+	controllerutil.AddFinalizer(tr, PipelineFinalizer)
+	err = r.client.Update(ctx, tr)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	err = launchProvisioningTask(r, ctx, log, tr, secretName, selected.Secret, selected.Address, selected.User)
+
+	if err != nil {
+		//ugh, try and unassign
+		delete(tr.Labels, AssignedHost)
+		updateErr := r.client.Update(ctx, tr)
+		if updateErr != nil {
+			log.Error(updateErr, "Could not unassign task after provisioning failure")
+			_ = r.createErrorSecret(ctx, tr, secretName, "Could not unassign task after provisioning failure")
+		} else {
+			log.Error(err, "Failed to provision host from pool")
+			_ = r.createErrorSecret(ctx, tr, secretName, "Failed to provision host from pool "+err.Error())
+		}
+		return reconcile.Result{}, err
+	}
+	return reconcile.Result{}, nil
+}
+
+func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string, sshSecret string, address string, user string) error {
+	//kick off the provisioning task
+	//note that we can't use owner refs here because this task runs in a different namespace
+	provision := v1beta1.TaskRun{}
+	provision.GenerateName = "provision-task"
+	provision.Namespace = r.operatorNamespace
+	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name, MultiArchLabel: "true", AssignedHost: tr.Labels[AssignedHost]}
+	provision.Spec.TaskRef = &v1beta1.TaskRef{Name: "provision-shared-host"}
+	provision.Spec.Workspaces = []v1beta1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: sshSecret}}}
+	provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
+	provision.Spec.Params = []v1beta1.Param{
+		{
+			Name:  "SECRET_NAME",
+			Value: *v1beta1.NewStructuredValues(secretName),
+		},
+		{
+			Name:  "TASKRUN_NAME",
+			Value: *v1beta1.NewStructuredValues(tr.Name),
+		},
+		{
+			Name:  "NAMESPACE",
+			Value: *v1beta1.NewStructuredValues(tr.Namespace),
+		},
+		{
+			Name:  "HOST",
+			Value: *v1beta1.NewStructuredValues(address),
+		},
+		{
+			Name:  "USER",
+			Value: *v1beta1.NewStructuredValues(user),
+		},
+	}
+
+	err := r.client.Create(ctx, &provision)
+	return err
+}
+
+func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string, selectedHost string) error {
+	selected := hp.hosts[selectedHost]
+	if selected != nil {
+		log.Info("starting cleanup task")
+		//kick off the clean task
+		//kick off the provisioning task
+		provision := v1beta1.TaskRun{}
+		provision.GenerateName = "cleanup-task"
+		provision.Namespace = r.operatorNamespace
+		provision.Labels = map[string]string{TaskTypeLabel: TaskTypeClean, UserTaskName: tr.Name, UserTaskNamespace: tr.Namespace, MultiArchLabel: "true"}
+		provision.Spec.TaskRef = &v1beta1.TaskRef{Name: "clean-shared-host"}
+		provision.Spec.Workspaces = []v1beta1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: selected.Secret}}}
+		provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
+		provision.Spec.Params = []v1beta1.Param{
+			{
+				Name:  "SECRET_NAME",
+				Value: *v1beta1.NewStructuredValues(secretName),
+			},
+			{
+				Name:  "TASKRUN_NAME",
+				Value: *v1beta1.NewStructuredValues(tr.Name),
+			},
+			{
+				Name:  "NAMESPACE",
+				Value: *v1beta1.NewStructuredValues(tr.Namespace),
+			},
+			{
+				Name:  "HOST",
+				Value: *v1beta1.NewStructuredValues(selected.Address),
+			},
+			{
+				Name:  "USER",
+				Value: *v1beta1.NewStructuredValues(selected.User),
+			},
+		}
+		err := r.client.Create(ctx, &provision)
+		return err
+	}
+	return nil
+
+}
+
 type Host struct {
 	Address     string
 	Name        string
@@ -546,4 +621,108 @@ type Host struct {
 	Concurrency int
 	Arch        string
 	Secret      string
+}
+type DynamicResolver struct {
+	cloud.CloudProvider
+	SshSecret    string
+	Arch         string
+	MaxInstances int
+}
+
+func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string) (reconcile.Result, error) {
+
+	//this is called multiple times
+	//the first time starts the instance
+	//then it can be called repeatedly until the instance has an address
+	//this lets us avoid blocking the main thread
+	if tr.Labels[CloudInstanceId] != "" {
+		//we already have an instance, get its address
+		address, err := a.CloudProvider.GetInstanceAddress(r.client, log, ctx, cloud.InstanceIdentifier(tr.Labels[CloudInstanceId]))
+		if address != "" {
+			tr.Labels[AssignedHost] = address
+
+			err = launchProvisioningTask(r, ctx, log, tr, secretName, a.SshSecret, address, "ec2-user")
+			if err != nil {
+				//ugh, try and unassign
+				err := a.CloudProvider.TerminateInstance(r.client, log, ctx, cloud.InstanceIdentifier(tr.Labels[CloudInstanceId]))
+				if err != nil {
+					log.Error(err, "Failed to terminate EC2 instance")
+				}
+
+				delete(tr.Labels, AssignedHost)
+				delete(tr.Labels, CloudInstanceId)
+				delete(tr.Labels, CloudDynamicArch)
+				err = r.client.Update(ctx, tr)
+				if err != nil {
+					log.Error(err, "Could not unassign task after provisioning failure")
+					_ = r.createErrorSecret(ctx, tr, secretName, "Could not unassign task after provisioning failure")
+				} else {
+					log.Error(err, "Failed to provision AWS host")
+					_ = r.createErrorSecret(ctx, tr, secretName, "Failed to provision AWS host "+err.Error())
+
+				}
+			}
+
+			return reconcile.Result{}, r.client.Update(ctx, tr)
+		} else {
+			//we are waiting for the instance to come up
+			//so just requeue
+			return reconcile.Result{RequeueAfter: time.Second * 10}, err
+		}
+	}
+	//first check this would not exceed the max tasks
+	taskList := v1beta1.TaskRunList{}
+	err := r.client.List(ctx, &taskList, client.MatchingLabels{CloudDynamicArch: a.Arch})
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+	if len(taskList.Items) >= a.MaxInstances {
+		if tr.Labels[WaitingForArchLabel] == a.Arch {
+			//we are already in a waiting state
+			return reconcile.Result{}, nil
+		}
+		log.Info("Too many running AWS tasks, waiting for existing tasks to finish")
+		//no host available
+		//add the waiting label
+		tr.Labels[WaitingForArchLabel] = a.Arch
+		return reconcile.Result{}, r.client.Update(ctx, tr)
+	}
+
+	instance, err := a.CloudProvider.LaunchInstance(r.client, log, ctx, "multi-arch-builder-"+tr.Name)
+
+	if err != nil {
+		//launch failed
+		log.Error(err, "Failed to create AWS host")
+		_ = r.createErrorSecret(ctx, tr, secretName, "Failed to create AWS host "+err.Error())
+		return reconcile.Result{}, nil
+	}
+	tr.Labels[CloudInstanceId] = string(instance)
+	tr.Labels[CloudDynamicArch] = a.Arch
+
+	log.Info("created AWS host", "instance", instance)
+	//add a finalizer to clean up
+	controllerutil.AddFinalizer(tr, PipelineFinalizer)
+	err = r.client.Update(ctx, tr)
+	if err != nil {
+		err2 := a.CloudProvider.TerminateInstance(r.client, log, ctx, instance)
+		if err2 != nil {
+			log.Error(err, "failed to delete AWS instance")
+		}
+		return reconcile.Result{}, err
+	}
+	return reconcile.Result{}, nil
+}
+
+func (a DynamicResolver) Deallocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string, selectedHost string) error {
+
+	instance := tr.Labels[CloudInstanceId]
+	err := a.CloudProvider.TerminateInstance(r.client, log, ctx, cloud.InstanceIdentifier(instance))
+	if err != nil {
+		log.Error(err, "Failed to terminate EC2 instance")
+		return err
+	}
+	delete(tr.Labels, CloudInstanceId)
+	delete(tr.Labels, AssignedHost)
+	delete(tr.Labels, CloudDynamicArch)
+	return nil
 }

@@ -78,10 +78,17 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 	}
 	configMapSelector = configMapSelector.Add(*configMapLabels)
 
+	secretSelector := labels.NewSelector()
+	secretLabels, lerr := labels.NewRequirement(taskrun.MultiArchSecretLabel, selection.Exists, []string{})
+	if lerr != nil {
+		return nil, lerr
+	}
+	secretSelector = secretSelector.Add(*secretLabels)
+
 	options.Cache = cache.Options{
 		ByObject: map[client.Object]cache.ByObject{
 			&pipelinev1beta1.TaskRun{}: {Label: multiArchPipelines},
-			&v1.Secret{}:               {Label: multiArchPipelines},
+			&v1.Secret{}:               {Label: secretSelector},
 			&v1.ConfigMap{}:            {Label: configMapSelector},
 		},
 	}
