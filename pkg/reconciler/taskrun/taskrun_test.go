@@ -120,7 +120,7 @@ func TestProvisionFailure(t *testing.T) {
 	g.Expect(err).ShouldNot(HaveOccurred())
 
 	tr = getUserTaskRun(g, client, "test")
-	g.Expect(tr.Labels[FailedHosts]).Should(BeElementOf("host1", "host2"))
+	g.Expect(tr.Annotations[FailedHosts]).Should(BeElementOf("host1", "host2"))
 	g.Expect(tr.Labels[AssignedHost]).Should(Equal(""))
 	_, err = reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
 	g.Expect(err).ShouldNot(HaveOccurred())
@@ -138,8 +138,8 @@ func TestProvisionFailure(t *testing.T) {
 	g.Expect(err).ShouldNot(HaveOccurred())
 
 	tr = getUserTaskRun(g, client, "test")
-	g.Expect(tr.Labels[FailedHosts]).Should(ContainSubstring("host2"))
-	g.Expect(tr.Labels[FailedHosts]).Should(ContainSubstring("host1"))
+	g.Expect(tr.Annotations[FailedHosts]).Should(ContainSubstring("host2"))
+	g.Expect(tr.Annotations[FailedHosts]).Should(ContainSubstring("host1"))
 	g.Expect(tr.Labels[AssignedHost]).Should(Equal(""))
 	_, err = reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
 	g.Expect(err).ShouldNot(HaveOccurred())
@@ -333,7 +333,7 @@ func runUserPipeline(g *WithT, client runtimeclient.Client, reconciler *Reconcil
 	g.Expect(err).ToNot(HaveOccurred())
 	tr := getUserTaskRun(g, client, name)
 	if tr.Labels[AssignedHost] == "" {
-		g.Expect(tr.Labels[CloudInstanceId]).ToNot(BeEmpty())
+		g.Expect(tr.Annotations[CloudInstanceId]).ToNot(BeEmpty())
 		_, err = reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
 		g.Expect(err).ToNot(HaveOccurred())
 		tr = getUserTaskRun(g, client, name)
