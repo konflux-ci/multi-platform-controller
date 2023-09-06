@@ -70,7 +70,7 @@ spec:
           - name: name
             value: update-infra-deployments
           - name: bundle
-            value: quay.io/redhat-appstudio-tekton-catalog/task-update-infra-deployments:0.1@sha256:61a834fe634351011e70ae4bee42ae46f5dc88e5ef62624f4609fcf6ecd2e06f
+            value: quay.io/redhat-appstudio-tekton-catalog/task-update-infra-deployments:0.1@sha256:038e20ddb9858072b21f0756440c8b89303b188c1ce3773c018c5451d9d38843
           - name: kind
             value: task
         resolver: bundles
