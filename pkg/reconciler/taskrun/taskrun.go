@@ -2,6 +2,7 @@ package taskrun
 
 import (
 	"context"
+	"fmt"
 	errors2 "github.com/pkg/errors"
 	"github.com/stuartwdouglas/multi-arch-host-resolver/pkg/aws"
 	"github.com/stuartwdouglas/multi-arch-host-resolver/pkg/cloud"
@@ -39,6 +40,7 @@ const (
 	AssignedHost     = "build.appstudio.redhat.com/assigned-host"
 	FailedHosts      = "build.appstudio.redhat.com/failed-hosts"
 	CloudInstanceId  = "build.appstudio.redhat.com/cloud-instance-id"
+	CloudAddress     = "build.appstudio.redhat.com/cloud-address"
 	CloudDynamicArch = "build.appstudio.redhat.com/cloud-dynamic-arch"
 
 	UserTaskName      = "build.appstudio.redhat.com/user-task-name"
@@ -189,14 +191,17 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 			userTr := v1beta1.TaskRun{}
 			err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Labels[UserTaskNamespace], Name: tr.Labels[UserTaskName]}, &userTr)
 			if err == nil {
+				if userTr.Annotations == nil {
+					userTr.Annotations = map[string]string{}
+				}
 				//add to failed hosts and remove assigned
 				//this will cause it to try again
-				failed := strings.Split(userTr.Labels[FailedHosts], ",")
+				failed := strings.Split(userTr.Annotations[FailedHosts], ",")
 				if failed[0] == "" {
 					failed = []string{}
 				}
 				failed = append(failed, assigned)
-				userTr.Labels[FailedHosts] = strings.Join(failed, ",")
+				userTr.Annotations[FailedHosts] = strings.Join(failed, ",")
 				delete(userTr.Labels, AssignedHost)
 				err = r.client.Update(ctx, &userTr)
 				if err != nil {
@@ -448,7 +453,7 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.
 		//no hosts configured
 		return reconcile.Result{}, r.createErrorSecret(ctx, tr, secretName, "no hosts configured")
 	}
-	failed := strings.Split(tr.Labels[FailedHosts], ",")
+	failed := strings.Split(tr.Annotations[FailedHosts], ",")
 
 	//get all existing runs that are assigned to a host
 	taskList := v1beta1.TaskRunList{}
@@ -631,27 +636,31 @@ type DynamicResolver struct {
 
 func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string) (reconcile.Result, error) {
 
+	if tr.Annotations == nil {
+		tr.Annotations = map[string]string{}
+	}
 	//this is called multiple times
 	//the first time starts the instance
 	//then it can be called repeatedly until the instance has an address
 	//this lets us avoid blocking the main thread
-	if tr.Labels[CloudInstanceId] != "" {
+	if tr.Annotations[CloudInstanceId] != "" {
 		//we already have an instance, get its address
-		address, err := a.CloudProvider.GetInstanceAddress(r.client, log, ctx, cloud.InstanceIdentifier(tr.Labels[CloudInstanceId]))
+		address, err := a.CloudProvider.GetInstanceAddress(r.client, log, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
 		if address != "" {
-			tr.Labels[AssignedHost] = address
+			tr.Labels[AssignedHost] = tr.Annotations[CloudInstanceId]
+			tr.Annotations[CloudAddress] = address
 
 			err = launchProvisioningTask(r, ctx, log, tr, secretName, a.SshSecret, address, "ec2-user")
 			if err != nil {
 				//ugh, try and unassign
-				err := a.CloudProvider.TerminateInstance(r.client, log, ctx, cloud.InstanceIdentifier(tr.Labels[CloudInstanceId]))
+				err := a.CloudProvider.TerminateInstance(r.client, log, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
 				if err != nil {
 					log.Error(err, "Failed to terminate EC2 instance")
 				}
 
 				delete(tr.Labels, AssignedHost)
-				delete(tr.Labels, CloudInstanceId)
-				delete(tr.Labels, CloudDynamicArch)
+				delete(tr.Annotations, CloudInstanceId)
+				delete(tr.Annotations, CloudDynamicArch)
 				err = r.client.Update(ctx, tr)
 				if err != nil {
 					log.Error(err, "Could not unassign task after provisioning failure")
@@ -696,7 +705,7 @@ func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 		_ = r.createErrorSecret(ctx, tr, secretName, "Failed to create AWS host "+err.Error())
 		return reconcile.Result{}, nil
 	}
-	tr.Labels[CloudInstanceId] = string(instance)
+	tr.Annotations[CloudInstanceId] = string(instance)
 	tr.Labels[CloudDynamicArch] = a.Arch
 
 	log.Info("created AWS host", "instance", instance)
@@ -715,13 +724,14 @@ func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 
 func (a DynamicResolver) Deallocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string, selectedHost string) error {
 
-	instance := tr.Labels[CloudInstanceId]
+	instance := tr.Annotations[CloudInstanceId]
+	log.Info(fmt.Sprintf("terminating cloud instances %s for TaskRun %s", instance, tr.Name))
 	err := a.CloudProvider.TerminateInstance(r.client, log, ctx, cloud.InstanceIdentifier(instance))
 	if err != nil {
 		log.Error(err, "Failed to terminate EC2 instance")
 		return err
 	}
-	delete(tr.Labels, CloudInstanceId)
+	delete(tr.Annotations, CloudInstanceId)
 	delete(tr.Labels, AssignedHost)
 	delete(tr.Labels, CloudDynamicArch)
 	return nil
