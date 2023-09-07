@@ -280,7 +280,7 @@ func runSuccessfulProvision(provision *pipelinev1beta1.TaskRun, g *WithT, client
 	s.Data = map[string][]byte{}
 	s.Data["id_rsa"] = []byte("expected")
 	s.Data["host"] = []byte("host")
-	s.Data["build-dir"] = []byte("buildir")
+	s.Data["user-dir"] = []byte("buildir")
 	g.Expect(client.Create(context.TODO(), &s)).ShouldNot(HaveOccurred())
 
 	_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: provision.Namespace, Name: provision.Name}})

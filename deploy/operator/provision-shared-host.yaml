@@ -60,7 +60,7 @@ spec:
         data:
           id_rsa: "$KEY"
           host: "$HOST"
-          build-dir: "$DIR"
+          user-dir: "$DIR"
         kind: Secret
         metadata:
           name: $(params.SECRET_NAME)
