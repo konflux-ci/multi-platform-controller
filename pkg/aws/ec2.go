@@ -16,12 +16,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func Ec2Provider(arch string, config map[string]string) cloud.CloudProvider {
+func Ec2Provider(arch string, config map[string]string, systemNamespace string) cloud.CloudProvider {
 	return AwsDynamicConfig{Region: config["dynamic."+arch+".region"],
-		Ami:          config["dynamic."+arch+".ami"],
-		InstanceType: config["dynamic."+arch+".instance-type"],
-		KeyName:      config["dynamic."+arch+".key-name"],
-		Secret:       config["dynamic."+arch+".aws-secret"],
+		Ami:             config["dynamic."+arch+".ami"],
+		InstanceType:    config["dynamic."+arch+".instance-type"],
+		KeyName:         config["dynamic."+arch+".key-name"],
+		Secret:          config["dynamic."+arch+".aws-secret"],
+		SystemNamespace: systemNamespace,
 	}
 }
 
@@ -75,7 +76,7 @@ func (configMapInfo AwsDynamicConfig) GetInstanceAddress(kubeClient client.Clien
 	// Load AWS credentials and configuration
 
 	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithCredentialsProvider(SecretCredentialsProvider{Name: configMapInfo.Secret, Namespace: "multi-arch-controller", Client: kubeClient}),
+		config.WithCredentialsProvider(SecretCredentialsProvider{Name: configMapInfo.Secret, Namespace: configMapInfo.SystemNamespace, Client: kubeClient}),
 		config.WithRegion(configMapInfo.Region))
 	if err != nil {
 		return "", err
@@ -145,9 +146,14 @@ func (r SecretCredentialsProvider) Retrieve(ctx context.Context) (aws.Credential
 }
 
 type AwsDynamicConfig struct {
-	Region       string
-	Ami          string
-	InstanceType string
-	KeyName      string
-	Secret       string
+	Region          string
+	Ami             string
+	InstanceType    string
+	KeyName         string
+	Secret          string
+	SystemNamespace string
+}
+
+func (configMapInfo AwsDynamicConfig) SshUser() string {
+	return "ec2-user"
 }

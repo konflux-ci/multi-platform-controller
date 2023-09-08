@@ -10,6 +10,7 @@ type CloudProvider interface {
 	LaunchInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, name string) (InstanceIdentifier, error)
 	TerminateInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, instance InstanceIdentifier) error
 	GetInstanceAddress(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceId InstanceIdentifier) (string, error)
+	SshUser() string
 }
 
 type InstanceIdentifier string

@@ -35,7 +35,7 @@ func setupClientAndReconciler(objs ...runtimeclient.Object) (runtimeclient.Clien
 	_ = v1.AddToScheme(scheme)
 	_ = appsv1.AddToScheme(scheme)
 	client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
-	reconciler := &ReconcileTaskRun{client: client, scheme: scheme, eventRecorder: &record.FakeRecorder{}, operatorNamespace: systemNamespace, cloudProviders: map[string]func(arch string, config map[string]string) cloud.CloudProvider{"mock": MockCloudSetup}}
+	reconciler := &ReconcileTaskRun{client: client, scheme: scheme, eventRecorder: &record.FakeRecorder{}, operatorNamespace: systemNamespace, cloudProviders: map[string]func(arch string, config map[string]string, systemnamespace string) cloud.CloudProvider{"mock": MockCloudSetup}}
 	return client, reconciler
 }
 
@@ -80,7 +80,7 @@ func TestAllocateCloudHost(t *testing.T) {
 	g.Expect(params["SECRET_NAME"]).To(Equal("multi-arch-ssh-test"))
 	g.Expect(params["TASKRUN_NAME"]).To(Equal("test"))
 	g.Expect(params["NAMESPACE"]).To(Equal(userNamespace))
-	g.Expect(params["USER"]).To(Equal("ec2-user"))
+	g.Expect(params["USER"]).To(Equal("root"))
 	g.Expect(params["HOST"]).Should(Equal("multi-arch-builder-test.host.com"))
 	g.Expect(cloudImpl.Addressses[("multi-arch-builder-test")]).Should(Equal("multi-arch-builder-test.host.com"))
 
@@ -421,6 +421,10 @@ type MockCloud struct {
 	Addressses map[cloud.InstanceIdentifier]string
 }
 
+func (m *MockCloud) SshUser() string {
+	return "root"
+}
+
 func (m *MockCloud) LaunchInstance(kubeClient runtimeclient.Client, log *logr.Logger, ctx context.Context, name string) (cloud.InstanceIdentifier, error) {
 	m.Running++
 	return cloud.InstanceIdentifier(name), nil
@@ -442,6 +446,6 @@ func (m *MockCloud) GetInstanceAddress(kubeClient runtimeclient.Client, log *log
 	return addr, nil
 }
 
-func MockCloudSetup(arch string, data map[string]string) cloud.CloudProvider {
+func MockCloudSetup(arch string, data map[string]string, systemnamespace string) cloud.CloudProvider {
 	return &cloudImpl
 }
