@@ -38,8 +38,8 @@ spec:
       value: quay.io/sdouglas/multi-arch-resolver:arm-build
     - name: COMMIT_SHA
       value: 1879fa9159b28f63265dad2cd618c3d0ffd03e79
-    - name: ARCHS
-      value: amd64 arm64
+    - name: PLATFORMS
+      value: linux/amd64 linux/arm64
   podTemplate:
     topologySpreadConstraints:
       - labelSelector:

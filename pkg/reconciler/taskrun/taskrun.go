@@ -6,6 +6,7 @@ import (
 	errors2 "github.com/pkg/errors"
 	"github.com/stuartwdouglas/multi-arch-host-resolver/pkg/aws"
 	"github.com/stuartwdouglas/multi-arch-host-resolver/pkg/cloud"
+	"github.com/stuartwdouglas/multi-arch-host-resolver/pkg/ibm"
 
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	v12 "k8s.io/api/core/v1"
@@ -37,11 +38,12 @@ const (
 	MultiArchLabel       = "build.appstudio.redhat.com/multi-arch-required"
 	MultiArchSecretLabel = "build.appstudio.redhat.com/multi-arch-secret"
 
-	AssignedHost     = "build.appstudio.redhat.com/assigned-host"
-	FailedHosts      = "build.appstudio.redhat.com/failed-hosts"
-	CloudInstanceId  = "build.appstudio.redhat.com/cloud-instance-id"
-	CloudAddress     = "build.appstudio.redhat.com/cloud-address"
-	CloudDynamicArch = "build.appstudio.redhat.com/cloud-dynamic-arch"
+	AssignedHost           = "build.appstudio.redhat.com/assigned-host"
+	FailedHosts            = "build.appstudio.redhat.com/failed-hosts"
+	CloudInstanceId        = "build.appstudio.redhat.com/cloud-instance-id"
+	CloudAddress           = "build.appstudio.redhat.com/cloud-address"
+	CloudDynamicArch       = "build.appstudio.redhat.com/cloud-dynamic-arch"
+	ProvisionTaskProcessed = "build.appstudio.redhat.com/provision-task-processed"
 
 	UserTaskName      = "build.appstudio.redhat.com/user-task-name"
 	UserTaskNamespace = "build.appstudio.redhat.com/user-task-namespace"
@@ -61,21 +63,23 @@ const (
 )
 
 type ReconcileTaskRun struct {
+	apiReader         client.Reader
 	client            client.Client
 	scheme            *runtime.Scheme
 	eventRecorder     record.EventRecorder
 	operatorNamespace string
 
-	cloudProviders map[string]func(arch string, config map[string]string) cloud.CloudProvider
+	cloudProviders map[string]func(arch string, config map[string]string, systemNamespace string) cloud.CloudProvider
 }
 
 func newReconciler(mgr ctrl.Manager, operatorNamespace string) reconcile.Reconciler {
 	return &ReconcileTaskRun{
+		apiReader:         mgr.GetAPIReader(),
 		client:            mgr.GetClient(),
 		scheme:            mgr.GetScheme(),
 		eventRecorder:     mgr.GetEventRecorderFor("ComponentBuild"),
 		operatorNamespace: operatorNamespace,
-		cloudProviders:    map[string]func(arch string, config map[string]string) cloud.CloudProvider{"aws": aws.Ec2Provider},
+		cloudProviders:    map[string]func(arch string, config map[string]string, systemNamespace string) cloud.CloudProvider{"aws": aws.Ec2Provider, "ibmz": ibm.IBMZProvider},
 	}
 }
 
@@ -177,6 +181,18 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 	if tr.Status.CompletionTime == nil {
 		return reconcile.Result{}, nil
 	}
+	if tr.Annotations == nil {
+		tr.Annotations = map[string]string{}
+	}
+	if tr.Annotations[ProvisionTaskProcessed] == "true" {
+		//leave the TR for an hour so we can view logs
+		//TODO: tekton results integration
+		if tr.Status.CompletionTime.Add(time.Hour).Before(time.Now()) {
+			return reconcile.Result{}, r.client.Delete(ctx, tr)
+		}
+		return reconcile.Result{RequeueAfter: time.Hour}, nil
+	}
+	tr.Annotations[ProvisionTaskProcessed] = "true"
 	success := tr.Status.GetCondition(apis.ConditionSucceeded).IsTrue()
 	secretName := ""
 	for _, i := range tr.Spec.Params {
@@ -214,7 +230,6 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 				}
 			}
 		}
-
 	} else {
 		log.Info("provision task succeeded")
 		//verify we ended up with a secret
@@ -223,21 +238,25 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 		if err != nil {
 			if errors.IsNotFound(err) {
 				userTr := v1beta1.TaskRun{}
-				err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Labels[UserTaskNamespace], Name: tr.Labels[UserTaskName]}, &userTr)
+				err = r.client.Get(ctx, types.NamespacedName{Namespace: tr.Labels[UserTaskNamespace], Name: tr.Labels[UserTaskName]}, &userTr)
 				if err != nil {
-					return reconcile.Result{}, err
+					if !errors.IsNotFound(err) {
+						//if the task run is not found then this is just old
+						return reconcile.Result{}, err
+					}
+				} else {
+					err = r.createErrorSecret(ctx, &userTr, secretName, "provision task failed to create a secret")
+					if err != nil {
+						return reconcile.Result{}, err
+					}
+
 				}
-				return reconcile.Result{}, r.createErrorSecret(ctx, &userTr, secretName, "provision task failed to create a secret")
+			} else {
+				return reconcile.Result{}, err
 			}
-			return reconcile.Result{}, err
 		}
 	}
-	//leave the TR for an hour
-	if tr.Status.CompletionTime.Add(time.Hour).Before(time.Now()) {
-		return reconcile.Result{}, r.client.Delete(ctx, tr)
-	}
-	return reconcile.Result{RequeueAfter: time.Hour}, nil
-
+	return reconcile.Result{}, r.client.Update(ctx, tr)
 }
 
 // This creates an secret with the 'error' field set
@@ -296,7 +315,30 @@ func extractArch(tr *v1beta1.TaskRun) (string, error) {
 
 func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string) (reconcile.Result, error) {
 	log.Info("attempting to allocate host")
-
+	if r.apiReader != nil {
+		mostRecent := v1beta1.TaskRun{}
+		err := r.apiReader.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, &mostRecent)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		if mostRecent.ResourceVersion != tr.ResourceVersion {
+			//resource has been updated, wait for the next notification
+			//we really don't want to allocate a host based on old information
+			//which is why we need this check here
+			return reconcile.Result{}, err
+		}
+	}
+	//check the secret does not already exist
+	secret := v12.Secret{}
+	err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: secretName}, &secret)
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			return reconcile.Result{}, err
+		}
+	} else {
+		//secret already exists (probably error secret)
+		return reconcile.Result{}, nil
+	}
 	targetArch, err := extractArch(tr)
 	if err != nil {
 		return reconcile.Result{}, r.createErrorSecret(ctx, tr, secretName, "failed to determine architecture, no ARCH param")
@@ -383,7 +425,7 @@ func (r *ReconcileTaskRun) hostConfig(ctx context.Context, log *logr.Logger, tar
 				return nil, err
 			}
 			return DynamicResolver{
-				CloudProvider: allocfunc(arch, cm.Data),
+				CloudProvider: allocfunc(arch, cm.Data, r.operatorNamespace),
 				SshSecret:     cm.Data["dynamic."+arch+".ssh-secret"],
 				Arch:          arch,
 				MaxInstances:  maxInstances,
@@ -463,8 +505,10 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.
 	}
 	hostCount := map[string]int{}
 	for _, tr := range taskList.Items {
-		host := tr.Labels[AssignedHost]
-		hostCount[host] = hostCount[host] + 1
+		if tr.Labels[TaskTypeLabel] == "" {
+			host := tr.Labels[AssignedHost]
+			hostCount[host] = hostCount[host] + 1
+		}
 	}
 	for k, v := range hostCount {
 		log.Info("host count", "host", k, "count", v)
@@ -636,6 +680,10 @@ type DynamicResolver struct {
 
 func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string) (reconcile.Result, error) {
 
+	if tr.Annotations[FailedHosts] != "" {
+		return reconcile.Result{}, r.createErrorSecret(ctx, tr, secretName, "failed to provision host")
+	}
+
 	if tr.Annotations == nil {
 		tr.Annotations = map[string]string{}
 	}
@@ -650,7 +698,7 @@ func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 			tr.Labels[AssignedHost] = tr.Annotations[CloudInstanceId]
 			tr.Annotations[CloudAddress] = address
 
-			err = launchProvisioningTask(r, ctx, log, tr, secretName, a.SshSecret, address, "ec2-user")
+			err = launchProvisioningTask(r, ctx, log, tr, secretName, a.SshSecret, address, a.CloudProvider.SshUser())
 			if err != nil {
 				//ugh, try and unassign
 				err := a.CloudProvider.TerminateInstance(r.client, log, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
@@ -690,36 +738,41 @@ func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 			//we are already in a waiting state
 			return reconcile.Result{}, nil
 		}
-		log.Info("Too many running AWS tasks, waiting for existing tasks to finish")
+		log.Info("Too many running cloud tasks, waiting for existing tasks to finish")
 		//no host available
 		//add the waiting label
 		tr.Labels[WaitingForArchLabel] = a.Arch
 		return reconcile.Result{}, r.client.Update(ctx, tr)
 	}
-
+	log.Info("attempting to launch host for " + tr.Name)
 	instance, err := a.CloudProvider.LaunchInstance(r.client, log, ctx, "multi-arch-builder-"+tr.Name)
+	log.Info("allocated instance", "instance", instance)
 
 	if err != nil {
 		//launch failed
-		log.Error(err, "Failed to create AWS host")
-		_ = r.createErrorSecret(ctx, tr, secretName, "Failed to create AWS host "+err.Error())
+		log.Error(err, "Failed to create cloud host")
+		_ = r.createErrorSecret(ctx, tr, secretName, "Failed to create cloud host "+err.Error())
 		return reconcile.Result{}, nil
 	}
 	tr.Annotations[CloudInstanceId] = string(instance)
 	tr.Labels[CloudDynamicArch] = a.Arch
 
-	log.Info("created AWS host", "instance", instance)
+	log.Info("updating instance id of cloud host", "instance", instance)
 	//add a finalizer to clean up
 	controllerutil.AddFinalizer(tr, PipelineFinalizer)
 	err = r.client.Update(ctx, tr)
-	if err != nil {
+	if err == nil {
+		//success
+		return reconcile.Result{}, nil
+	} else {
+		log.Error(err, "failed to update")
 		err2 := a.CloudProvider.TerminateInstance(r.client, log, ctx, instance)
 		if err2 != nil {
 			log.Error(err, "failed to delete AWS instance")
 		}
 		return reconcile.Result{}, err
 	}
-	return reconcile.Result{}, nil
+
 }
 
 func (a DynamicResolver) Deallocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string, selectedHost string) error {
