@@ -24,7 +24,7 @@ spec:
   - name: git-url
     value: https://github.com/nodeshift-starters/devfile-sample.git
   - name: output-image
-    value: quay.io/sdouglas/multi-arch-resolver:s390x-build
+    value: quay.io/sdouglas/multi-arch-resolver:ppc64le-build
   - name: path-context
     value: .
   - name: revision
@@ -56,7 +56,7 @@ spec:
             - name: git-url
               value: $(tasks.clone-repository.results.url)?rev=$(tasks.clone-repository.results.commit)
             - name: image-url
-              value: quay.io/sdouglas/multi-arch-resolver:s390x-build
+              value: quay.io/sdouglas/multi-arch-resolver:ppc64le-build
             - name: build-task-status
               value: $(tasks.build-container.status)
           taskRef:
@@ -137,7 +137,7 @@ spec:
         - name: init
           params:
             - name: image-url
-              value: quay.io/sdouglas/multi-arch-resolver:s390x-build
+              value: quay.io/sdouglas/multi-arch-resolver:ppc64le-build
             - name: rebuild
               value: "true"
             - name: skip-checks
@@ -213,7 +213,7 @@ spec:
         - name: build-container
           params:
             - name: IMAGE
-              value: quay.io/sdouglas/multi-arch-resolver:s390x-build
+              value: quay.io/sdouglas/multi-arch-resolver:ppc64le-build
             - name: DOCKERFILE
               value: Dockerfile
             - name: CONTEXT
@@ -227,7 +227,7 @@ spec:
             - name: COMMIT_SHA
               value: $(tasks.clone-repository.results.commit)
             - name: ARCH
-              value: s390x
+              value: ppc64le
           runAfter:
             - prefetch-dependencies
           taskRef:

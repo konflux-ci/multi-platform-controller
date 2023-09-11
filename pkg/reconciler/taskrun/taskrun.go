@@ -79,7 +79,7 @@ func newReconciler(mgr ctrl.Manager, operatorNamespace string) reconcile.Reconci
 		scheme:            mgr.GetScheme(),
 		eventRecorder:     mgr.GetEventRecorderFor("ComponentBuild"),
 		operatorNamespace: operatorNamespace,
-		cloudProviders:    map[string]func(arch string, config map[string]string, systemNamespace string) cloud.CloudProvider{"aws": aws.Ec2Provider, "ibmz": ibm.IBMZProvider},
+		cloudProviders:    map[string]func(arch string, config map[string]string, systemNamespace string) cloud.CloudProvider{"aws": aws.Ec2Provider, "ibmz": ibm.IBMZProvider, "ibmp": ibm.IBMPowerProvider},
 	}
 }
 
@@ -316,15 +316,8 @@ func extractArch(tr *v1beta1.TaskRun) (string, error) {
 func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string) (reconcile.Result, error) {
 	log.Info("attempting to allocate host")
 	if r.apiReader != nil {
-		mostRecent := v1beta1.TaskRun{}
-		err := r.apiReader.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, &mostRecent)
+		err := r.apiReader.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)
 		if err != nil {
-			return reconcile.Result{}, err
-		}
-		if mostRecent.ResourceVersion != tr.ResourceVersion {
-			//resource has been updated, wait for the next notification
-			//we really don't want to allocate a host based on old information
-			//which is why we need this check here
 			return reconcile.Result{}, err
 		}
 	}
@@ -692,13 +685,14 @@ func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 	//then it can be called repeatedly until the instance has an address
 	//this lets us avoid blocking the main thread
 	if tr.Annotations[CloudInstanceId] != "" {
+		log.Info("attempting to get instance address", "instance", tr.Annotations[CloudInstanceId])
 		//we already have an instance, get its address
-		address, err := a.CloudProvider.GetInstanceAddress(r.client, log, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
+		address, _ := a.CloudProvider.GetInstanceAddress(r.client, log, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
 		if address != "" {
 			tr.Labels[AssignedHost] = tr.Annotations[CloudInstanceId]
 			tr.Annotations[CloudAddress] = address
 
-			err = launchProvisioningTask(r, ctx, log, tr, secretName, a.SshSecret, address, a.CloudProvider.SshUser())
+			err := launchProvisioningTask(r, ctx, log, tr, secretName, a.SshSecret, address, a.CloudProvider.SshUser())
 			if err != nil {
 				//ugh, try and unassign
 				err := a.CloudProvider.TerminateInstance(r.client, log, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
@@ -724,7 +718,7 @@ func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 		} else {
 			//we are waiting for the instance to come up
 			//so just requeue
-			return reconcile.Result{RequeueAfter: time.Second * 10}, err
+			return reconcile.Result{RequeueAfter: time.Second * 10}, nil
 		}
 	}
 	//first check this would not exceed the max tasks
@@ -744,7 +738,7 @@ func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 		tr.Labels[WaitingForArchLabel] = a.Arch
 		return reconcile.Result{}, r.client.Update(ctx, tr)
 	}
-	log.Info("attempting to launch host for " + tr.Name)
+	log.Info("attempting to launch a new host for " + tr.Name)
 	instance, err := a.CloudProvider.LaunchInstance(r.client, log, ctx, "multi-arch-builder-"+tr.Name)
 	log.Info("allocated instance", "instance", instance)
 
@@ -754,24 +748,44 @@ func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 		_ = r.createErrorSecret(ctx, tr, secretName, "Failed to create cloud host "+err.Error())
 		return reconcile.Result{}, nil
 	}
-	tr.Annotations[CloudInstanceId] = string(instance)
-	tr.Labels[CloudDynamicArch] = a.Arch
 
-	log.Info("updating instance id of cloud host", "instance", instance)
-	//add a finalizer to clean up
-	controllerutil.AddFinalizer(tr, PipelineFinalizer)
-	err = r.client.Update(ctx, tr)
-	if err == nil {
-		//success
-		return reconcile.Result{}, nil
-	} else {
-		log.Error(err, "failed to update")
-		err2 := a.CloudProvider.TerminateInstance(r.client, log, ctx, instance)
-		if err2 != nil {
-			log.Error(err, "failed to delete AWS instance")
+	//this seems super prone to conflicts
+	//we always read a new version direct from the API server on conflict
+	for {
+		tr.Annotations[CloudInstanceId] = string(instance)
+		tr.Labels[CloudDynamicArch] = a.Arch
+
+		log.Info("updating instance id of cloud host", "instance", instance)
+		//add a finalizer to clean up
+		controllerutil.AddFinalizer(tr, PipelineFinalizer)
+		err = r.client.Update(ctx, tr)
+		if err == nil {
+			break
+		} else if !errors.IsConflict(err) {
+			log.Error(err, "failed to update")
+			err2 := a.CloudProvider.TerminateInstance(r.client, log, ctx, instance)
+			if err2 != nil {
+				log.Error(err2, "failed to delete cloud instance")
+			}
+			return reconcile.Result{}, err
+		} else {
+			log.Error(err, "conflict updating, retrying")
+			err := r.apiReader.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)
+			if err != nil {
+				log.Error(err, "failed to update")
+				err2 := a.CloudProvider.TerminateInstance(r.client, log, ctx, instance)
+				if err2 != nil {
+					log.Error(err2, "failed to delete cloud instance")
+				}
+				return reconcile.Result{}, err
+			}
+			if tr.Annotations == nil {
+				tr.Annotations = map[string]string{}
+			}
 		}
-		return reconcile.Result{}, err
 	}
+
+	return reconcile.Result{}, nil
 
 }
 
