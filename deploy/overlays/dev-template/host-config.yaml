@@ -6,7 +6,7 @@ metadata:
   name: host-config
   namespace: multi-arch-controller
 data:
-  dynamic.architectures: arm64,s390x
+  dynamic.architectures: arm64,s390x,ppc64le
 
   dynamic.arm64.type: aws
   dynamic.arm64.region: us-east-1
@@ -16,6 +16,7 @@ data:
   dynamic.arm64.aws-secret: awsiam
   dynamic.arm64.ssh-secret: awskeys
   dynamic.arm64.max-instances: "2"
+
   dynamic.s390x.type: ibmz
   dynamic.s390x.ssh-secret: awskeys
   dynamic.s390x.secret: ibmiam
@@ -25,7 +26,22 @@ data:
   dynamic.s390x.image: "sdouglas-rhel-snapshot"
   dynamic.s390x.region: "us-east-2"
   dynamic.s390x.url: "https://us-east.iaas.cloud.ibm.com/v1"
+  dynamic.s390x.profile: "bz2-1x4"
   dynamic.s390x.max-instances: "2"
+
+  dynamic.ppc64le.type: ibmp
+  dynamic.ppc64le.ssh-secret: awskeys
+  dynamic.ppc64le.secret: ibmiam
+  dynamic.ppc64le.key: "sdouglas-ppc"
+  dynamic.ppc64le.image: "sdouglas-rhel-test"
+  dynamic.ppc64le.crn: "crn:v1:bluemix:public:power-iaas:dal10:a/934e118c399b4a28a70afdf2210d708f:8c9ef568-16a5-4aa2-bfd5-946349c9aeac::"
+  dynamic.ppc64le.url: "https://us-south.power-iaas.cloud.ibm.com"
+  dynamic.ppc64le.network: "dff71085-73da-49f5-9bf2-5ea60c66c99b"
+  dynamic.ppc64le.system: "e980"
+  dynamic.ppc64le.cores: "0.25"
+  dynamic.ppc64le.memory: "2"
+  dynamic.ppc64le.max-instances: "2"
+
 
   ppc1.address: "150.240.147.198"
   ppc1.arch: "ppc64le"

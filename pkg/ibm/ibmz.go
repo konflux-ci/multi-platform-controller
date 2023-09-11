@@ -29,11 +29,12 @@ func IBMZProvider(arch string, config map[string]string, systemNamespace string)
 		Image:           config["dynamic."+arch+".image"],
 		Secret:          config["dynamic."+arch+".secret"],
 		Url:             config["dynamic."+arch+".url"],
+		Profile:         config["dynamic."+arch+".profile"],
 		SystemNamespace: systemNamespace,
 	}
 }
 
-func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, name string) (cloud.InstanceIdentifier, error) {
+func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, _ string) (cloud.InstanceIdentifier, error) {
 	vpcService, err := r.authenticate(kubeClient, ctx)
 	if err != nil {
 		return "", err
@@ -43,7 +44,7 @@ func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Lo
 	if err != nil {
 		return "", err
 	}
-	name = "multi-" + strings.Replace(strings.ToLower(base64.URLEncoding.EncodeToString(md5.New().Sum(binary))[0:20]), "_", "-", -1) + "x" //#nosec
+	name := "multi-" + strings.Replace(strings.ToLower(base64.URLEncoding.EncodeToString(md5.New().Sum(binary))[0:20]), "_", "-", -1) + "x" //#nosec
 	truebool := true
 	size := int64(20)
 
@@ -73,7 +74,7 @@ func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Lo
 				ID: vpc.ResourceGroup.ID,
 			},
 			VPC:     &vpcv1.VPCIdentityByID{ID: vpc.ID},
-			Profile: &vpcv1.InstanceProfileIdentityByName{Name: ptr("bz2-1x4")},
+			Profile: &vpcv1.InstanceProfileIdentityByName{Name: ptr(r.Profile)},
 			Keys:    []vpcv1.KeyIdentityIntf{&vpcv1.KeyIdentity{ID: key.ID}},
 			BootVolumeAttachment: &vpcv1.VolumeAttachmentPrototypeInstanceByImageContext{
 				DeleteVolumeOnInstanceDelete: &truebool,
@@ -253,7 +254,7 @@ func checkAddressLive(addr string, log *logr.Logger) (string, error) {
 	server, _ := net.ResolveTCPAddr("tcp", addr+":22")
 	conn, err := net.DialTCP("tcp", nil, server)
 	if err != nil {
-		log.Info("Failed to connect to IBM host " + addr)
+		log.Info("failed to connect to IBM host " + addr)
 		return "", err
 	}
 	defer conn.Close()
@@ -306,6 +307,7 @@ type IBMZDynamicConfig struct {
 	SecurityGroup   string
 	Image           string
 	Url             string
+	Profile         string
 }
 
 func (r IBMZDynamicConfig) SshUser() string {
