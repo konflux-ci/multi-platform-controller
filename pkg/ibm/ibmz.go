@@ -235,6 +235,26 @@ func (r IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, log *log
 	case vpcv1.InstanceStatusStoppingConst:
 		return "", fmt.Errorf("instance was stopping")
 	}
+
+	//we want to find an existing floating IP
+	//these are expensive, as if we allocate one we are charged for the full month (60c)
+	//first search for an unbound one before we allocate a new one
+	existingIps, _, err := vpcService.ListFloatingIps(&vpcv1.ListFloatingIpsOptions{ResourceGroupID: instance.ResourceGroup.ID})
+	if err != nil {
+		return "", err
+	}
+	for _, ip := range existingIps.FloatingIps {
+		if *ip.Status == vpcv1.FloatingIPStatusAvailableConst {
+			_, _, err = vpcService.AddInstanceNetworkInterfaceFloatingIP(&vpcv1.AddInstanceNetworkInterfaceFloatingIPOptions{InstanceID: instance.ID, NetworkInterfaceID: instance.PrimaryNetworkInterface.ID, ID: ip.ID})
+			if err != nil {
+				return "", err
+			}
+			return checkAddressLive(*ip.Address, log)
+		}
+
+	}
+
+	//allocate a new one
 	ip, _, err := vpcService.CreateFloatingIP(&vpcv1.CreateFloatingIPOptions{FloatingIPPrototype: &vpcv1.FloatingIPPrototype{
 		Zone: &vpcv1.ZoneIdentityByName{Name: ptr("us-east-2")},
 		ResourceGroup: &vpcv1.ResourceGroupIdentity{
@@ -270,17 +290,6 @@ func (r IBMZDynamicConfig) TerminateInstance(kubeClient client.Client, log *logr
 	instance, _, err := vpcService.GetInstance(&vpcv1.GetInstanceOptions{ID: ptr(string(instanceId))})
 	if err != nil {
 		return err
-	}
-	ips, _, err := vpcService.ListInstanceNetworkInterfaceFloatingIps(&vpcv1.ListInstanceNetworkInterfaceFloatingIpsOptions{InstanceID: instance.ID, NetworkInterfaceID: instance.PrimaryNetworkInterface.ID})
-
-	if err != nil {
-		return err
-	}
-	for _, ip := range ips.FloatingIps {
-		_, err := vpcService.DeleteFloatingIP(&vpcv1.DeleteFloatingIPOptions{ID: ip.ID})
-		if err != nil {
-			return err
-		}
 	}
 	switch *instance.Status {
 	case vpcv1.InstanceStatusDeletingConst:
