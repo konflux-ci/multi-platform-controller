@@ -8,7 +8,7 @@ import (
 	"github.com/IBM/go-sdk-core/v4/core"
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
-	"github.com/stuartwdouglas/multi-arch-host-resolver/pkg/cloud"
+	"github.com/redhat-appstudio/multi-platform-controller/pkg/cloud"
 	v1 "k8s.io/api/core/v1"
 	types2 "k8s.io/apimachinery/pkg/types"
 	"os"
@@ -17,23 +17,23 @@ import (
 	"strings"
 )
 
-func IBMPowerProvider(arch string, config map[string]string, systemNamespace string) cloud.CloudProvider {
-	mem, err := strconv.Atoi(config["dynamic."+arch+".memory"])
+func IBMPowerProvider(platform string, config map[string]string, systemNamespace string) cloud.CloudProvider {
+	mem, err := strconv.Atoi(config["dynamic."+platform+".memory"])
 	if err != nil {
 		mem = 2
 	}
-	cores, err := strconv.ParseFloat(config["dynamic."+arch+".cores"], 64)
+	cores, err := strconv.ParseFloat(config["dynamic."+platform+".cores"], 64)
 	if err != nil {
 		cores = 0.25
 	}
 	return IBMPowerDynamicConfig{
-		Key:             config["dynamic."+arch+".key"],
-		Image:           config["dynamic."+arch+".image"],
-		Secret:          config["dynamic."+arch+".secret"],
-		Url:             config["dynamic."+arch+".url"],
-		CRN:             config["dynamic."+arch+".crn"],
-		Network:         config["dynamic."+arch+".network"],
-		System:          config["dynamic."+arch+".system"],
+		Key:             config["dynamic."+platform+".key"],
+		Image:           config["dynamic."+platform+".image"],
+		Secret:          config["dynamic."+platform+".secret"],
+		Url:             config["dynamic."+platform+".url"],
+		CRN:             config["dynamic."+platform+".crn"],
+		Network:         config["dynamic."+platform+".network"],
+		System:          config["dynamic."+platform+".system"],
 		Cores:           cores,
 		Memory:          mem,
 		SystemNamespace: systemNamespace,
@@ -65,7 +65,7 @@ func (r IBMPowerDynamicConfig) authenticate(kubeClient client.Client, ctx contex
 		apiKey = os.Getenv("IBM_CLOUD_API_KEY")
 	} else {
 		s := v1.Secret{}
-		err := kubeClient.Get(ctx, types2.NamespacedName{Name: r.Secret, Namespace: "multi-arch-controller"}, &s)
+		err := kubeClient.Get(ctx, types2.NamespacedName{Name: r.Secret, Namespace: r.SystemNamespace}, &s)
 		if err != nil {
 			return nil, err
 		}

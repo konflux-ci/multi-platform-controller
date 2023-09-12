@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
-	"github.com/stuartwdouglas/multi-arch-host-resolver/pkg/cloud"
+	"github.com/redhat-appstudio/multi-platform-controller/pkg/cloud"
 	v1 "k8s.io/api/core/v1"
 	types2 "k8s.io/apimachinery/pkg/types"
 	"net"
@@ -186,7 +186,7 @@ func (r IBMZDynamicConfig) authenticate(kubeClient client.Client, ctx context.Co
 		apiKey = os.Getenv("IBM_CLOUD_API_KEY")
 	} else {
 		s := v1.Secret{}
-		err := kubeClient.Get(ctx, types2.NamespacedName{Name: r.Secret, Namespace: "multi-arch-controller"}, &s)
+		err := kubeClient.Get(ctx, types2.NamespacedName{Name: r.Secret, Namespace: r.SystemNamespace}, &s)
 		if err != nil {
 			return nil, err
 		}

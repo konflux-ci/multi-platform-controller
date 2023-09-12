@@ -15,8 +15,8 @@ kubectl delete --ignore-not-found secret awskeys awsiam ibmiam
 oc create secret generic awskeys --from-file=id_rsa=/home/stuart/.ssh/sdouglas-arm-test.pem
 oc create secret generic awsiam --from-literal=access-key-id=$MULTI_ARCH_ACCESS_KEY --from-literal=secret-access-key=$MULTI_ARCH_SECRET_KEY
 oc create secret generic ibmiam --from-literal=api-key=$IBM_CLOUD_API_KEY
-kubectl label secrets awsiam build.appstudio.redhat.com/multi-arch-secret=true
-kubectl label secrets ibmiam build.appstudio.redhat.com/multi-arch-secret=true
+kubectl label secrets awsiam build.appstudio.redhat.com/multi-platform-secret=true
+kubectl label secrets ibmiam build.appstudio.redhat.com/multi-platform-secret=true
 
 echo "Installing the Operator"
 rm -r $DIR/overlays/development
