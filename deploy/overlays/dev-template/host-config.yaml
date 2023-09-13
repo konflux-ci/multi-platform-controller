@@ -2,54 +2,55 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   labels:
-    build.appstudio.redhat.com/multi-arch-config: hosts
+    build.appstudio.redhat.com/multi-platform-config: hosts
   name: host-config
   namespace: multi-arch-controller
 data:
-  dynamic.architectures: arm64,s390x,ppc64le
+  dynamic-platforms: linux/arm64,linux/s390x,linux/ppc64le
 
-  dynamic.arm64.type: aws
-  dynamic.arm64.region: us-east-1
-  dynamic.arm64.ami: ami-03d6a5256a46c9feb
-  dynamic.arm64.instance-type: t4g.medium
-  dynamic.arm64.key-name: sdouglas-arm-test
-  dynamic.arm64.aws-secret: awsiam
-  dynamic.arm64.ssh-secret: awskeys
-  dynamic.arm64.max-instances: "2"
+  dynamic.linux-arm64.type: aws
+  dynamic.linux-arm64.region: us-east-1
+  dynamic.linux-arm64.ami: ami-03d6a5256a46c9feb
+  dynamic.linux-arm64.instance-type: t4g.medium
+  dynamic.linux-arm64.key-name: sdouglas-arm-test
+  dynamic.linux-arm64.aws-secret: awsiam
+  dynamic.linux-arm64.ssh-secret: awskeys
+  dynamic.linux-arm64.max-instances: "2"
 
-  dynamic.s390x.type: ibmz
-  dynamic.s390x.ssh-secret: awskeys
-  dynamic.s390x.secret: ibmiam
-  dynamic.s390x.vpc: "us-east-default-vpc"
-  dynamic.s390x.key: "sdouglas-test"
-  dynamic.s390x.subnet: "us-east-2-default-subnet"
-  dynamic.s390x.image: "sdouglas-rhel-snapshot"
-  dynamic.s390x.region: "us-east-2"
-  dynamic.s390x.url: "https://us-east.iaas.cloud.ibm.com/v1"
-  dynamic.s390x.profile: "bz2-1x4"
-  dynamic.s390x.max-instances: "2"
+  dynamic.linux-s390x.type: ibmz
+  dynamic.linux-s390x.ssh-secret: awskeys
+  dynamic.linux-s390x.secret: ibmiam
+  dynamic.linux-s390x.vpc: "us-east-default-vpc"
+  dynamic.linux-s390x.key: "sdouglas-test"
+  dynamic.linux-s390x.subnet: "us-east-2-default-subnet"
+  dynamic.linux-s390x.image: "sdouglas-rhel-snapshot"
+  dynamic.linux-s390x.region: "us-east-2"
+  dynamic.linux-s390x.url: "https://us-east.iaas.cloud.ibm.com/v1"
+  dynamic.linux-s390x.profile: "bz2-1x4"
+  dynamic.linux-s390x.max-instances: "2"
 
-  dynamic.ppc64le.type: ibmp
-  dynamic.ppc64le.ssh-secret: awskeys
-  dynamic.ppc64le.secret: ibmiam
-  dynamic.ppc64le.key: "sdouglas-ppc"
-  dynamic.ppc64le.image: "sdouglas-rhel-test"
-  dynamic.ppc64le.crn: "crn:v1:bluemix:public:power-iaas:dal10:a/934e118c399b4a28a70afdf2210d708f:8c9ef568-16a5-4aa2-bfd5-946349c9aeac::"
-  dynamic.ppc64le.url: "https://us-south.power-iaas.cloud.ibm.com"
-  dynamic.ppc64le.network: "dff71085-73da-49f5-9bf2-5ea60c66c99b"
-  dynamic.ppc64le.system: "e980"
-  dynamic.ppc64le.cores: "0.25"
-  dynamic.ppc64le.memory: "2"
-  dynamic.ppc64le.max-instances: "2"
+  dynamic.linux-ppc64le.type: ibmp
+  dynamic.linux-ppc64le.ssh-secret: awskeys
+  dynamic.linux-ppc64le.secret: ibmiam
+  dynamic.linux-ppc64le.key: "sdouglas-ppc"
+  dynamic.linux-ppc64le.image: "sdouglas-rhel-test"
+  dynamic.linux-ppc64le.crn: "crn:v1:bluemix:public:power-iaas:dal10:a/934e118c399b4a28a70afdf2210d708f:8c9ef568-16a5-4aa2-bfd5-946349c9aeac::"
+  dynamic.linux-ppc64le.url: "https://us-south.power-iaas.cloud.ibm.com"
+  dynamic.linux-ppc64le.network: "dff71085-73da-49f5-9bf2-5ea60c66c99b"
+  dynamic.linux-ppc64le.system: "e980"
+  dynamic.linux-ppc64le.cores: "0.25"
+  dynamic.linux-ppc64le.memory: "2"
+  dynamic.linux-ppc64le.max-instances: "2"
 
 
-  ppc1.address: "150.240.147.198"
-  ppc1.arch: "ppc64le"
-  ppc1.user: "root"
-  ppc1.secret: "awskeys"
-  ppc1.concurrency: "4"
-  ibmz1.address: "169.59.165.178"
-  ibmz1.arch: "s390x"
-  ibmz1.user: "root"
-  ibmz1.secret: "awskeys"
-  ibmz1.concurrency: "4"
+  host.ppc1.address: "150.240.147.198"
+  host.ppc1.platform: "linux/ppc64le"
+  host.ppc1.user: "root"
+  host.ppc1.secret: "awskeys"
+  host.ppc1.concurrency: "4"
+
+  host.ibmz1.address: "169.59.165.178"
+  host.ibmz1.platform: "linux/s390x"
+  host.ibmz1.user: "root"
+  host.ibmz1.secret: "awskeys"
+  host.ibmz1.concurrency: "4"

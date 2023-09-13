@@ -3,7 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
-	"github.com/stuartwdouglas/multi-arch-host-resolver/pkg/reconciler/taskrun"
+	"github.com/redhat-appstudio/multi-platform-controller/pkg/reconciler/taskrun"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
@@ -65,7 +65,7 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 
 	//if we are running this locally on the same cluster as the ckcp we want to ignore any synced pipeline runs
 	multiArchPipelines := labels.NewSelector()
-	requirement, lerr := labels.NewRequirement(taskrun.MultiArchLabel, selection.Exists, nil)
+	requirement, lerr := labels.NewRequirement(taskrun.MultiPlatformLabel, selection.Exists, nil)
 	if lerr != nil {
 		return nil, lerr
 	}
@@ -79,7 +79,7 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 	configMapSelector = configMapSelector.Add(*configMapLabels)
 
 	secretSelector := labels.NewSelector()
-	secretLabels, lerr := labels.NewRequirement(taskrun.MultiArchSecretLabel, selection.Exists, []string{})
+	secretLabels, lerr := labels.NewRequirement(taskrun.MultiPlatformSecretLabel, selection.Exists, []string{})
 	if lerr != nil {
 		return nil, lerr
 	}

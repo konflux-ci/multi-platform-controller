@@ -8,7 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/go-logr/logr"
-	"github.com/stuartwdouglas/multi-arch-host-resolver/pkg/cloud"
+	"github.com/redhat-appstudio/multi-platform-controller/pkg/cloud"
 	v1 "k8s.io/api/core/v1"
 	types2 "k8s.io/apimachinery/pkg/types"
 	"net"
@@ -16,12 +16,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func Ec2Provider(arch string, config map[string]string, systemNamespace string) cloud.CloudProvider {
-	return AwsDynamicConfig{Region: config["dynamic."+arch+".region"],
-		Ami:             config["dynamic."+arch+".ami"],
-		InstanceType:    config["dynamic."+arch+".instance-type"],
-		KeyName:         config["dynamic."+arch+".key-name"],
-		Secret:          config["dynamic."+arch+".aws-secret"],
+func Ec2Provider(platformName string, config map[string]string, systemNamespace string) cloud.CloudProvider {
+	return AwsDynamicConfig{Region: config["dynamic."+platformName+".region"],
+		Ami:             config["dynamic."+platformName+".ami"],
+		InstanceType:    config["dynamic."+platformName+".instance-type"],
+		KeyName:         config["dynamic."+platformName+".key-name"],
+		Secret:          config["dynamic."+platformName+".aws-secret"],
 		SystemNamespace: systemNamespace,
 	}
 }

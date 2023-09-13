@@ -14,7 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	"github.com/stuartwdouglas/multi-arch-host-resolver/pkg/controller"
+	"github.com/redhat-appstudio/multi-platform-controller/pkg/controller"
 	//+kubebuilder:scaffold:imports
 	"github.com/go-logr/logr"
 )

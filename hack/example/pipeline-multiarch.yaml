@@ -186,6 +186,91 @@ spec:
               workspace: workspace
             - name: basic-auth
               workspace: git-auth
+
+        - name: clone-repository-arm64
+          params:
+            - name: url
+              value: https://github.com/nodeshift-starters/devfile-sample.git
+            - name: revision
+              value: main
+          runAfter:
+            - init
+          taskRef:
+            kind: Task
+            params:
+              - name: name
+                value: git-clone
+              - name: bundle
+                value: quay.io/redhat-appstudio-tekton-catalog/task-git-clone:0.1@sha256:44260edd7da429a3bca3843be5049a15f05f658d1e9766521379e067e972c1e0
+              - name: kind
+                value: task
+            resolver: bundles
+          when:
+            - input: $(tasks.init.results.build)
+              operator: in
+              values:
+                - "true"
+          workspaces:
+            - name: output
+              workspace: workspace-arm64
+            - name: basic-auth
+              workspace: git-auth
+        - name: clone-repository-s390x
+          params:
+            - name: url
+              value: https://github.com/nodeshift-starters/devfile-sample.git
+            - name: revision
+              value: main
+          runAfter:
+            - init
+          taskRef:
+            kind: Task
+            params:
+              - name: name
+                value: git-clone
+              - name: bundle
+                value: quay.io/redhat-appstudio-tekton-catalog/task-git-clone:0.1@sha256:44260edd7da429a3bca3843be5049a15f05f658d1e9766521379e067e972c1e0
+              - name: kind
+                value: task
+            resolver: bundles
+          when:
+            - input: $(tasks.init.results.build)
+              operator: in
+              values:
+                - "true"
+          workspaces:
+            - name: output
+              workspace: workspace-s390x
+            - name: basic-auth
+              workspace: git-auth
+        - name: clone-repository-ppc64le
+          params:
+            - name: url
+              value: https://github.com/nodeshift-starters/devfile-sample.git
+            - name: revision
+              value: main
+          runAfter:
+            - init
+          taskRef:
+            kind: Task
+            params:
+              - name: name
+                value: git-clone
+              - name: bundle
+                value: quay.io/redhat-appstudio-tekton-catalog/task-git-clone:0.1@sha256:44260edd7da429a3bca3843be5049a15f05f658d1e9766521379e067e972c1e0
+              - name: kind
+                value: task
+            resolver: bundles
+          when:
+            - input: $(tasks.init.results.build)
+              operator: in
+              values:
+                - "true"
+          workspaces:
+            - name: output
+              workspace: workspace-ppc64le
+            - name: basic-auth
+              workspace: git-auth
         - name: prefetch-dependencies
           params:
             - name: input
@@ -226,8 +311,6 @@ spec:
               value: ""
             - name: COMMIT_SHA
               value: $(tasks.clone-repository.results.commit)
-            - name: ARCH
-              value: amd64
           runAfter:
             - prefetch-dependencies
           taskRef:
@@ -257,10 +340,10 @@ spec:
               value: ""
             - name: COMMIT_SHA
               value: $(tasks.clone-repository.results.commit)
-            - name: ARCH
-              value: arm64
+            - name: PLATFORM
+              value: linux/arm64
           runAfter:
-            - build-container-amd64
+            - clone-repository-arm64
           taskRef:
             kind: Task
             name: buildah-remote
@@ -271,18 +354,88 @@ spec:
                 - "true"
           workspaces:
             - name: source
-              workspace: workspace
+              workspace: workspace-arm64
+
+        - name: build-container-s390x
+          params:
+            - name: IMAGE
+              value: quay.io/sdouglas/multi-arch-resolver:multiarch-build-s390x
+            - name: DOCKERFILE
+              value: Dockerfile
+            - name: CONTEXT
+              value: .
+            - name: HERMETIC
+              value: "false"
+            - name: PREFETCH_INPUT
+              value: ""
+            - name: IMAGE_EXPIRES_AFTER
+              value: ""
+            - name: COMMIT_SHA
+              value: $(tasks.clone-repository.results.commit)
+            - name: PLATFORM
+              value: linux/s390x
+          runAfter:
+            - clone-repository-s390x
+          taskRef:
+            kind: Task
+            name: buildah-remote
+          when:
+            - input: $(tasks.init.results.build)
+              operator: in
+              values:
+                - "true"
+          workspaces:
+            - name: source
+              workspace: workspace-s390x
+
+        - name: build-container-ppc64le
+          params:
+            - name: IMAGE
+              value: quay.io/sdouglas/multi-arch-resolver:multiarch-build-ppc64le
+            - name: DOCKERFILE
+              value: Dockerfile
+            - name: CONTEXT
+              value: .
+            - name: HERMETIC
+              value: "false"
+            - name: PREFETCH_INPUT
+              value: ""
+            - name: IMAGE_EXPIRES_AFTER
+              value: ""
+            - name: COMMIT_SHA
+              value: $(tasks.clone-repository.results.commit)
+            - name: PLATFORM
+              value: linux/ppc64le
+          runAfter:
+            - clone-repository-ppc64le
+          taskRef:
+            kind: Task
+            name: buildah-remote
+          when:
+            - input: $(tasks.init.results.build)
+              operator: in
+              values:
+                - "true"
+          workspaces:
+            - name: source
+              workspace: workspace-ppc64le
         - name: build-container-multiarch
           params:
             - name: IMAGE
               value: quay.io/sdouglas/multi-arch-resolver:multiarch-build
             - name: COMMIT_SHA
               value: $(tasks.clone-repository.results.commit)
-            - name: ARCHS
-              value: amd64 arm64
+            - name: IMAGES
+              value:
+                - $(tasks.build-container-amd64.results.IMAGE_URL)@$(tasks.build-container-amd64.results.IMAGE_DIGEST)
+                - $(tasks.build-container-arm64.results.IMAGE_URL)@$(tasks.build-container-arm64.results.IMAGE_DIGEST)
+                - $(tasks.build-container-ppc64le.results.IMAGE_URL)@$(tasks.build-container-ppc64le.results.IMAGE_DIGEST)
+                - $(tasks.build-container-s390x.results.IMAGE_URL)@$(tasks.build-container-s390x.results.IMAGE_DIGEST)
           runAfter:
             - build-container-amd64
             - build-container-arm64
+            - build-container-ppc64le
+            - build-container-s390x
           taskRef:
             kind: Task
             name: buildah-multiarch
@@ -482,6 +635,39 @@ spec:
           optional: true
   workspaces:
     - name: workspace
+      volumeClaimTemplate:
+        metadata:
+          creationTimestamp: null
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi
+        status: {}
+    - name: workspace-arm64
+      volumeClaimTemplate:
+        metadata:
+          creationTimestamp: null
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi
+        status: {}
+    - name: workspace-s390x
+      volumeClaimTemplate:
+        metadata:
+          creationTimestamp: null
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi
+        status: {}
+    - name: workspace-ppc64le
       volumeClaimTemplate:
         metadata:
           creationTimestamp: null

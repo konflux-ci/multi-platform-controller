@@ -104,7 +104,7 @@ mkdir -p ~/.ssh
 cp /ssh/id_rsa ~/.ssh
 chmod 0400 ~/.ssh/id_rsa
 export SSH_HOST=$(cat /ssh/host)
-export BUILD_DIR=$(cat /ssh/build-dir)
+export BUILD_DIR=$(cat /ssh/user-dir)
 export SSH_ARGS="-o StrictHostKeyChecking=no"
 mkdir -p scripts
 echo $BUILD_DIR
@@ -178,14 +178,15 @@ fi
 	}
 
 	task.Name = "buildah-remote"
-	task.Labels["build.appstudio.redhat.com/multi-arch-required"] = "true"
+	task.Labels["build.appstudio.redhat.com/multi-platform-required"] = "true"
+	task.Spec.Params = append(task.Spec.Params, pipelinev1beta1.ParamSpec{Name: "PLATFORM", Type: pipelinev1beta1.ParamTypeString, Description: "The platform to build on"})
 
 	faleVar := false
 	task.Spec.Volumes = append(task.Spec.Volumes, v1.Volume{
 		Name: "ssh",
 		VolumeSource: v1.VolumeSource{
 			Secret: &v1.SecretVolumeSource{
-				SecretName: "multi-arch-ssh-$(context.taskRun.name)",
+				SecretName: "multi-platform-ssh-$(context.taskRun.name)",
 				Optional:   &faleVar,
 			},
 		},
@@ -194,7 +195,7 @@ fi
 
 func replaceImage(image string) string {
 	if image == "quay.io/redhat-appstudio/buildah:v1.28" {
-		return "quay.io/redhat-appstudio/buildah:v1.31"
+		return "quay.io/buildah/stable:v1.31"
 	}
 	return image
 }

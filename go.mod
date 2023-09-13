@@ -1,4 +1,4 @@
-module github.com/stuartwdouglas/multi-arch-host-resolver
+module github.com/redhat-appstudio/multi-platform-controller
 
 go 1.19
 

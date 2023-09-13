@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/go-logr/logr"
-	"github.com/stuartwdouglas/multi-arch-host-resolver/pkg/cloud"
+	"github.com/redhat-appstudio/multi-platform-controller/pkg/cloud"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -24,7 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
-const systemNamespace = "multi-arch-controller"
+const systemNamespace = "multi-platform-controller"
 const userNamespace = "default"
 
 var cloudImpl MockCloud = MockCloud{Addressses: map[cloud.InstanceIdentifier]string{}}
@@ -35,7 +35,7 @@ func setupClientAndReconciler(objs ...runtimeclient.Object) (runtimeclient.Clien
 	_ = v1.AddToScheme(scheme)
 	_ = appsv1.AddToScheme(scheme)
 	client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
-	reconciler := &ReconcileTaskRun{client: client, scheme: scheme, eventRecorder: &record.FakeRecorder{}, operatorNamespace: systemNamespace, cloudProviders: map[string]func(arch string, config map[string]string, systemnamespace string) cloud.CloudProvider{"mock": MockCloudSetup}}
+	reconciler := &ReconcileTaskRun{client: client, scheme: scheme, eventRecorder: &record.FakeRecorder{}, operatorNamespace: systemNamespace, cloudProviders: map[string]func(platform string, config map[string]string, systemnamespace string) cloud.CloudProvider{"mock": MockCloudSetup}}
 	return client, reconciler
 }
 
@@ -43,11 +43,11 @@ func TestConfigMapParsing(t *testing.T) {
 	g := NewGomegaWithT(t)
 	_, reconciler := setupClientAndReconciler(createHostConfig())
 	discard := logr.Discard()
-	configIface, err := reconciler.hostConfig(context.TODO(), &discard, "arm64")
+	configIface, err := reconciler.readConfiguration(context.TODO(), &discard, "linux/arm64")
 	config := configIface.(HostPool)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(len(config.hosts)).To(Equal(2))
-	g.Expect(config.hosts["host1"].Arch).Should(Equal("arm64"))
+	g.Expect(config.hosts["host1"].Platform).Should(Equal("linux/arm64"))
 }
 
 func TestAllocateHost(t *testing.T) {
@@ -60,7 +60,7 @@ func TestAllocateHost(t *testing.T) {
 	for _, i := range provision.Spec.Params {
 		params[i.Name] = i.Value.StringVal
 	}
-	g.Expect(params["SECRET_NAME"]).To(Equal("multi-arch-ssh-test"))
+	g.Expect(params["SECRET_NAME"]).To(Equal("multi-platform-ssh-test"))
 	g.Expect(params["TASKRUN_NAME"]).To(Equal("test"))
 	g.Expect(params["NAMESPACE"]).To(Equal(userNamespace))
 	g.Expect(params["USER"]).To(Equal("ec2-user"))
@@ -77,12 +77,12 @@ func TestAllocateCloudHost(t *testing.T) {
 	for _, i := range provision.Spec.Params {
 		params[i.Name] = i.Value.StringVal
 	}
-	g.Expect(params["SECRET_NAME"]).To(Equal("multi-arch-ssh-test"))
+	g.Expect(params["SECRET_NAME"]).To(Equal("multi-platform-ssh-test"))
 	g.Expect(params["TASKRUN_NAME"]).To(Equal("test"))
 	g.Expect(params["NAMESPACE"]).To(Equal(userNamespace))
 	g.Expect(params["USER"]).To(Equal("root"))
-	g.Expect(params["HOST"]).Should(Equal("multi-arch-builder-test.host.com"))
-	g.Expect(cloudImpl.Addressses[("multi-arch-builder-test")]).Should(Equal("multi-arch-builder-test.host.com"))
+	g.Expect(params["HOST"]).Should(Equal("multi-platform-builder-test.host.com"))
+	g.Expect(cloudImpl.Addressses[("multi-platform-builder-test")]).Should(Equal("multi-platform-builder-test.host.com"))
 
 	runSuccessfulProvision(provision, g, client, tr, reconciler)
 
@@ -98,7 +98,7 @@ func TestAllocateCloudHost(t *testing.T) {
 	_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
 	g.Expect(err).ShouldNot(HaveOccurred())
 
-	g.Expect(cloudImpl.Addressses["multi-arch-builder-test"]).Should(BeEmpty())
+	g.Expect(cloudImpl.Addressses["multi-platform-builder-test"]).Should(BeEmpty())
 
 }
 
@@ -235,11 +235,11 @@ func TestWaitForConcurrency(t *testing.T) {
 	}
 	//we are now at max concurrency
 	name := fmt.Sprintf("test-%d", 9)
-	createUserTaskRun(g, client, name, "arm64")
+	createUserTaskRun(g, client, name, "linux/arm64")
 	_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
 	g.Expect(err).ToNot(HaveOccurred())
 	tr := getUserTaskRun(g, client, name)
-	g.Expect(tr.Labels[WaitingForArchLabel]).To(Equal("arm64"))
+	g.Expect(tr.Labels[WaitingForPlatformLabel]).To(Equal("linux/arm64"))
 
 	//now complete a task
 	//now test clean up
@@ -258,7 +258,7 @@ func TestWaitForConcurrency(t *testing.T) {
 	//task is completed, this should have removed the waiting label from our existing task
 
 	tr = getUserTaskRun(g, client, name)
-	g.Expect(tr.Labels[WaitingForArchLabel]).To(BeEmpty())
+	g.Expect(tr.Labels[WaitingForPlatformLabel]).To(BeEmpty())
 	_, err = reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
 	g.Expect(err).ToNot(HaveOccurred())
 	tr = getUserTaskRun(g, client, name)
@@ -280,7 +280,7 @@ func runSuccessfulProvision(provision *pipelinev1beta1.TaskRun, g *WithT, client
 	s.Data = map[string][]byte{}
 	s.Data["id_rsa"] = []byte("expected")
 	s.Data["host"] = []byte("host")
-	s.Data["build-dir"] = []byte("buildir")
+	s.Data["user-dir"] = []byte("buildir")
 	g.Expect(client.Create(context.TODO(), &s)).ShouldNot(HaveOccurred())
 
 	_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: provision.Namespace, Name: provision.Name}})
@@ -292,7 +292,7 @@ func runSuccessfulProvision(provision *pipelinev1beta1.TaskRun, g *WithT, client
 func TestNoHostConfig(t *testing.T) {
 	g := NewGomegaWithT(t)
 	client, reconciler := setupClientAndReconciler()
-	createUserTaskRun(g, client, "test", "arm64")
+	createUserTaskRun(g, client, "test", "linux/arm64")
 	_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
 	g.Expect(err).ToNot(HaveOccurred())
 	tr := getUserTaskRun(g, client, "test")
@@ -301,7 +301,7 @@ func TestNoHostConfig(t *testing.T) {
 	secret := getSecret(g, client, tr)
 	g.Expect(secret.Data["error"]).ToNot(BeEmpty())
 }
-func TestNoHostWithOutArch(t *testing.T) {
+func TestNoHostWithOutPlatform(t *testing.T) {
 	g := NewGomegaWithT(t)
 	client, reconciler := setupClientAndReconciler(createHostConfig())
 	createUserTaskRun(g, client, "test", "powerpc")
@@ -328,7 +328,7 @@ func assertNoSecret(g *WithT, client runtimeclient.Client, tr *pipelinev1beta1.T
 	g.Expect(errors.IsNotFound(err)).To(BeTrue())
 }
 func runUserPipeline(g *WithT, client runtimeclient.Client, reconciler *ReconcileTaskRun, name string) *pipelinev1beta1.TaskRun {
-	createUserTaskRun(g, client, name, "arm64")
+	createUserTaskRun(g, client, name, "linux/arm64")
 	_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
 	g.Expect(err).ToNot(HaveOccurred())
 	tr := getUserTaskRun(g, client, name)
@@ -365,13 +365,13 @@ func getUserTaskRun(g *WithT, client runtimeclient.Client, name string) *pipelin
 	return &ret
 }
 
-func createUserTaskRun(g *WithT, client runtimeclient.Client, name string, arch string) {
+func createUserTaskRun(g *WithT, client runtimeclient.Client, name string, platform string) {
 	tr := &pipelinev1beta1.TaskRun{}
 	tr.Namespace = userNamespace
 	tr.Name = name
-	tr.Labels = map[string]string{MultiArchLabel: "true"}
+	tr.Labels = map[string]string{MultiPlatformLabel: "true"}
 	tr.Spec = pipelinev1beta1.TaskRunSpec{
-		Params: []pipelinev1beta1.Param{{Name: ArchParam, Value: *pipelinev1beta1.NewStructuredValues(arch)}},
+		Params: []pipelinev1beta1.Param{{Name: PlatformParam, Value: *pipelinev1beta1.NewStructuredValues(platform)}},
 	}
 	g.Expect(client.Create(context.TODO(), tr)).ToNot(HaveOccurred())
 }
@@ -382,16 +382,16 @@ func createHostConfig() *v1.ConfigMap {
 	cm.Namespace = systemNamespace
 	cm.Labels = map[string]string{ConfigMapLabel: "hosts"}
 	cm.Data = map[string]string{
-		"host1.address":     "ec2-54-165-44-192.compute-1.amazonaws.com",
-		"host1.secret":      "awskeys",
-		"host1.concurrency": "4",
-		"host1.user":        "ec2-user",
-		"host1.arch":        "arm64",
-		"host2.address":     "ec2-34-227-115-211.compute-1.amazonaws.com",
-		"host2.secret":      "awskeys",
-		"host2.concurrency": "4",
-		"host2.user":        "ec2-user",
-		"host2.arch":        "arm64",
+		"host.host1.address":     "ec2-54-165-44-192.compute-1.amazonaws.com",
+		"host.host1.secret":      "awskeys",
+		"host.host1.concurrency": "4",
+		"host.host1.user":        "ec2-user",
+		"host.host1.platform":    "linux/arm64",
+		"host.host2.address":     "ec2-34-227-115-211.compute-1.amazonaws.com",
+		"host.host2.secret":      "awskeys",
+		"host.host2.concurrency": "4",
+		"host.host2.user":        "ec2-user",
+		"host.host2.platform":    "linux/arm64",
 	}
 	return &cm
 }
@@ -402,15 +402,15 @@ func createDynamicHostConfig() *v1.ConfigMap {
 	cm.Namespace = systemNamespace
 	cm.Labels = map[string]string{ConfigMapLabel: "hosts"}
 	cm.Data = map[string]string{
-		"dynamic.architectures":       "arm64",
-		"dynamic.arm64.type":          "mock",
-		"dynamic.arm64.region":        "us-east-1",
-		"dynamic.arm64.ami":           "ami-03d6a5256a46c9feb",
-		"dynamic.arm64.instance-type": "t4g.medium",
-		"dynamic.arm64.key-name":      "sdouglas-arm-test",
-		"dynamic.arm64.aws-secret":    "awsiam",
-		"dynamic.arm64.ssh-secret":    "awskeys",
-		"dynamic.arm64.max-instances": "2",
+		"dynamic-platforms":                 "linux/arm64",
+		"dynamic.linux-arm64.type":          "mock",
+		"dynamic.linux-arm64.region":        "us-east-1",
+		"dynamic.linux-arm64.ami":           "ami-03d6a5256a46c9feb",
+		"dynamic.linux-arm64.instance-type": "t4g.medium",
+		"dynamic.linux-arm64.key-name":      "sdouglas-arm-test",
+		"dynamic.linux-arm64.aws-secret":    "awsiam",
+		"dynamic.linux-arm64.ssh-secret":    "awskeys",
+		"dynamic.linux-arm64.max-instances": "2",
 	}
 	return &cm
 }
@@ -446,6 +446,6 @@ func (m *MockCloud) GetInstanceAddress(kubeClient runtimeclient.Client, log *log
 	return addr, nil
 }
 
-func MockCloudSetup(arch string, data map[string]string, systemnamespace string) cloud.CloudProvider {
+func MockCloudSetup(platform string, data map[string]string, systemnamespace string) cloud.CloudProvider {
 	return &cloudImpl
 }
