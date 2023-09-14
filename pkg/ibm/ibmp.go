@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func IBMPowerProvider(platform string, config map[string]string, systemNamespace string) cloud.CloudProvider {
@@ -40,7 +41,7 @@ func IBMPowerProvider(platform string, config map[string]string, systemNamespace
 	}
 }
 
-func (r IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, _ string) (cloud.InstanceIdentifier, error) {
+func (r IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, taskRunName string, instanceTag string) (cloud.InstanceIdentifier, error) {
 	service, err := r.authenticate(kubeClient, ctx)
 	if err != nil {
 		return "", err
@@ -50,13 +51,52 @@ func (r IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, log *log
 	if err != nil {
 		return "", err
 	}
-	name := "multi-" + strings.Replace(strings.ToLower(base64.URLEncoding.EncodeToString(md5.New().Sum(binary))[0:20]), "_", "-", -1) + "x" //#nosec
+	name := instanceTag + strings.Replace(strings.ToLower(base64.URLEncoding.EncodeToString(md5.New().Sum(binary))[0:20]), "_", "-", -1) + "x" //#nosec
 	instance, err := r.createServerInstance(ctx, log, service, name)
 	if err != nil {
 		return "", err
 	}
 	return instance, err
 
+}
+
+func (r IBMPowerDynamicConfig) CountInstances(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceTag string) (int, error) {
+	service, err := r.authenticate(kubeClient, ctx)
+	if err != nil {
+		return 0, err
+	}
+	builder := core.NewRequestBuilder(core.GET)
+	builder = builder.WithContext(ctx)
+	builder.EnableGzipCompression = service.GetEnableGzipCompression()
+
+	pathParamsMap := map[string]string{
+		"cloud": r.pCloudId(),
+	}
+	_, err = builder.ResolveRequestURL(r.Url, `/pcloud/v1/cloud-instances/{cloud}/pvm-instances`, pathParamsMap)
+	if err != nil {
+		return 0, err
+	}
+	builder.AddHeader("CRN", r.CRN)
+	builder.AddHeader("Accept", "application/json")
+
+	request, err := builder.Build()
+	if err != nil {
+		return 0, err
+	}
+
+	var rawResponse map[string]json.RawMessage
+	_, err = service.Request(request, &rawResponse)
+	//println(response.String())
+	if err != nil {
+		return 0, err
+	}
+	instancesData := rawResponse["pvmInstances"]
+	instances := []json.RawMessage{}
+	err = json.Unmarshal(instancesData, &instances)
+	if err != nil {
+		return 0, err
+	}
+	return len(rawResponse), nil
 }
 
 func (r IBMPowerDynamicConfig) authenticate(kubeClient client.Client, ctx context.Context) (*core.BaseService, error) {
@@ -103,7 +143,32 @@ func (r IBMPowerDynamicConfig) TerminateInstance(kubeClient client.Client, log *
 	if err != nil {
 		return err
 	}
-	return r.deleteServer(ctx, service, string(instanceId))
+	_ = r.deleteServer(ctx, service, string(instanceId))
+	timeout := time.Now().Add(time.Minute * 10)
+	go func() {
+		service, err := r.authenticate(kubeClient, context.Background())
+		if err != nil {
+			return
+		}
+		for {
+			_, err := r.lookupInstance(ctx, service, string(instanceId))
+			if err == nil {
+				//its gone, return
+				return
+			}
+			//we want to make really sure it is gone, delete opts don't really work when the server is starting
+			//so we just try in a loop
+			err = r.deleteServer(ctx, service, string(instanceId))
+			if err != nil {
+				log.Error(err, "failed to delete system z instance")
+			}
+			if timeout.Before(time.Now()) {
+				return
+			}
+			time.Sleep(time.Second * 10)
+		}
+	}()
+	return nil
 }
 
 type IBMPowerDynamicConfig struct {
@@ -173,8 +238,8 @@ func (r IBMPowerDynamicConfig) createServerInstance(ctx context.Context, log *lo
 	}
 
 	var rawResponse []map[string]json.RawMessage
-	response, err := service.Request(request, &rawResponse)
-	println(response.String())
+	_, err = service.Request(request, &rawResponse)
+	//println(response.String())
 	if err != nil {
 		log.Error(err, "failed to start power server")
 		return "", err
@@ -190,29 +255,7 @@ func (r IBMPowerDynamicConfig) createServerInstance(ctx context.Context, log *lo
 
 func (r IBMPowerDynamicConfig) lookupIp(ctx context.Context, service *core.BaseService, pvmId string) (string, error) {
 
-	builder := core.NewRequestBuilder(core.GET)
-	builder = builder.WithContext(ctx)
-	builder.EnableGzipCompression = service.GetEnableGzipCompression()
-
-	pathParamsMap := map[string]string{
-		"cloud":           r.pCloudId(),
-		"pvm_instance_id": pvmId,
-	}
-	_, err := builder.ResolveRequestURL(r.Url, `/pcloud/v1/cloud-instances/{cloud}/pvm-instances/{pvm_instance_id}`, pathParamsMap)
-	if err != nil {
-		return "", err
-	}
-	builder.AddHeader("CRN", r.CRN)
-	builder.AddHeader("Accept", "application/json")
-
-	request, err := builder.Build()
-	if err != nil {
-		return "", err
-	}
-
-	var rawResponse map[string]json.RawMessage
-	_, err = service.Request(request, &rawResponse)
-	//println(response.String())
+	rawResponse, err := r.lookupInstance(ctx, service, pvmId)
 	if err != nil {
 		return "", err
 	}
@@ -230,6 +273,36 @@ func (r IBMPowerDynamicConfig) lookupIp(ctx context.Context, service *core.BaseS
 		return external[1 : len(external)-1], nil
 	}
 	return external, nil
+}
+
+func (r IBMPowerDynamicConfig) lookupInstance(ctx context.Context, service *core.BaseService, pvmId string) (map[string]json.RawMessage, error) {
+	builder := core.NewRequestBuilder(core.GET)
+	builder = builder.WithContext(ctx)
+	builder.EnableGzipCompression = service.GetEnableGzipCompression()
+
+	pathParamsMap := map[string]string{
+		"cloud":           r.pCloudId(),
+		"pvm_instance_id": pvmId,
+	}
+	_, err := builder.ResolveRequestURL(r.Url, `/pcloud/v1/cloud-instances/{cloud}/pvm-instances/{pvm_instance_id}`, pathParamsMap)
+	if err != nil {
+		return nil, err
+	}
+	builder.AddHeader("CRN", r.CRN)
+	builder.AddHeader("Accept", "application/json")
+
+	request, err := builder.Build()
+	if err != nil {
+		return nil, err
+	}
+
+	var rawResponse map[string]json.RawMessage
+	_, err = service.Request(request, &rawResponse)
+	//println(response.String())
+	if err != nil {
+		return nil, err
+	}
+	return rawResponse, nil
 }
 
 func (r IBMPowerDynamicConfig) deleteServer(ctx context.Context, service *core.BaseService, pvmId string) error {
