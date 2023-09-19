@@ -168,7 +168,7 @@ fi
 			}
 		}
 		step.Script = ret
-		step.Image = "quay.io/sdouglas/registry:multiarch"
+		step.Image = "quay.io/redhat-user-workloads/rhtap-build-tenant/multi-arch-controller/hacktask-image-multi-platform-controller:build-6d7bd-1694570872@sha256:50b0745f503cb73f3441bddd74bc89d6cdd177fa8a376112065bef9f4cd15e79"
 		step.ImagePullPolicy = v1.PullAlways
 		step.VolumeMounts = append(step.VolumeMounts, v1.VolumeMount{
 			Name:      "ssh",
