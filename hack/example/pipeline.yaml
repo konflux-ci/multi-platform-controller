@@ -226,7 +226,7 @@ spec:
               value: ""
             - name: COMMIT_SHA
               value: $(tasks.clone-repository.results.commit)
-            - name: ARCH
+            - name: PLATFORM
               value: ppc64le
           runAfter:
             - prefetch-dependencies
