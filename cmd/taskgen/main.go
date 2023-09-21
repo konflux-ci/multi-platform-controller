@@ -107,8 +107,8 @@ export SSH_HOST=$(cat /ssh/host)
 export BUILD_DIR=$(cat /ssh/user-dir)
 export SSH_ARGS="-o StrictHostKeyChecking=no"
 mkdir -p scripts
-echo $BUILD_DIR
-ssh $SSH_ARGS $SSH_HOST  mkdir -p $BUILD_DIR/workspaces $BUILD_DIR/scripts
+echo "$BUILD_DIR"
+ssh $SSH_ARGS "$SSH_HOST"  mkdir -p "$BUILD_DIR/workspaces" "$BUILD_DIR/scripts"
 
 PORT_FORWARD=""
 PODMAN_PORT_FORWARD=""
@@ -121,8 +121,8 @@ fi
 		env := "$PODMAN_PORT_FORWARD"
 		//before the build we sync the contents of the workspace to the remote host
 		for _, workspace := range task.Spec.Workspaces {
-			ret += "\nrsync -ra $(workspaces." + workspace.Name + ".path)/ $SSH_HOST:$BUILD_DIR/workspaces/" + workspace.Name + "/"
-			podmanArgs += " -v $BUILD_DIR/workspaces/" + workspace.Name + ":$(workspaces." + workspace.Name + ".path):Z "
+			ret += "\nrsync -ra $(workspaces." + workspace.Name + ".path)/ \"$SSH_HOST:$BUILD_DIR/workspaces/" + workspace.Name + "/\""
+			podmanArgs += " -v \"$BUILD_DIR/workspaces/" + workspace.Name + ":$(workspaces." + workspace.Name + ".path):Z\" "
 		}
 		script := "scripts/script-" + step.Name + ".sh"
 
@@ -136,31 +136,31 @@ fi
 		}
 
 		ret += step.Script
-		ret += "\nbuildah push $IMAGE oci:rhtap-final-image"
+		ret += "\nbuildah push \"$IMAGE\" oci:rhtap-final-image"
 		ret += "\nREMOTESSHEOF"
 		ret += "\nchmod +x " + script
 
 		if task.Spec.StepTemplate != nil {
 			for _, e := range task.Spec.StepTemplate.Env {
-				env += " -e " + e.Name + "=" + e.Value
+				env += " -e " + e.Name + "=\"$" + e.Name + "\""
 			}
 		}
-		ret += "\nrsync -ra scripts $SSH_HOST:$BUILD_DIR"
+		ret += "\nrsync -ra scripts \"$SSH_HOST:$BUILD_DIR\""
 		containerScript := "/script/script-" + step.Name + ".sh"
 		for _, e := range step.Env {
 			env += " -e " + e.Name + "=" + e.Value + " "
 		}
 
-		ret += "\nssh $SSH_ARGS $SSH_HOST $PORT_FORWARD podman  run " + env + " --rm " + podmanArgs + " -v $BUILD_DIR/scripts:/script:Z --user=0  " + replaceImage(step.Image) + "  " + containerScript
+		ret += "\nssh $SSH_ARGS \"$SSH_HOST\" $PORT_FORWARD podman  run " + env + " --rm " + podmanArgs + " -v $BUILD_DIR/scripts:/script:Z --user=0  " + replaceImage(step.Image) + "  " + containerScript
 
 		//sync the contents of the workspaces back so subsequent tasks can use them
 		for _, workspace := range task.Spec.Workspaces {
-			ret += "\nrsync -ra $SSH_HOST:$BUILD_DIR/workspaces/" + workspace.Name + "/ $(workspaces." + workspace.Name + ".path)/"
+			ret += "\nrsync -ra \"$SSH_HOST:$BUILD_DIR/workspaces/" + workspace.Name + "/\" \"$(workspaces." + workspace.Name + ".path)/\""
 		}
 		ret += "\nbuildah pull oci:rhtap-final-image"
 		ret += "\nbuildah images"
-		ret += "\nbuildah tag localhost/rhtap-final-image $IMAGE"
-		ret += "\ncontainer=$(buildah from --pull-never $IMAGE)\nbuildah mount $container | tee /workspace/container_path\necho $container > /workspace/container_name"
+		ret += "\nbuildah tag localhost/rhtap-final-image \"$IMAGE\""
+		ret += "\ncontainer=$(buildah from --pull-never \"$IMAGE\")\nbuildah mount \"$container\" | tee /workspace/container_path\necho $container > /workspace/container_name"
 
 		for _, i := range strings.Split(ret, "\n") {
 			if strings.HasSuffix(i, " ") {
