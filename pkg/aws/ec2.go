@@ -26,7 +26,7 @@ func Ec2Provider(platformName string, config map[string]string, systemNamespace 
 	}
 }
 
-func (configMapInfo AwsDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, name string) (cloud.InstanceIdentifier, error) {
+func (configMapInfo AwsDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, name string, instanceTag string) (cloud.InstanceIdentifier, error) {
 	// Load AWS credentials and configuration
 
 	cfg, err := config.LoadDefaultConfig(ctx,
@@ -54,7 +54,7 @@ func (configMapInfo AwsDynamicConfig) LaunchInstance(kubeClient client.Client, l
 			Ebs:         &types.EbsBlockDevice{VolumeSize: aws.Int32(40)},
 		}},
 		InstanceInitiatedShutdownBehavior: types.ShutdownBehaviorTerminate,
-		TagSpecifications:                 []types.TagSpecification{{ResourceType: types.ResourceTypeInstance, Tags: []types.Tag{{Key: aws.String("multi-arch-builder"), Value: aws.String("true")}, {Key: aws.String("Name"), Value: aws.String(name)}}}},
+		TagSpecifications:                 []types.TagSpecification{{ResourceType: types.ResourceTypeInstance, Tags: []types.Tag{{Key: aws.String(cloud.InstanceTag), Value: aws.String(instanceTag)}, {Key: aws.String("Name"), Value: aws.String("multi-platform-builder-" + name)}}}},
 	}
 
 	// Launch the new EC2 instance
@@ -70,6 +70,28 @@ func (configMapInfo AwsDynamicConfig) LaunchInstance(kubeClient client.Client, l
 	} else {
 		return "", fmt.Errorf("no instances were created")
 	}
+}
+
+func (configMapInfo AwsDynamicConfig) CountInstances(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceTag string) (int, error) {
+	cfg, err := config.LoadDefaultConfig(ctx,
+		config.WithCredentialsProvider(SecretCredentialsProvider{Name: configMapInfo.Secret, Namespace: configMapInfo.SystemNamespace, Client: kubeClient}),
+		config.WithRegion(configMapInfo.Region))
+	if err != nil {
+		return 0, err
+	}
+
+	// Create an EC2 client
+	ec2Client := ec2.NewFromConfig(cfg)
+	res, err := ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{Filters: []types.Filter{{Name: aws.String("tag:" + cloud.InstanceTag), Values: []string{instanceTag}}}})
+	if err != nil {
+		log.Error(err, "failed to describe instance")
+		return 0, err
+	}
+	count := 0
+	for _, res := range res.Reservations {
+		count += len(res.Instances)
+	}
+	return count, nil
 }
 
 func (configMapInfo AwsDynamicConfig) GetInstanceAddress(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {

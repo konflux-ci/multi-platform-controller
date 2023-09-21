@@ -43,7 +43,7 @@ func TestConfigMapParsing(t *testing.T) {
 	g := NewGomegaWithT(t)
 	_, reconciler := setupClientAndReconciler(createHostConfig())
 	discard := logr.Discard()
-	configIface, err := reconciler.readConfiguration(context.TODO(), &discard, "linux/arm64")
+	configIface, _, err := reconciler.readConfiguration(context.TODO(), &discard, "linux/arm64")
 	config := configIface.(HostPool)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(len(config.hosts)).To(Equal(2))
@@ -81,8 +81,8 @@ func TestAllocateCloudHost(t *testing.T) {
 	g.Expect(params["TASKRUN_NAME"]).To(Equal("test"))
 	g.Expect(params["NAMESPACE"]).To(Equal(userNamespace))
 	g.Expect(params["USER"]).To(Equal("root"))
-	g.Expect(params["HOST"]).Should(Equal("multi-platform-builder-test.host.com"))
-	g.Expect(cloudImpl.Addressses[("multi-platform-builder-test")]).Should(Equal("multi-platform-builder-test.host.com"))
+	g.Expect(params["HOST"]).Should(Equal("test.host.com"))
+	g.Expect(cloudImpl.Addressses[("test")]).Should(Equal("test.host.com"))
 
 	runSuccessfulProvision(provision, g, client, tr, reconciler)
 
@@ -239,7 +239,7 @@ func TestWaitForConcurrency(t *testing.T) {
 	_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
 	g.Expect(err).ToNot(HaveOccurred())
 	tr := getUserTaskRun(g, client, name)
-	g.Expect(tr.Labels[WaitingForPlatformLabel]).To(Equal("linux/arm64"))
+	g.Expect(tr.Labels[WaitingForPlatformLabel]).To(Equal("linux-arm64"))
 
 	//now complete a task
 	//now test clean up
@@ -421,11 +421,15 @@ type MockCloud struct {
 	Addressses map[cloud.InstanceIdentifier]string
 }
 
+func (m *MockCloud) CountInstances(kubeClient runtimeclient.Client, log *logr.Logger, ctx context.Context, instanceTag string) (int, error) {
+	return m.Running, nil
+}
+
 func (m *MockCloud) SshUser() string {
 	return "root"
 }
 
-func (m *MockCloud) LaunchInstance(kubeClient runtimeclient.Client, log *logr.Logger, ctx context.Context, name string) (cloud.InstanceIdentifier, error) {
+func (m *MockCloud) LaunchInstance(kubeClient runtimeclient.Client, log *logr.Logger, ctx context.Context, name string, instanceTag string) (cloud.InstanceIdentifier, error) {
 	m.Running++
 	return cloud.InstanceIdentifier(name), nil
 }

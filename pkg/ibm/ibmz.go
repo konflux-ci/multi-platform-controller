@@ -14,6 +14,7 @@ import (
 	"os"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strings"
+	"time"
 
 	"github.com/IBM/go-sdk-core/v4/core"
 	"github.com/IBM/vpc-go-sdk/vpcv1"
@@ -34,7 +35,7 @@ func IBMZProvider(arch string, config map[string]string, systemNamespace string)
 	}
 }
 
-func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, _ string) (cloud.InstanceIdentifier, error) {
+func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, taskRunName string, instanceTag string) (cloud.InstanceIdentifier, error) {
 	vpcService, err := r.authenticate(kubeClient, ctx)
 	if err != nil {
 		return "", err
@@ -44,7 +45,7 @@ func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Lo
 	if err != nil {
 		return "", err
 	}
-	name := "multi-" + strings.Replace(strings.ToLower(base64.URLEncoding.EncodeToString(md5.New().Sum(binary))[0:20]), "_", "-", -1) + "x" //#nosec
+	name := instanceTag + "-" + strings.Replace(strings.ToLower(base64.URLEncoding.EncodeToString(md5.New().Sum(binary))[0:20]), "_", "-", -1) + "x" //#nosec
 	truebool := true
 	size := int64(20)
 
@@ -103,6 +104,29 @@ func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Lo
 
 	return cloud.InstanceIdentifier(*result.ID), nil
 
+}
+
+func (r IBMZDynamicConfig) CountInstances(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceTag string) (int, error) {
+	vpcService, err := r.authenticate(kubeClient, ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	vpc, err := r.lookupVpc(vpcService)
+	if err != nil {
+		return 0, err
+	}
+	instances, _, err := vpcService.ListInstances(&vpcv1.ListInstancesOptions{ResourceGroupID: vpc.ResourceGroup.ID, VPCName: &r.Vpc})
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for _, instance := range instances.Instances {
+		if strings.HasPrefix(*instance.Name, instanceTag) {
+			count++
+		}
+	}
+	return count, nil
 }
 
 func (r IBMZDynamicConfig) lookupSubnet(vpcService *vpcv1.VpcV1) (*vpcv1.Subnet, error) {
@@ -164,7 +188,7 @@ func (r IBMZDynamicConfig) lookupVpc(vpcService *vpcv1.VpcV1) (*vpcv1.VPC, error
 	}
 	var vpc *vpcv1.VPC
 	for i := range vpcs.Vpcs {
-		println("VPC: " + *vpcs.Vpcs[i].Name)
+		//println("VPC: " + *vpcs.Vpcs[i].Name)
 		if *vpcs.Vpcs[i].Name == r.Vpc {
 			vpc = &vpcs.Vpcs[i]
 			break
@@ -283,21 +307,40 @@ func checkAddressLive(addr string, log *logr.Logger) (string, error) {
 }
 
 func (r IBMZDynamicConfig) TerminateInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
-	vpcService, err := r.authenticate(kubeClient, ctx)
-	if err != nil {
-		return err
-	}
-	instance, _, err := vpcService.GetInstance(&vpcv1.GetInstanceOptions{ID: ptr(string(instanceId))})
-	if err != nil {
-		return err
-	}
-	switch *instance.Status {
-	case vpcv1.InstanceStatusDeletingConst:
-		//already done
-		return nil
-	}
-	_, err = vpcService.DeleteInstance(&vpcv1.DeleteInstanceOptions{ID: instance.ID})
-	return err
+
+	timeout := time.Now().Add(time.Minute * 10)
+	go func() {
+		vpcService, err := r.authenticate(kubeClient, context.Background())
+		if err != nil {
+			return
+		}
+		for {
+			instance, _, err := vpcService.GetInstance(&vpcv1.GetInstanceOptions{ID: ptr(string(instanceId))})
+			if err != nil {
+				log.Error(err, "failed to delete system z instance, unable to get instance")
+				return
+			}
+			switch *instance.Status {
+			case vpcv1.InstanceStatusDeletingConst:
+				//already done
+				return
+			case vpcv1.InstanceStatusPendingConst:
+				//pending instances don't delete properly
+				time.Sleep(time.Second * 10)
+				continue
+			}
+			_, err = vpcService.DeleteInstance(&vpcv1.DeleteInstanceOptions{ID: instance.ID})
+			if err != nil {
+				log.Error(err, "failed to delete system z instance")
+			}
+			if timeout.Before(time.Now()) {
+				return
+			}
+			time.Sleep(time.Second * 10)
+		}
+	}()
+
+	return nil
 }
 
 type SecretCredentialsProvider struct {
