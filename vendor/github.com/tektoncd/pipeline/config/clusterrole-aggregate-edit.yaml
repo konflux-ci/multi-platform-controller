@@ -29,8 +29,8 @@ rules:
   - taskruns
   - pipelines
   - pipelineruns
-  - pipelineresources
   - runs
+  - customruns
   verbs:
   - create
   - delete
