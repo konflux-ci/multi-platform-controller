@@ -6,7 +6,6 @@ metadata:
   name: host-config
   namespace: multi-arch-controller
 data:
-  allowed-namespaces: "*"
   dynamic-platforms: linux/arm64,linux/s390x,linux/ppc64le
   instance-tag: QUAY_USERNAME-development
 
