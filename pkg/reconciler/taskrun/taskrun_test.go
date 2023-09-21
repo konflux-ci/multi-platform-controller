@@ -14,7 +14,7 @@ import (
 	"time"
 
 	. "github.com/onsi/gomega"
-	pipelinev1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
@@ -31,7 +31,7 @@ var cloudImpl MockCloud = MockCloud{Addressses: map[cloud.InstanceIdentifier]str
 
 func setupClientAndReconciler(objs ...runtimeclient.Object) (runtimeclient.Client, *ReconcileTaskRun) {
 	scheme := runtime.NewScheme()
-	_ = pipelinev1beta1.AddToScheme(scheme)
+	_ = pipelinev1.AddToScheme(scheme)
 	_ = v1.AddToScheme(scheme)
 	_ = appsv1.AddToScheme(scheme)
 	client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
@@ -199,7 +199,7 @@ func TestProvisionSuccess(t *testing.T) {
 	assertNoSecret(g, client, tr)
 
 	//make sure the task runs were cleaned up
-	list := pipelinev1beta1.TaskRunList{}
+	list := pipelinev1.TaskRunList{}
 	err = client.List(context.TODO(), &list)
 	g.Expect(err).ToNot(HaveOccurred())
 	//reconcile the provision/cleanup tasks, which should delete them
@@ -236,7 +236,7 @@ func TestProvisionSuccess(t *testing.T) {
 func TestWaitForConcurrency(t *testing.T) {
 	g := NewGomegaWithT(t)
 	client, reconciler := setupClientAndReconciler(createHostConfig())
-	runs := []*pipelinev1beta1.TaskRun{}
+	runs := []*pipelinev1.TaskRun{}
 	for i := 0; i < 8; i++ {
 		tr := runUserPipeline(g, client, reconciler, fmt.Sprintf("test-%d", i))
 		provision := getProvisionTaskRun(g, client, tr)
@@ -275,7 +275,7 @@ func TestWaitForConcurrency(t *testing.T) {
 	g.Expect(getProvisionTaskRun(g, client, tr)).ToNot(BeNil())
 }
 
-func runSuccessfulProvision(provision *pipelinev1beta1.TaskRun, g *WithT, client runtimeclient.Client, tr *pipelinev1beta1.TaskRun, reconciler *ReconcileTaskRun) {
+func runSuccessfulProvision(provision *pipelinev1.TaskRun, g *WithT, client runtimeclient.Client, tr *pipelinev1.TaskRun, reconciler *ReconcileTaskRun) {
 	provision.Status.CompletionTime = &metav1.Time{Time: time.Now().Add(time.Hour * -2)}
 	provision.Status.SetCondition(&apis.Condition{
 		Type:               apis.ConditionSucceeded,
@@ -324,20 +324,20 @@ func TestNoHostWithOutPlatform(t *testing.T) {
 	g.Expect(secret.Data["error"]).ToNot(BeEmpty())
 }
 
-func getSecret(g *WithT, client runtimeclient.Client, tr *pipelinev1beta1.TaskRun) *v1.Secret {
+func getSecret(g *WithT, client runtimeclient.Client, tr *pipelinev1.TaskRun) *v1.Secret {
 	name := SecretPrefix + tr.Name
 	secret := v1.Secret{}
 	g.Expect(client.Get(context.TODO(), types.NamespacedName{Namespace: tr.Namespace, Name: name}, &secret)).ToNot(HaveOccurred())
 	return &secret
 }
 
-func assertNoSecret(g *WithT, client runtimeclient.Client, tr *pipelinev1beta1.TaskRun) {
+func assertNoSecret(g *WithT, client runtimeclient.Client, tr *pipelinev1.TaskRun) {
 	name := SecretPrefix + tr.Name
 	secret := v1.Secret{}
 	err := client.Get(context.TODO(), types.NamespacedName{Namespace: tr.Namespace, Name: name}, &secret)
 	g.Expect(errors.IsNotFound(err)).To(BeTrue())
 }
-func runUserPipeline(g *WithT, client runtimeclient.Client, reconciler *ReconcileTaskRun, name string) *pipelinev1beta1.TaskRun {
+func runUserPipeline(g *WithT, client runtimeclient.Client, reconciler *ReconcileTaskRun, name string) *pipelinev1.TaskRun {
 	createUserTaskRun(g, client, name, "linux/arm64")
 	_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
 	g.Expect(err).ToNot(HaveOccurred())
@@ -352,8 +352,8 @@ func runUserPipeline(g *WithT, client runtimeclient.Client, reconciler *Reconcil
 	return tr
 }
 
-func getProvisionTaskRun(g *WithT, client runtimeclient.Client, tr *pipelinev1beta1.TaskRun) *pipelinev1beta1.TaskRun {
-	list := pipelinev1beta1.TaskRunList{}
+func getProvisionTaskRun(g *WithT, client runtimeclient.Client, tr *pipelinev1.TaskRun) *pipelinev1.TaskRun {
+	list := pipelinev1.TaskRunList{}
 	err := client.List(context.TODO(), &list)
 	g.Expect(err).ToNot(HaveOccurred())
 	for i := range list.Items {
@@ -368,20 +368,20 @@ func getProvisionTaskRun(g *WithT, client runtimeclient.Client, tr *pipelinev1be
 	return nil
 }
 
-func getUserTaskRun(g *WithT, client runtimeclient.Client, name string) *pipelinev1beta1.TaskRun {
-	ret := pipelinev1beta1.TaskRun{}
+func getUserTaskRun(g *WithT, client runtimeclient.Client, name string) *pipelinev1.TaskRun {
+	ret := pipelinev1.TaskRun{}
 	err := client.Get(context.TODO(), types.NamespacedName{Namespace: userNamespace, Name: name}, &ret)
 	g.Expect(err).ToNot(HaveOccurred())
 	return &ret
 }
 
 func createUserTaskRun(g *WithT, client runtimeclient.Client, name string, platform string) {
-	tr := &pipelinev1beta1.TaskRun{}
+	tr := &pipelinev1.TaskRun{}
 	tr.Namespace = userNamespace
 	tr.Name = name
 	tr.Labels = map[string]string{MultiPlatformLabel: "true"}
-	tr.Spec = pipelinev1beta1.TaskRunSpec{
-		Params: []pipelinev1beta1.Param{{Name: PlatformParam, Value: *pipelinev1beta1.NewStructuredValues(platform)}},
+	tr.Spec = pipelinev1.TaskRunSpec{
+		Params: []pipelinev1.Param{{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues(platform)}},
 	}
 	g.Expect(client.Create(context.TODO(), tr)).ToNot(HaveOccurred())
 }

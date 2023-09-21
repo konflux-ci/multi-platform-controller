@@ -3,7 +3,7 @@ package taskrun
 import (
 	"context"
 	"github.com/go-logr/logr"
-	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v12 "k8s.io/api/core/v1"
 	"k8s.io/utils/strings/slices"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -18,7 +18,7 @@ type HostPool struct {
 	targetPlatform string
 }
 
-func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string, instanceTag string) (reconcile.Result, error) {
+func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, instanceTag string) (reconcile.Result, error) {
 	if len(hp.hosts) == 0 {
 		//no hosts configured
 		return reconcile.Result{}, r.createErrorSecret(ctx, tr, secretName, "no hosts configured")
@@ -27,7 +27,7 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.
 	failed := strings.Split(failedString, ",")
 
 	//get all existing runs that are assigned to a host
-	taskList := v1beta1.TaskRunList{}
+	taskList := v1.TaskRunList{}
 	err := r.client.List(ctx, &taskList, client.HasLabels{AssignedHost})
 	if err != nil {
 		return reconcile.Result{}, err
@@ -113,39 +113,39 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.
 	return reconcile.Result{}, nil
 }
 
-func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string, selectedHost string) error {
+func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, selectedHost string) error {
 	selected := hp.hosts[selectedHost]
 	if selected != nil {
 		log.Info("starting cleanup task")
 		//kick off the clean task
 		//kick off the provisioning task
-		provision := v1beta1.TaskRun{}
+		provision := v1.TaskRun{}
 		provision.GenerateName = "cleanup-task"
 		provision.Namespace = r.operatorNamespace
 		provision.Labels = map[string]string{TaskTypeLabel: TaskTypeClean, UserTaskName: tr.Name, UserTaskNamespace: tr.Namespace, MultiPlatformLabel: "true"}
-		provision.Spec.TaskRef = &v1beta1.TaskRef{Name: "clean-shared-host"}
-		provision.Spec.Workspaces = []v1beta1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: selected.Secret}}}
+		provision.Spec.TaskRef = &v1.TaskRef{Name: "clean-shared-host"}
+		provision.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: selected.Secret}}}
 		provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
-		provision.Spec.Params = []v1beta1.Param{
+		provision.Spec.Params = []v1.Param{
 			{
 				Name:  "SECRET_NAME",
-				Value: *v1beta1.NewStructuredValues(secretName),
+				Value: *v1.NewStructuredValues(secretName),
 			},
 			{
 				Name:  "TASKRUN_NAME",
-				Value: *v1beta1.NewStructuredValues(tr.Name),
+				Value: *v1.NewStructuredValues(tr.Name),
 			},
 			{
 				Name:  "NAMESPACE",
-				Value: *v1beta1.NewStructuredValues(tr.Namespace),
+				Value: *v1.NewStructuredValues(tr.Namespace),
 			},
 			{
 				Name:  "HOST",
-				Value: *v1beta1.NewStructuredValues(selected.Address),
+				Value: *v1.NewStructuredValues(selected.Address),
 			},
 			{
 				Name:  "USER",
-				Value: *v1beta1.NewStructuredValues(selected.User),
+				Value: *v1.NewStructuredValues(selected.User),
 			},
 		}
 		err := r.client.Create(ctx, &provision)

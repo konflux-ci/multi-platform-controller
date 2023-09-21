@@ -9,7 +9,7 @@ import (
 	"github.com/redhat-appstudio/multi-platform-controller/pkg/ibm"
 	"regexp"
 
-	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v12 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -92,7 +92,7 @@ func (r *ReconcileTaskRun) Reconcile(ctx context.Context, request reconcile.Requ
 	log := ctrl.Log.WithName("taskrun").WithValues("request", request.NamespacedName)
 	log.Info("Reconciling")
 
-	pr := v1beta1.TaskRun{}
+	pr := v1.TaskRun{}
 	prerr := r.client.Get(ctx, request.NamespacedName, &pr)
 	if prerr != nil {
 		if !errors.IsNotFound(prerr) {
@@ -114,7 +114,7 @@ func (r *ReconcileTaskRun) Reconcile(ctx context.Context, request reconcile.Requ
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, log *logr.Logger, tr *v1.TaskRun) (reconcile.Result, error) {
 	if tr.Labels == nil {
 		return reconcile.Result{}, nil
 	}
@@ -138,13 +138,13 @@ func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, log *logr.
 func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, log *logr.Logger, platform string) (reconcile.Result, error) {
 
 	//try and requeue a waiting task if one exists
-	taskList := v1beta1.TaskRunList{}
+	taskList := v1.TaskRunList{}
 
 	err := r.client.List(ctx, &taskList, client.MatchingLabels{WaitingForPlatformLabel: platformLabel(platform)})
 	if err != nil {
 		return reconcile.Result{}, err
 	}
-	var oldest *v1beta1.TaskRun
+	var oldest *v1.TaskRun
 	var oldestTs time.Time
 	for i := range taskList.Items {
 		tr := taskList.Items[i]
@@ -162,7 +162,7 @@ func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, log *logr.Log
 
 }
 
-func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, log *logr.Logger, tr *v1.TaskRun) (reconcile.Result, error) {
 	if tr.Status.CompletionTime == nil {
 		return reconcile.Result{}, nil
 	}
@@ -177,7 +177,7 @@ func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, log *logr.Logger
 	return reconcile.Result{RequeueAfter: time.Hour}, nil
 }
 
-func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Logger, tr *v1.TaskRun) (reconcile.Result, error) {
 
 	if tr.Status.CompletionTime == nil {
 		return reconcile.Result{}, nil
@@ -205,7 +205,7 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 	if !success {
 		assigned := tr.Labels[AssignedHost]
 		if assigned != "" {
-			userTr := v1beta1.TaskRun{}
+			userTr := v1.TaskRun{}
 			err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Labels[UserTaskNamespace], Name: tr.Labels[UserTaskName]}, &userTr)
 			if err == nil {
 				if userTr.Annotations == nil {
@@ -238,7 +238,7 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 		err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Labels[UserTaskNamespace], Name: secretName}, &secret)
 		if err != nil {
 			if errors.IsNotFound(err) {
-				userTr := v1beta1.TaskRun{}
+				userTr := v1.TaskRun{}
 				err = r.client.Get(ctx, types.NamespacedName{Namespace: tr.Labels[UserTaskNamespace], Name: tr.Labels[UserTaskName]}, &userTr)
 				if err != nil {
 					if !errors.IsNotFound(err) {
@@ -262,7 +262,7 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 
 // This creates an secret with the 'error' field set
 // This will result in the pipeline run immediately failing with the message printed in the logs
-func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, tr *v1beta1.TaskRun, secretName string, msg string) error {
+func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, tr *v1.TaskRun, secretName string, msg string) error {
 	if controllerutil.AddFinalizer(tr, PipelineFinalizer) {
 		err := r.client.Update(ctx, tr)
 		if err != nil {
@@ -293,7 +293,7 @@ func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, tr *v1beta1.Ta
 	return nil
 }
 
-func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, log *logr.Logger, tr *v1.TaskRun) (reconcile.Result, error) {
 
 	secretName := SecretPrefix + tr.Name
 	if tr.Labels[AssignedHost] != "" {
@@ -309,7 +309,7 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, log *logr.Logger,
 	}
 }
 
-func extracPlatform(tr *v1beta1.TaskRun) (string, error) {
+func extracPlatform(tr *v1.TaskRun) (string, error) {
 	for _, p := range tr.Spec.Params {
 		if p.Name == PlatformParam {
 			return p.Value.StringVal, nil
@@ -318,7 +318,7 @@ func extracPlatform(tr *v1beta1.TaskRun) (string, error) {
 	return "", errors2.New("failed to determine platform")
 }
 
-func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
 	log.Info("attempting to allocate host")
 	if r.apiReader != nil {
 		err := r.apiReader.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)
@@ -352,7 +352,7 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.L
 
 }
 
-func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
 	//already exists
 	if tr.Status.CompletionTime != nil || tr.GetDeletionTimestamp() != nil {
 		log.Info("unassigning host from task")
@@ -490,7 +490,7 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, log *logr.Logg
 	return ret, cm.Data["instance-tag"], nil
 }
 
-func (r *ReconcileTaskRun) removeFinalizer(ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) removeFinalizer(ctx context.Context, log *logr.Logger, tr *v1.TaskRun) (reconcile.Result, error) {
 	if controllerutil.ContainsFinalizer(tr, PipelineFinalizer) {
 		controllerutil.RemoveFinalizer(tr, PipelineFinalizer)
 		log.Info("removing finalizer")
@@ -500,40 +500,40 @@ func (r *ReconcileTaskRun) removeFinalizer(ctx context.Context, log *logr.Logger
 }
 
 type PlatformConfig interface {
-	Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string, instanceTag string) (reconcile.Result, error)
-	Deallocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string, selectedHost string) error
+	Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, instanceTag string) (reconcile.Result, error)
+	Deallocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, selectedHost string) error
 }
 
-func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string, sshSecret string, address string, user string) error {
+func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, sshSecret string, address string, user string) error {
 	//kick off the provisioning task
 	//note that we can't use owner refs here because this task runs in a different namespace
-	provision := v1beta1.TaskRun{}
+	provision := v1.TaskRun{}
 	provision.GenerateName = "provision-task"
 	provision.Namespace = r.operatorNamespace
 	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name, MultiPlatformLabel: "true", AssignedHost: tr.Labels[AssignedHost]}
-	provision.Spec.TaskRef = &v1beta1.TaskRef{Name: "provision-shared-host"}
-	provision.Spec.Workspaces = []v1beta1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: sshSecret}}}
+	provision.Spec.TaskRef = &v1.TaskRef{Name: "provision-shared-host"}
+	provision.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: sshSecret}}}
 	provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
-	provision.Spec.Params = []v1beta1.Param{
+	provision.Spec.Params = []v1.Param{
 		{
 			Name:  "SECRET_NAME",
-			Value: *v1beta1.NewStructuredValues(secretName),
+			Value: *v1.NewStructuredValues(secretName),
 		},
 		{
 			Name:  "TASKRUN_NAME",
-			Value: *v1beta1.NewStructuredValues(tr.Name),
+			Value: *v1.NewStructuredValues(tr.Name),
 		},
 		{
 			Name:  "NAMESPACE",
-			Value: *v1beta1.NewStructuredValues(tr.Namespace),
+			Value: *v1.NewStructuredValues(tr.Namespace),
 		},
 		{
 			Name:  "HOST",
-			Value: *v1beta1.NewStructuredValues(address),
+			Value: *v1.NewStructuredValues(address),
 		},
 		{
 			Name:  "USER",
-			Value: *v1beta1.NewStructuredValues(user),
+			Value: *v1.NewStructuredValues(user),
 		},
 	}
 
