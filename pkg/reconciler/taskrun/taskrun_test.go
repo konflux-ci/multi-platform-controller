@@ -43,13 +43,23 @@ func TestConfigMapParsing(t *testing.T) {
 	g := NewGomegaWithT(t)
 	_, reconciler := setupClientAndReconciler(createHostConfig())
 	discard := logr.Discard()
-	configIface, _, err := reconciler.readConfiguration(context.TODO(), &discard, "linux/arm64")
+	configIface, _, err := reconciler.readConfiguration(context.TODO(), &discard, "linux/arm64", userNamespace)
 	config := configIface.(HostPool)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(len(config.hosts)).To(Equal(2))
 	g.Expect(config.hosts["host1"].Platform).Should(Equal("linux/arm64"))
 }
 
+func TestAllowedNamepsaces(t *testing.T) {
+	g := NewGomegaWithT(t)
+	_, reconciler := setupClientAndReconciler(createHostConfig())
+	discard := logr.Discard()
+	_, _, err := reconciler.readConfiguration(context.TODO(), &discard, "linux/arm64", "system-test")
+	g.Expect(err).ToNot(HaveOccurred())
+	_, _, err = reconciler.readConfiguration(context.TODO(), &discard, "linux/arm64", "other")
+	g.Expect(err).To(HaveOccurred())
+
+}
 func TestAllocateHost(t *testing.T) {
 	g := NewGomegaWithT(t)
 	client, reconciler := setupClientAndReconciler(createHostConfig())
@@ -382,6 +392,7 @@ func createHostConfig() *v1.ConfigMap {
 	cm.Namespace = systemNamespace
 	cm.Labels = map[string]string{ConfigMapLabel: "hosts"}
 	cm.Data = map[string]string{
+		"allowed-namespaces":     "default,system-.*",
 		"host.host1.address":     "ec2-54-165-44-192.compute-1.amazonaws.com",
 		"host.host1.secret":      "awskeys",
 		"host.host1.concurrency": "4",
