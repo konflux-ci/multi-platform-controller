@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/go-logr/logr"
 	"github.com/redhat-appstudio/multi-platform-controller/pkg/cloud"
-	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -21,7 +21,7 @@ type DynamicResolver struct {
 	MaxInstances int
 }
 
-func (a DynamicResolver) Deallocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string, selectedHost string) error {
+func (a DynamicResolver) Deallocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, selectedHost string) error {
 
 	instance := tr.Annotations[CloudInstanceId]
 	log.Info(fmt.Sprintf("terminating cloud instances %s for TaskRun %s", instance, tr.Name))
@@ -36,7 +36,7 @@ func (a DynamicResolver) Deallocate(r *ReconcileTaskRun, ctx context.Context, lo
 	return nil
 }
 
-func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1beta1.TaskRun, secretName string, instanceTag string) (reconcile.Result, error) {
+func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, instanceTag string) (reconcile.Result, error) {
 
 	if tr.Annotations[FailedHosts] != "" {
 		return reconcile.Result{}, r.createErrorSecret(ctx, tr, secretName, "failed to provision host")
@@ -87,7 +87,7 @@ func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 		}
 	}
 	//first check this would not exceed the max tasks
-	taskList := v1beta1.TaskRunList{}
+	taskList := v1.TaskRunList{}
 	err := r.client.List(ctx, &taskList, client.MatchingLabels{CloudDynamicPlatform: platformLabel(a.Platform)})
 	if err != nil {
 		return reconcile.Result{}, err

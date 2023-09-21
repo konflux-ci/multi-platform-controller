@@ -70,14 +70,24 @@ data:
   # This is an experimental feature and thus should still be considered
   # an alpha feature.
   enable-tekton-oci-bundles: "false"
-  # Setting this flag to "true" enables the use of custom tasks from
-  # within pipelines.
-  # This is an experimental feature and thus should still be considered
-  # an alpha feature.
-  enable-custom-tasks: "false"
   # Setting this flag will determine which gated features are enabled.
   # Acceptable values are "stable", "beta", or "alpha".
   enable-api-fields: "stable"
-  # Setting this flag to "true" enables CloudEvents for Runs, as long as a
+  # Setting this flag to "true" enables CloudEvents for CustomRuns and Runs, as long as a
   # CloudEvents sink is configured in the config-defaults config map
   send-cloudevents-for-runs: "false"
+  # This flag affects the behavior of taskruns and pipelineruns in cases where no VerificationPolicies match them.
+  # If it is set to "fail", TaskRuns and PipelineRuns will fail verification if no matching policies are found.
+  # If it is set to "warn", TaskRuns and PipelineRuns will run to completion if no matching policies are found, and an error will be logged.
+  # If it is set to "ignore", TaskRuns and PipelineRuns will run to completion if no matching policies are found, and no error will be logged.
+  trusted-resources-verification-no-match-policy: "ignore"
+  # Setting this flag to "true" enables populating the "provenance" field in TaskRun
+  # and PipelineRun status. This field contains metadata about resources used
+  # in the TaskRun/PipelineRun such as the source from where a remote Task/Pipeline
+  # definition was fetched.
+  enable-provenance-in-status: "false"
+  # Setting this flag will determine how Tekton pipelines will handle non-falsifiable provenance.
+  # If set to "spire", then SPIRE will be used to ensure non-falsifiable provenance.
+  # If set to "none", then Tekton will not have non-falsifiable provenance.
+  # This is an experimental feature and thus should still be considered an alpha feature.
+  enforce-nonfalsifiablity: "none"

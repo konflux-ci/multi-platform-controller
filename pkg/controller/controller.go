@@ -12,7 +12,7 @@ import (
 	"time"
 
 	jvmbs "github.com/redhat-appstudio/jvm-build-service/pkg/apis/jvmbuildservice/v1alpha1"
-	pipelinev1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -57,7 +57,7 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 		return nil, err
 	}
 
-	if err := pipelinev1beta1.AddToScheme(options.Scheme); err != nil {
+	if err := pipelinev1.AddToScheme(options.Scheme); err != nil {
 		return nil, err
 	}
 	var mgr ctrl.Manager
@@ -87,9 +87,9 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 
 	options.Cache = cache.Options{
 		ByObject: map[client.Object]cache.ByObject{
-			&pipelinev1beta1.TaskRun{}: {Label: multiArchPipelines},
-			&v1.Secret{}:               {Label: secretSelector},
-			&v1.ConfigMap{}:            {Label: configMapSelector},
+			&pipelinev1.TaskRun{}: {Label: multiArchPipelines},
+			&v1.Secret{}:          {Label: secretSelector},
+			&v1.ConfigMap{}:       {Label: configMapSelector},
 		},
 	}
 	operatorNamespace := os.Getenv("POD_NAMESPACE")
