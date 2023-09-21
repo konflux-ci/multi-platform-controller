@@ -2,10 +2,12 @@ package taskrun
 
 import (
 	"context"
+	"fmt"
 	errors2 "github.com/pkg/errors"
 	"github.com/redhat-appstudio/multi-platform-controller/pkg/aws"
 	"github.com/redhat-appstudio/multi-platform-controller/pkg/cloud"
 	"github.com/redhat-appstudio/multi-platform-controller/pkg/ibm"
+	"regexp"
 
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	v12 "k8s.io/api/core/v1"
@@ -56,8 +58,9 @@ const (
 
 	ServiceAccountName = "multi-arch-controller"
 
-	PlatformParam    = "PLATFORM"
-	DynamicPlatforms = "dynamic-platforms"
+	PlatformParam     = "PLATFORM"
+	DynamicPlatforms  = "dynamic-platforms"
+	AllowedNamespaces = "allowed-namespaces"
 )
 
 type ReconcileTaskRun struct {
@@ -340,7 +343,7 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.L
 	}
 
 	//lets allocate a host, get the map with host info
-	hosts, instanceTag, err := r.readConfiguration(ctx, log, targetPlatform)
+	hosts, instanceTag, err := r.readConfiguration(ctx, log, targetPlatform, tr.Namespace)
 	if err != nil {
 		log.Error(err, "failed to read host config")
 		return reconcile.Result{}, r.createErrorSecret(ctx, tr, secretName, "failed to read host config "+err.Error())
@@ -359,7 +362,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, log *logr.Log
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		config, _, err := r.readConfiguration(ctx, log, platform)
+		config, _, err := r.readConfiguration(ctx, log, platform, tr.Namespace)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -395,11 +398,31 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, log *logr.Log
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, log *logr.Logger, targetPlatform string) (PlatformConfig, string, error) {
+func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, log *logr.Logger, targetPlatform string, targetNamespace string) (PlatformConfig, string, error) {
 	cm := v12.ConfigMap{}
 	err := r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: HostConfig}, &cm)
 	if err != nil {
 		return nil, "", err
+	}
+
+	namespaces := cm.Data[AllowedNamespaces]
+	if namespaces != "" {
+		parts := strings.Split(namespaces, ",")
+		ok := false
+		for _, i := range parts {
+			matchString, err := regexp.MatchString(i, targetNamespace)
+			if err != nil {
+				log.Error(err, "invalid allowed-namespace regex")
+				continue
+			}
+			if matchString {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return nil, "", fmt.Errorf("namespace %s does not match any namespace defined in allowed namespaces, ask an administrator to enable multi platform builds for your namespace", targetNamespace)
+		}
 	}
 
 	dynamic := cm.Data[DynamicPlatforms]
