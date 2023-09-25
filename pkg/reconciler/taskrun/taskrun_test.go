@@ -112,6 +112,34 @@ func TestAllocateCloudHost(t *testing.T) {
 
 }
 
+func TestAllocateCloudHostProvisionFailureInMiddle(t *testing.T) {
+	g := NewGomegaWithT(t)
+	client, reconciler := setupClientAndReconciler(createDynamicHostConfig())
+	createUserTaskRun(g, client, "test", "linux/arm64")
+	_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
+	g.Expect(err).ToNot(HaveOccurred())
+	tr := getUserTaskRun(g, client, "test")
+	if tr.Labels[AssignedHost] == "" {
+		g.Expect(tr.Annotations[CloudInstanceId]).ToNot(BeEmpty())
+	}
+	//now fail the task
+	g.Expect(cloudImpl.Running).Should(Equal(1))
+
+	tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+	tr.Status.SetCondition(&apis.Condition{
+		Type:               apis.ConditionSucceeded,
+		Status:             "False",
+		LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now().Add(time.Hour * -2)}},
+	})
+	g.Expect(client.Update(context.TODO(), tr)).ShouldNot(HaveOccurred())
+
+	_, err = reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
+	g.Expect(err).ShouldNot(HaveOccurred())
+
+	g.Expect(cloudImpl.Addressses["multi-platform-builder-test"]).Should(BeEmpty())
+	g.Expect(cloudImpl.Running).Should(Equal(0))
+}
+
 func TestProvisionFailure(t *testing.T) {
 	g := NewGomegaWithT(t)
 	client, reconciler := setupClientAndReconciler(createHostConfig())
