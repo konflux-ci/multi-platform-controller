@@ -148,10 +148,10 @@ fi
 		ret += "\nrsync -ra scripts \"$SSH_HOST:$BUILD_DIR\""
 		containerScript := "/script/script-" + step.Name + ".sh"
 		for _, e := range step.Env {
-			env += " -e " + e.Name + "=" + e.Value + " "
+			env += " -e " + e.Name + "=\"$" + e.Name + "\" "
 		}
 
-		ret += "\nssh $SSH_ARGS \"$SSH_HOST\" $PORT_FORWARD podman  run " + env + " --rm " + podmanArgs + " -v $BUILD_DIR/scripts:/script:Z --user=0  " + replaceImage(step.Image) + "  " + containerScript
+		ret += "\nssh $SSH_ARGS \"$SSH_HOST\" $PORT_FORWARD podman  run " + env + " --rm " + podmanArgs + " -v $BUILD_DIR/scripts:/script:Z --user=0  \"$BUILDER_IMAGE\" " + containerScript
 
 		//sync the contents of the workspaces back so subsequent tasks can use them
 		for _, workspace := range task.Spec.Workspaces {
@@ -191,6 +191,7 @@ fi
 			},
 		},
 	})
+	task.Spec.StepTemplate.Env = append(task.Spec.StepTemplate.Env, v1.EnvVar{Name: "BUILDER_IMAGE", Value: "$(params.BUILDER_IMAGE)"})
 }
 
 func replaceImage(image string) string {
