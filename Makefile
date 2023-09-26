@@ -25,8 +25,8 @@ test: fmt vet ## Run tests.
 	go test -v ./pkg/... -coverprofile cover.out
 
 build:
-	go build -o out/multi-arch-host-resolver cmd/controller/main.go
-	env GOOS=linux GOARCH=amd64 go build -mod=vendor -o out/multi-arch-host-resolver ./cmd/controller
+	go build -o out/multi-platform-controller cmd/controller/main.go
+	env GOOS=linux GOARCH=amd64 go build -mod=vendor -o out/multi-platform-controller ./cmd/controller
 
 clean:
 	rm -rf out
@@ -44,8 +44,8 @@ verify-generate-deepcopy-client: generate-deepcopy-client
 	hack/verify-codegen.sh
 
 dev-image:
-	docker build . -t quay.io/$(QUAY_USERNAME)/multi-arch-controller:dev
-	docker push quay.io/$(QUAY_USERNAME)/multi-arch-controller:dev
+	docker build . -t quay.io/$(QUAY_USERNAME)/multi-platform-controller:dev
+	docker push quay.io/$(QUAY_USERNAME)/multi-platform-controller:dev
 
 
 dev: dev-image

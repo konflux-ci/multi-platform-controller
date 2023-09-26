@@ -56,7 +56,7 @@ const (
 	TaskTypeProvision = "provision"
 	TaskTypeClean     = "clean"
 
-	ServiceAccountName = "multi-arch-controller"
+	ServiceAccountName = "multi-platform-controller"
 
 	PlatformParam     = "PLATFORM"
 	DynamicPlatforms  = "dynamic-platforms"

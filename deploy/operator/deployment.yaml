@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: multi-arch-controller
-  namespace: multi-arch-controller
+  name: multi-platform-controller
+  namespace: multi-platform-controller
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: multi-arch-controller
+      app: multi-platform-controller
   template:
     metadata:
       labels:
-        app: multi-arch-controller
+        app: multi-platform-controller
     spec:
       containers:
-        - name: multi-arch-controller
-          image: multi-arch-controller
+        - name: multi-platform-controller
+          image: multi-platform-controller
           env:
             - name: POD_NAMESPACE
               valueFrom:
@@ -37,4 +37,4 @@ spec:
             readOnlyRootFilesystem: true
       securityContext:
         runAsNonRoot: true
-      serviceAccountName: multi-arch-controller
+      serviceAccountName: multi-platform-controller

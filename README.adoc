@@ -1,6 +1,6 @@
 == RHTAP Multi Arch Controller
 
-This controller orchestrates remote agents for RTHAP. It watches for `TaskRun` instances with the `build.appstudio.redhat.com/multi-arch-required` label, and will then supply SSH credentials for a node of the requested architecture. The `TaskRun` can then use this node to build using a different architecture. When the `TaskRun` is done the controller deals with cleanup up the remote node.
+This controller orchestrates remote agents for RTHAP. It watches for `TaskRun` instances with the `build.appstudio.redhat.com/multi-platform-required` label, and will then supply SSH credentials for a node of the requested architecture. The `TaskRun` can then use this node to build using a different architecture. When the `TaskRun` is done the controller deals with cleanup up the remote node.
 
 == Try It Out
 
