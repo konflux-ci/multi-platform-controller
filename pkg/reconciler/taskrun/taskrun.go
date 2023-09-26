@@ -301,8 +301,11 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, log *logr.Logger,
 	} else {
 		//if the PR is done we ignore it
 		if tr.Status.CompletionTime != nil || tr.GetDeletionTimestamp() != nil {
-			log.Info("task run already finished, not creating secret")
-			return r.removeFinalizer(ctx, log, tr)
+			if controllerutil.ContainsFinalizer(tr, PipelineFinalizer) {
+				return r.handleHostAssigned(ctx, log, tr, secretName)
+
+			}
+			return reconcile.Result{}, nil
 		}
 
 		return r.handleHostAllocation(ctx, log, tr, secretName)
@@ -488,15 +491,6 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, log *logr.Logg
 
 	}
 	return ret, cm.Data["instance-tag"], nil
-}
-
-func (r *ReconcileTaskRun) removeFinalizer(ctx context.Context, log *logr.Logger, tr *v1.TaskRun) (reconcile.Result, error) {
-	if controllerutil.ContainsFinalizer(tr, PipelineFinalizer) {
-		controllerutil.RemoveFinalizer(tr, PipelineFinalizer)
-		log.Info("removing finalizer")
-		return reconcile.Result{}, r.client.Update(ctx, tr)
-	}
-	return reconcile.Result{}, nil
 }
 
 type PlatformConfig interface {
