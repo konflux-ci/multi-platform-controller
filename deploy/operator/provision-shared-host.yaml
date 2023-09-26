@@ -2,7 +2,7 @@ apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: provision-shared-host
-  namespace: multi-arch-controller
+  namespace: multi-platform-controller
 spec:
   description: >-
     This task will create a new user on a host, setup ssh keys, and then create the relevant secret.

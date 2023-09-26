@@ -33,7 +33,7 @@ func (configMapInfo AwsDynamicConfig) LaunchInstance(kubeClient client.Client, l
 	// Load AWS credentials and configuration
 
 	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithCredentialsProvider(SecretCredentialsProvider{Name: configMapInfo.Secret, Namespace: "multi-arch-controller", Client: kubeClient}),
+		config.WithCredentialsProvider(SecretCredentialsProvider{Name: configMapInfo.Secret, Namespace: "multi-platform-controller", Client: kubeClient}),
 		config.WithRegion(configMapInfo.Region))
 	if err != nil {
 		return "", err
@@ -143,7 +143,7 @@ func (configMapInfo AwsDynamicConfig) TerminateInstance(kubeClient client.Client
 	// Load AWS credentials and configuration
 
 	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithCredentialsProvider(SecretCredentialsProvider{Name: configMapInfo.Secret, Namespace: "multi-arch-controller", Client: kubeClient}),
+		config.WithCredentialsProvider(SecretCredentialsProvider{Name: configMapInfo.Secret, Namespace: "multi-platform-controller", Client: kubeClient}),
 		config.WithRegion(configMapInfo.Region))
 	if err != nil {
 		return err

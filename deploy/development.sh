@@ -8,8 +8,8 @@ if [ -z "$QUAY_USERNAME" ]; then
 fi
 
 
-oc new-project multi-arch-controller
-kubectl config set-context --current --namespace=multi-arch-controller
+oc new-project multi-platform-controller
+kubectl config set-context --current --namespace=multi-platform-controller
 
 kubectl delete --ignore-not-found secret awskeys awsiam ibmiam
 oc create secret generic awskeys --from-file=id_rsa=/home/stuart/.ssh/sdouglas-arm-test.pem
@@ -24,5 +24,5 @@ find $DIR -name dev-template -exec cp -r {} {}/../development \;
 find $DIR -path \*development\*.yaml -exec sed -i s/QUAY_USERNAME/${QUAY_USERNAME}/ {} \;
 kubectl apply -k $DIR/overlays/development
 
-kubectl rollout restart deployment -n multi-arch-controller multi-arch-controller
+kubectl rollout restart deployment -n multi-platform-controller multi-platform-controller
 oc project test-jvm-namespace

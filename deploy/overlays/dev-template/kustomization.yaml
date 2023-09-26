@@ -6,6 +6,6 @@ resources:
  - host-config.yaml
 
 images:
-  - name: multi-arch-controller
-    newName: quay.io/QUAY_USERNAME/multi-arch-controller
+  - name: multi-platform-controller
+    newName: quay.io/QUAY_USERNAME/multi-platform-controller
     newTag: dev
