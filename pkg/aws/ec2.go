@@ -16,6 +16,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const MultiPlatformManaged = "MultiPlatformManaged"
+
 func Ec2Provider(platformName string, config map[string]string, systemNamespace string) cloud.CloudProvider {
 	return AwsDynamicConfig{Region: config["dynamic."+platformName+".region"],
 		Ami:             config["dynamic."+platformName+".ami"],
@@ -54,7 +56,7 @@ func (configMapInfo AwsDynamicConfig) LaunchInstance(kubeClient client.Client, l
 			Ebs:         &types.EbsBlockDevice{VolumeSize: aws.Int32(40)},
 		}},
 		InstanceInitiatedShutdownBehavior: types.ShutdownBehaviorTerminate,
-		TagSpecifications:                 []types.TagSpecification{{ResourceType: types.ResourceTypeInstance, Tags: []types.Tag{{Key: aws.String(cloud.InstanceTag), Value: aws.String(instanceTag)}, {Key: aws.String("Name"), Value: aws.String("multi-platform-builder-" + name)}}}},
+		TagSpecifications:                 []types.TagSpecification{{ResourceType: types.ResourceTypeInstance, Tags: []types.Tag{{Key: aws.String(MultiPlatformManaged), Value: aws.String("true")}, {Key: aws.String(cloud.InstanceTag), Value: aws.String(instanceTag)}, {Key: aws.String("Name"), Value: aws.String("multi-platform-builder-" + name)}}}},
 	}
 
 	// Launch the new EC2 instance
@@ -82,14 +84,19 @@ func (configMapInfo AwsDynamicConfig) CountInstances(kubeClient client.Client, l
 
 	// Create an EC2 client
 	ec2Client := ec2.NewFromConfig(cfg)
-	res, err := ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{Filters: []types.Filter{{Name: aws.String("tag:" + cloud.InstanceTag), Values: []string{instanceTag}}}})
+	res, err := ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{Filters: []types.Filter{{Name: aws.String("tag:" + cloud.InstanceTag), Values: []string{instanceTag}}, {Name: aws.String("tag:" + MultiPlatformManaged), Values: []string{"true"}}}})
 	if err != nil {
 		log.Error(err, "failed to describe instance")
 		return 0, err
 	}
 	count := 0
 	for _, res := range res.Reservations {
-		count += len(res.Instances)
+		for _, inst := range res.Instances {
+			if inst.State.Name != types.InstanceStateNameTerminated {
+				log.Info(fmt.Sprintf("counting instance %s towards running count", *inst.InstanceId))
+				count++
+			}
+		}
 	}
 	return count, nil
 }
