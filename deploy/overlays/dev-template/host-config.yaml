@@ -16,6 +16,7 @@ data:
   dynamic.linux-arm64.key-name: sdouglas-arm-test
   dynamic.linux-arm64.aws-secret: awsiam
   dynamic.linux-arm64.ssh-secret: awskeys
+  dynamic.linux-arm64.security-group: "launch-wizard-1"
   dynamic.linux-arm64.max-instances: "2"
 
   dynamic.linux-s390x.type: ibmz

@@ -24,6 +24,7 @@ func Ec2Provider(platformName string, config map[string]string, systemNamespace 
 		InstanceType:    config["dynamic."+platformName+".instance-type"],
 		KeyName:         config["dynamic."+platformName+".key-name"],
 		Secret:          config["dynamic."+platformName+".aws-secret"],
+		SecurityGroup:   config["dynamic."+platformName+".security-group"],
 		SystemNamespace: systemNamespace,
 	}
 }
@@ -49,7 +50,7 @@ func (configMapInfo AwsDynamicConfig) LaunchInstance(kubeClient client.Client, l
 		MinCount:       aws.Int32(1),
 		MaxCount:       aws.Int32(1),
 		EbsOptimized:   aws.Bool(true),
-		SecurityGroups: []string{"launch-wizard-1"},
+		SecurityGroups: []string{configMapInfo.SecurityGroup},
 		BlockDeviceMappings: []types.BlockDeviceMapping{{
 			DeviceName:  aws.String("/dev/sda1"),
 			VirtualName: aws.String("ephemeral0"),
@@ -181,6 +182,7 @@ type AwsDynamicConfig struct {
 	KeyName         string
 	Secret          string
 	SystemNamespace string
+	SecurityGroup   string
 }
 
 func (configMapInfo AwsDynamicConfig) SshUser() string {
