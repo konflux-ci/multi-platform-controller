@@ -2,7 +2,7 @@ apiVersion: tekton.dev/v1beta1
 kind: TaskRun
 metadata:
   generateName: sample-provision-
-  namespace: multi-arch-controller
+  namespace: multi-platform-controller
 spec:
   taskRef:
     name: provision-shared-host
@@ -21,4 +21,4 @@ spec:
     - name: ssh
       secret:
         secretName: awskeys
-  serviceAccountName: multi-arch-controller
+  serviceAccountName: multi-platform-controller
