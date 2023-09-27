@@ -193,10 +193,3 @@ fi
 	})
 	task.Spec.StepTemplate.Env = append(task.Spec.StepTemplate.Env, v1.EnvVar{Name: "BUILDER_IMAGE", Value: "$(params.BUILDER_IMAGE)"})
 }
-
-func replaceImage(image string) string {
-	if image == "quay.io/redhat-appstudio/buildah:v1.28" {
-		return "quay.io/buildah/stable:v1.31"
-	}
-	return image
-}
