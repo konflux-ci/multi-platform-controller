@@ -96,6 +96,8 @@ func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 	if instanceCount >= a.MaxInstances || err != nil {
 		if err != nil {
 			log.Error(err, "unable to count running instances, not allocating a new instance out of an abundance of caution")
+			_ = r.createErrorSecret(ctx, tr, secretName, "Failed to count existing cloud instances "+err.Error())
+			return reconcile.Result{}, nil
 		}
 		if tr.Labels[WaitingForPlatformLabel] == platformLabel(a.Platform) {
 			//we are already in a waiting state
