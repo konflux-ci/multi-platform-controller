@@ -31,7 +31,5 @@ spec:
         cp $(workspaces.ssh.path)/id_rsa /tmp/master_key
         chmod 0400 /tmp/master_key
         export SSH_HOST=$(params.USER)@$(params.HOST)
-        
-        export USERNAME=$(echo $(params.TASKRUN_NAME)$(params.NAMESPACE) | md5sum | cut -d' ' -f1)
-        
-        ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST sudo userdel -f -r -Z $USERNAME
+    
+        ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST sudo userdel -f -r -Z $USER
