@@ -501,6 +501,15 @@ type PlatformConfig interface {
 func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, sshSecret string, address string, user string) error {
 	//kick off the provisioning task
 	//note that we can't use owner refs here because this task runs in a different namespace
+
+	//first verify the secret exists, so we don't hang if it is missing
+	secret := v12.Secret{}
+	err := r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: sshSecret}, &secret)
+	if err != nil {
+		log.Error(fmt.Errorf("failed to find SSH secret %s", sshSecret), "failed to find SSH secret")
+		return r.createErrorSecret(ctx, tr, secretName, "failed to get SSH secret, system may not be configured correctly")
+	}
+
 	provision := v1.TaskRun{}
 	provision.GenerateName = "provision-task"
 	provision.Namespace = r.operatorNamespace
@@ -531,7 +540,7 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, log *logr.
 		},
 	}
 
-	err := r.client.Create(ctx, &provision)
+	err = r.client.Create(ctx, &provision)
 	return err
 }
 
