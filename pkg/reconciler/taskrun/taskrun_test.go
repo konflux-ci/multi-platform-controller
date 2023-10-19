@@ -29,7 +29,7 @@ const userNamespace = "default"
 
 var cloudImpl MockCloud = MockCloud{Addressses: map[cloud.InstanceIdentifier]string{}}
 
-func setupClientAndReconciler(objs ...runtimeclient.Object) (runtimeclient.Client, *ReconcileTaskRun) {
+func setupClientAndReconciler(objs []runtimeclient.Object) (runtimeclient.Client, *ReconcileTaskRun) {
 	scheme := runtime.NewScheme()
 	_ = pipelinev1.AddToScheme(scheme)
 	_ = v1.AddToScheme(scheme)
@@ -329,7 +329,7 @@ func runSuccessfulProvision(provision *pipelinev1.TaskRun, g *WithT, client runt
 
 func TestNoHostConfig(t *testing.T) {
 	g := NewGomegaWithT(t)
-	client, reconciler := setupClientAndReconciler()
+	client, reconciler := setupClientAndReconciler([]runtimeclient.Object{})
 	createUserTaskRun(g, client, "test", "linux/arm64")
 	_, err := reconciler.Reconcile(context.TODO(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
 	g.Expect(err).ToNot(HaveOccurred())
@@ -414,7 +414,7 @@ func createUserTaskRun(g *WithT, client runtimeclient.Client, name string, platf
 	g.Expect(client.Create(context.TODO(), tr)).ToNot(HaveOccurred())
 }
 
-func createHostConfig() *v1.ConfigMap {
+func createHostConfig() []runtimeclient.Object {
 	cm := v1.ConfigMap{}
 	cm.Name = HostConfig
 	cm.Namespace = systemNamespace
@@ -432,10 +432,14 @@ func createHostConfig() *v1.ConfigMap {
 		"host.host2.user":        "ec2-user",
 		"host.host2.platform":    "linux/arm64",
 	}
-	return &cm
+	sec := v1.Secret{}
+	sec.Name = "awskeys"
+	sec.Namespace = systemNamespace
+	sec.Labels = map[string]string{MultiPlatformSecretLabel: "true"}
+	return []runtimeclient.Object{&cm, &sec}
 }
 
-func createDynamicHostConfig() *v1.ConfigMap {
+func createDynamicHostConfig() []runtimeclient.Object {
 	cm := v1.ConfigMap{}
 	cm.Name = HostConfig
 	cm.Namespace = systemNamespace
@@ -451,7 +455,11 @@ func createDynamicHostConfig() *v1.ConfigMap {
 		"dynamic.linux-arm64.ssh-secret":    "awskeys",
 		"dynamic.linux-arm64.max-instances": "2",
 	}
-	return &cm
+	sec := v1.Secret{}
+	sec.Name = "awskeys"
+	sec.Namespace = systemNamespace
+	sec.Labels = map[string]string{MultiPlatformSecretLabel: "true"}
+	return []runtimeclient.Object{&cm, &sec}
 }
 
 type MockCloud struct {
