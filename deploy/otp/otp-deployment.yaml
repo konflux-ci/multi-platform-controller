@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: multi-platform-otp-server
+  namespace: multi-platform-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: multi-platform-otp-server
+  template:
+    metadata:
+      labels:
+        app: multi-platform-otp-server
+    spec:
+      containers:
+        - name: multi-platform-otp-server
+          image: multi-platform-otp-server
+          ports:
+            - containerPort: 8080
+              name: server
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          imagePullPolicy: Always
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+          securityContext:
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - mountPath: "/tls"
+              name: "tls"
+      securityContext:
+        runAsNonRoot: true
+      volumes:
+        - name: "tls"
+          secret:
+            secretName: "otp-tls-secrets"

@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: otp-tls-secrets
+  name: multi-platform-otp-server
+  namespace: multi-platform-controller
+spec:
+  ports:
+    - name: https
+      port: 443
+      protocol: TCP
+      targetPort: 8443
+  selector:
+    app: multi-platform-otp-server
+  sessionAffinity: None
+  type: ClusterIP
