@@ -56,8 +56,11 @@ func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 		if address != "" {
 			tr.Labels[AssignedHost] = tr.Annotations[CloudInstanceId]
 			tr.Annotations[CloudAddress] = address
-
-			err := launchProvisioningTask(r, ctx, log, tr, secretName, a.SshSecret, address, a.CloudProvider.SshUser())
+			err := r.client.Update(ctx, tr)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+			err = launchProvisioningTask(r, ctx, log, tr, secretName, a.SshSecret, address, a.CloudProvider.SshUser())
 			if err != nil {
 				//ugh, try and unassign
 				err := a.CloudProvider.TerminateInstance(r.client, log, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
@@ -79,7 +82,7 @@ func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 				}
 			}
 
-			return reconcile.Result{}, r.client.Update(ctx, tr)
+			return reconcile.Result{}, nil
 		} else {
 			//we are waiting for the instance to come up
 			//so just requeue
