@@ -17,6 +17,7 @@ oc create secret generic awsiam --from-literal=access-key-id=$MULTI_ARCH_ACCESS_
 oc create secret generic ibmiam --from-literal=api-key=$IBM_CLOUD_API_KEY
 kubectl label secrets awsiam build.appstudio.redhat.com/multi-platform-secret=true
 kubectl label secrets ibmiam build.appstudio.redhat.com/multi-platform-secret=true
+kubectl label secrets awskeys build.appstudio.redhat.com/multi-platform-secret=true
 
 echo "Installing the Operator"
 rm -r $DIR/overlays/development
