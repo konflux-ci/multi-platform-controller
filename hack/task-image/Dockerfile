@@ -1,5 +1,5 @@
 FROM registry.access.redhat.com/ubi9/ubi-minimal:9.2
-
+ENV HOME=/root
 RUN microdnf install -y rsync openssh-clients buildah
 
 RUN curl -LO https://dl.k8s.io/release/v1.27.4/bin/linux/amd64/kubectl && \
