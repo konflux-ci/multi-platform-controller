@@ -8,9 +8,9 @@ import (
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"strconv"
 	"time"
 )
 
@@ -76,8 +76,8 @@ func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 					log.Error(err, "Could not unassign task after provisioning failure")
 					_ = r.createErrorSecret(ctx, tr, secretName, "Could not unassign task after provisioning failure")
 				} else {
-					log.Error(err, "Failed to provision AWS host")
-					_ = r.createErrorSecret(ctx, tr, secretName, "Failed to provision AWS host "+err.Error())
+					log.Error(err, "Failed to provision cloud host")
+					_ = r.createErrorSecret(ctx, tr, secretName, "Failed to provision cloud host "+err.Error())
 
 				}
 			}
@@ -90,11 +90,6 @@ func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 		}
 	}
 	//first check this would not exceed the max tasks
-	taskList := v1.TaskRunList{}
-	err := r.client.List(ctx, &taskList, client.MatchingLabels{CloudDynamicPlatform: platformLabel(a.Platform)})
-	if err != nil {
-		return reconcile.Result{}, err
-	}
 	instanceCount, err := a.CloudProvider.CountInstances(r.client, log, ctx, instanceTag)
 	if instanceCount >= a.MaxInstances || err != nil {
 		if err != nil {
@@ -115,14 +110,35 @@ func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 	log.Info(fmt.Sprintf("%d instances are running, creating a new instance", instanceCount))
 	log.Info("attempting to launch a new host for " + tr.Name)
 	instance, err := a.CloudProvider.LaunchInstance(r.client, log, ctx, tr.Name, instanceTag)
-	log.Info("allocated instance", "instance", instance)
 
 	if err != nil {
 		//launch failed
 		log.Error(err, "Failed to create cloud host")
-		_ = r.createErrorSecret(ctx, tr, secretName, "Failed to create cloud host "+err.Error())
-		return reconcile.Result{}, nil
+		failureCount := 0
+		existingFailureString := tr.Annotations[CloudFailures]
+		if existingFailureString != "" {
+			failureCount, err = strconv.Atoi(existingFailureString)
+			if err != nil {
+				log.Error(err, "failed to parse failure count")
+				_ = r.createErrorSecret(ctx, tr, secretName, "Failed to create cloud host, and could not retry "+err.Error())
+				return reconcile.Result{}, nil
+			}
+		}
+		if failureCount == 2 {
+			_ = r.createErrorSecret(ctx, tr, secretName, "Failed to create cloud host, retries exceeded "+err.Error())
+			return reconcile.Result{}, nil
+		}
+		failureCount++
+		tr.Annotations[CloudFailures] = strconv.Itoa(failureCount)
+		err = r.client.Update(ctx, tr)
+		if err != nil {
+			//todo: handle conflict properly, for now you get an extra retry
+			log.Error(err, "failed to update failure count")
+		}
+
+		return reconcile.Result{RequeueAfter: time.Second * 20}, nil
 	}
+	log.Info("allocated instance", "instance", instance)
 
 	//this seems super prone to conflicts
 	//we always read a new version direct from the API server on conflict
