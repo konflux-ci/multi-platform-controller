@@ -41,6 +41,7 @@ const (
 	AssignedHost           = "build.appstudio.redhat.com/assigned-host"
 	FailedHosts            = "build.appstudio.redhat.com/failed-hosts"
 	CloudInstanceId        = "build.appstudio.redhat.com/cloud-instance-id"
+	CloudFailures          = "build.appstudio.redhat.com/cloud-failure-count"
 	CloudAddress           = "build.appstudio.redhat.com/cloud-address"
 	CloudDynamicPlatform   = "build.appstudio.redhat.com/cloud-dynamic-platform"
 	ProvisionTaskProcessed = "build.appstudio.redhat.com/provision-task-processed"
