@@ -14,11 +14,16 @@ import (
 	"net"
 	"os"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"strconv"
 )
 
 const MultiPlatformManaged = "MultiPlatformManaged"
 
 func Ec2Provider(platformName string, config map[string]string, systemNamespace string) cloud.CloudProvider {
+	disk, err := strconv.Atoi(config["dynamic."+platformName+".disk"])
+	if err != nil {
+		disk = 40
+	}
 	return AwsDynamicConfig{Region: config["dynamic."+platformName+".region"],
 		Ami:             config["dynamic."+platformName+".ami"],
 		InstanceType:    config["dynamic."+platformName+".instance-type"],
@@ -26,6 +31,7 @@ func Ec2Provider(platformName string, config map[string]string, systemNamespace 
 		Secret:          config["dynamic."+platformName+".aws-secret"],
 		SecurityGroup:   config["dynamic."+platformName+".security-group"],
 		SystemNamespace: systemNamespace,
+		Disk:            int32(disk),
 	}
 }
 
@@ -54,7 +60,7 @@ func (configMapInfo AwsDynamicConfig) LaunchInstance(kubeClient client.Client, l
 		BlockDeviceMappings: []types.BlockDeviceMapping{{
 			DeviceName:  aws.String("/dev/sda1"),
 			VirtualName: aws.String("ephemeral0"),
-			Ebs:         &types.EbsBlockDevice{VolumeSize: aws.Int32(40)},
+			Ebs:         &types.EbsBlockDevice{VolumeSize: aws.Int32(configMapInfo.Disk)},
 		}},
 		InstanceInitiatedShutdownBehavior: types.ShutdownBehaviorTerminate,
 		TagSpecifications:                 []types.TagSpecification{{ResourceType: types.ResourceTypeInstance, Tags: []types.Tag{{Key: aws.String(MultiPlatformManaged), Value: aws.String("true")}, {Key: aws.String(cloud.InstanceTag), Value: aws.String(instanceTag)}, {Key: aws.String("Name"), Value: aws.String("multi-platform-builder-" + name)}}}},
@@ -183,6 +189,7 @@ type AwsDynamicConfig struct {
 	Secret          string
 	SystemNamespace string
 	SecurityGroup   string
+	Disk            int32
 }
 
 func (configMapInfo AwsDynamicConfig) SshUser() string {
