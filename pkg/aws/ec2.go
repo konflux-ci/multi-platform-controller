@@ -30,6 +30,7 @@ func Ec2Provider(platformName string, config map[string]string, systemNamespace 
 }
 
 func (configMapInfo AwsDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, name string, instanceTag string) (cloud.InstanceIdentifier, error) {
+	log.Info(fmt.Sprintf("attempting to launch AWS instance for %s", name))
 	// Load AWS credentials and configuration
 
 	cfg, err := config.LoadDefaultConfig(ctx,
@@ -76,6 +77,7 @@ func (configMapInfo AwsDynamicConfig) LaunchInstance(kubeClient client.Client, l
 }
 
 func (configMapInfo AwsDynamicConfig) CountInstances(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceTag string) (int, error) {
+	log.Info("attempting to count AWS instances")
 	cfg, err := config.LoadDefaultConfig(ctx,
 		config.WithCredentialsProvider(SecretCredentialsProvider{Name: configMapInfo.Secret, Namespace: configMapInfo.SystemNamespace, Client: kubeClient}),
 		config.WithRegion(configMapInfo.Region))
@@ -103,6 +105,7 @@ func (configMapInfo AwsDynamicConfig) CountInstances(kubeClient client.Client, l
 }
 
 func (configMapInfo AwsDynamicConfig) GetInstanceAddress(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
+	log.Info(fmt.Sprintf("attempting to get AWS instance address %s", instanceId))
 	// Load AWS credentials and configuration
 
 	cfg, err := config.LoadDefaultConfig(ctx,
@@ -139,6 +142,7 @@ func (configMapInfo AwsDynamicConfig) GetInstanceAddress(kubeClient client.Clien
 }
 
 func (configMapInfo AwsDynamicConfig) TerminateInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, instance cloud.InstanceIdentifier) error {
+	log.Info(fmt.Sprintf("attempting to terminate AWS instance %s", instance))
 
 	// Load AWS credentials and configuration
 
