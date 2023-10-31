@@ -18,6 +18,7 @@ spec:
       type: string
   workspaces:
     - name: ssh
+
   steps:
     - name: provision
       image: quay.io/redhat-user-workloads/rhtap-build-tenant/multi-arch-controller/hacktask-image-multi-platform-controller:build-dfd73-1698382902@sha256:d733531a07ede2e73500c500a33cdaf78332db146ffdc23d3c1a71b253a734b6
@@ -31,5 +32,6 @@ spec:
         cp $(workspaces.ssh.path)/id_rsa /tmp/master_key
         chmod 0400 /tmp/master_key
         export SSH_HOST=$(params.USER)@$(params.HOST)
-    
-        ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST sudo userdel -f -r -Z $USER
+        
+        export USERNAME=u-$(echo $(params.TASKRUN_NAME)$(params.NAMESPACE) | md5sum | cut -b-28)
+        ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST sudo userdel -f -r -Z $USERNAME
