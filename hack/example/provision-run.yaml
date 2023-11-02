@@ -14,9 +14,9 @@ spec:
     - name: NAMESPACE
       value: test-jvm-namespace
     - name: HOST
-      value: ec2-34-227-115-211.compute-1.amazonaws.com
+      value: 	150.240.147.198
     - name: USER
-      value: ec2-user
+      value: root
   workspaces:
     - name: ssh
       secret:

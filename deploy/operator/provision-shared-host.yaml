@@ -23,6 +23,9 @@ spec:
     - name: provision
       image: quay.io/redhat-user-workloads/rhtap-build-tenant/multi-arch-controller/hacktask-image-multi-platform-controller:build-dfd73-1698382902@sha256:d733531a07ede2e73500c500a33cdaf78332db146ffdc23d3c1a71b253a734b6
       imagePullPolicy: Always
+      volumeMounts:
+        - mountPath: /tls
+          name: tls
       script: |
         #!/bin/bash
         cd /tmp
@@ -51,22 +54,52 @@ spec:
         ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST rm $USERNAME
         chmod 0400 id_rsa
         ssh -i id_rsa -o StrictHostKeyChecking=no $USERNAME@$(params.HOST) echo "test"
-        KEY=$(cat id_rsa | base64 -w 0)
+        KEY=$(cat id_rsa)
+        echo $KEY
         HOST=$(echo $USERNAME@$(params.HOST) | base64 -w 0)
         DIR=$(echo /home/$USERNAME | base64 -w 0)
-
-        cat >secret.yaml <<EOF
-        apiVersion: v1
-        data:
-          id_rsa: "$KEY"
-          host: "$HOST"
-          user-dir: "$DIR"
-        kind: Secret
-        metadata:
-          name: $(params.SECRET_NAME)
-          namespace: $(params.NAMESPACE)
-          labels:
-            build.appstudio.redhat.com/multi-platform-secret: "true"
-        type: Opaque
+        
+        
+        if [ -e "/tls/tls.crt" ]; then
+          OTP=$(curl --cacert /tls/tls.crt -XPOST -d "$KEY" https://multi-platform-otp-server.multi-platform-controller.svc.cluster.local/store-key | base64 -w 0)
+          OTP_SERVER="$(echo https://multi-platform-otp-server.multi-platform-controller.svc.cluster.local/otp | base64 -w 0)"
+          echo $OTP | base64 -d
+          cat >secret.yaml <<EOF
+          apiVersion: v1
+          data:
+            otp-ca: "$(cat /tls/tls.crt | base64 -w 0)"
+            otp: "$OTP"
+            otp-server: "$OTP_SERVER"
+            host: "$HOST"
+            user-dir: "$DIR"
+          kind: Secret
+          metadata:
+            name: $(params.SECRET_NAME)
+            namespace: $(params.NAMESPACE)
+            labels:
+              build.appstudio.redhat.com/multi-platform-secret: "true"
+          type: Opaque
         EOF
+        else
+          cat >secret.yaml <<EOF
+          apiVersion: v1
+          data:
+            id_rsa: "$(echo $KEY | base64 -w 0)"
+            host: "$HOST"
+            user-dir: "$DIR"
+          kind: Secret
+          metadata:
+            name: $(params.SECRET_NAME)
+            namespace: $(params.NAMESPACE)
+            labels:
+              build.appstudio.redhat.com/multi-platform-secret: "true"
+          type: Opaque
+        EOF
+        fi
+        
         kubectl create -f secret.yaml
+  volumes:
+    - name: tls
+      secret:
+        optional: true
+        secretName: otp-tls-secrets

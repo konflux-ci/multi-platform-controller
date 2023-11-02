@@ -3,9 +3,14 @@ kind: Kustomization
 
 resources:
  - "../../operator"
+ - "../../otp"
  - host-config.yaml
 
 images:
   - name: multi-platform-controller
     newName: quay.io/QUAY_USERNAME/multi-platform-controller
     newTag: dev
+  - name: multi-platform-otp-server
+    newName: quay.io/QUAY_USERNAME/multi-platform-otp
+    newTag: dev
+

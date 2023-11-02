@@ -28,6 +28,9 @@ build:
 	go build -o out/multi-platform-controller cmd/controller/main.go
 	env GOOS=linux GOARCH=amd64 go build -mod=vendor -o out/multi-platform-controller ./cmd/controller
 
+build-otp:
+	env GOOS=linux GOARCH=amd64 go build -mod=vendor -o out/otp-server ./cmd/otp
+
 clean:
 	rm -rf out
 
@@ -46,6 +49,8 @@ verify-generate-deepcopy-client: generate-deepcopy-client
 dev-image:
 	docker build . -t quay.io/$(QUAY_USERNAME)/multi-platform-controller:dev
 	docker push quay.io/$(QUAY_USERNAME)/multi-platform-controller:dev
+	docker build . -f Dockerfile.otp -t quay.io/$(QUAY_USERNAME)/multi-platform-otp:dev
+	docker push quay.io/$(QUAY_USERNAME)/multi-platform-otp:dev
 
 
 dev: dev-image

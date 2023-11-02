@@ -8,7 +8,7 @@ metadata:
     build.appstudio.redhat.com/commit_sha: 1879fa9159b28f63265dad2cd618c3d0ffd03e79
     build.appstudio.redhat.com/pipeline_name: docker-build
     build.appstudio.redhat.com/target_branch: main
-  generateName: devfile-sample-
+  generateName: pipeline-
   labels:
     appstudio.openshift.io/application: my-app
     appstudio.openshift.io/component: devfile-sample
