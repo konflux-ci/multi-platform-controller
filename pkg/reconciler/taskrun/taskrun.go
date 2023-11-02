@@ -34,8 +34,6 @@ const (
 	SecretPrefix   = "multi-platform-ssh-"
 	ConfigMapLabel = "build.appstudio.redhat.com/multi-platform-config"
 
-	//user level labels that specify a task needs to be executed on a remote host
-	MultiPlatformLabel       = "build.appstudio.redhat.com/multi-platform-required"
 	MultiPlatformSecretLabel = "build.appstudio.redhat.com/multi-platform-secret"
 
 	AssignedHost           = "build.appstudio.redhat.com/assigned-host"
@@ -117,19 +115,47 @@ func (r *ReconcileTaskRun) Reconcile(ctx context.Context, request reconcile.Requ
 }
 
 func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, log *logr.Logger, tr *v1.TaskRun) (reconcile.Result, error) {
-	if tr.Labels == nil {
+	if tr.Labels != nil {
+		taskType := tr.Labels[TaskTypeLabel]
+		if taskType == TaskTypeClean {
+			return r.handleCleanTask(ctx, log, tr)
+		}
+		if taskType == TaskTypeProvision {
+			return r.handleProvisionTask(ctx, log, tr)
+		}
+	}
+	if tr.Spec.Params == nil {
 		return reconcile.Result{}, nil
 	}
-	taskType := tr.Labels[TaskTypeLabel]
-	if taskType == TaskTypeClean {
-		return r.handleCleanTask(ctx, log, tr)
+
+	//identify tasks by the PLATFORM param and multi-platform-ssh- secret
+	if tr.Status.TaskSpec == nil || tr.Status.TaskSpec.Volumes == nil {
+		return reconcile.Result{}, nil
 	}
-	if taskType == TaskTypeProvision {
-		return r.handleProvisionTask(ctx, log, tr)
+	found := false
+	for _, i := range tr.Status.TaskSpec.Volumes {
+		if i.Secret != nil {
+			if strings.HasPrefix(i.Secret.SecretName, SecretPrefix) {
+				found = true
+			}
+		}
+	}
+	if !found {
+		//this is not something we need to be concerned with
+		return reconcile.Result{}, nil
+	}
+	found = false
+	for _, i := range tr.Spec.Params {
+		if i.Name == PlatformParam {
+			found = true
+		}
+	}
+	if !found {
+		//this is not something we need to be concerned with
+		return reconcile.Result{}, nil
 	}
 
-	if tr.Labels == nil || tr.Labels[MultiPlatformLabel] == "" {
-		//this is not something we need to be concerned with
+	if tr.Status.TaskSpec == nil || tr.Status.TaskSpec.Volumes == nil {
 		return reconcile.Result{}, nil
 	}
 	return r.handleUserTask(ctx, log, tr)
@@ -325,6 +351,10 @@ func extracPlatform(tr *v1.TaskRun) (string, error) {
 
 func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
 	log.Info("attempting to allocate host")
+
+	if tr.Labels == nil {
+		tr.Labels = map[string]string{}
+	}
 	if r.apiReader != nil {
 		err := r.apiReader.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)
 		if err != nil {
@@ -515,7 +545,7 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, log *logr.
 	provision := v1.TaskRun{}
 	provision.GenerateName = "provision-task"
 	provision.Namespace = r.operatorNamespace
-	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name, MultiPlatformLabel: "true", AssignedHost: tr.Labels[AssignedHost]}
+	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name, AssignedHost: tr.Labels[AssignedHost]}
 	provision.Spec.TaskRef = &v1.TaskRef{Name: "provision-shared-host"}
 	provision.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: sshSecret}}}
 	provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this

@@ -1,6 +1,6 @@
 == RHTAP Multi Platform Controller
 
-This controller orchestrates remote agents for RTHAP. It watches for `TaskRun` instances with the `build.appstudio.redhat.com/multi-platform-required` label, and will then supply SSH credentials for a node of the requested platform. The `TaskRun` can then use this node to build using a different platform. When the `TaskRun` is done the controller deals with cleanup up the remote node.
+This controller orchestrates remote agents for RTHAP. It watches for `TaskRun` instances that need a secret that starts with `multi-platform-ssh-` prefix and have a PLATFORM parameter, and will then supply SSH credentials for a node of the requested platform. The `TaskRun` can then use this node to build using a different platform. When the `TaskRun` is done the controller deals with cleanup up the remote node.
 
 == Try It Out
 

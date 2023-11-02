@@ -407,11 +407,12 @@ func createUserTaskRun(g *WithT, client runtimeclient.Client, name string, platf
 	tr := &pipelinev1.TaskRun{}
 	tr.Namespace = userNamespace
 	tr.Name = name
-	tr.Labels = map[string]string{MultiPlatformLabel: "true"}
 	tr.Spec = pipelinev1.TaskRunSpec{
 		Params: []pipelinev1.Param{{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues(platform)}},
 	}
+	tr.Status.TaskSpec = &pipelinev1.TaskSpec{Volumes: []v1.Volume{{Name: "test", VolumeSource: v1.VolumeSource{Secret: &v1.SecretVolumeSource{SecretName: SecretPrefix + name}}}}}
 	g.Expect(client.Create(context.TODO(), tr)).ToNot(HaveOccurred())
+
 }
 
 func createHostConfig() []runtimeclient.Object {
