@@ -30,6 +30,8 @@ spec:
     - name: infra-deployment-update-script
       value: |
         sed -i -E 's/[0-9a-f]{40}/{{ revision }}/g' components/multi-platform-controller/base/kustomization.yaml
+        sed -i -E 's/[0-9a-f]{40}/{{ revision }}/g' components/multi-platform-controller/staging/kustomization.yaml
+        sed -i -E 's/[0-9a-f]{40}/{{ revision }}/g' components/multi-platform-controller/production/kustomization.yaml
   pipelineSpec:
     finally:
       - name: show-sbom
