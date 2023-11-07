@@ -54,13 +54,11 @@ spec:
         ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST rm $USERNAME
         chmod 0400 id_rsa
         ssh -i id_rsa -o StrictHostKeyChecking=no $USERNAME@$(params.HOST) echo "test"
-        KEY=$(cat id_rsa)
-        echo $KEY
         HOST=$(echo $USERNAME@$(params.HOST) | base64 -w 0)
         DIR=$(echo /home/$USERNAME | base64 -w 0)
         
-        
         if [ -e "/tls/tls.crt" ]; then
+          KEY=$(cat id_rsa)
           OTP=$(curl --cacert /tls/tls.crt -XPOST -d "$KEY" https://multi-platform-otp-server.multi-platform-controller.svc.cluster.local/store-key | base64 -w 0)
           OTP_SERVER="$(echo https://multi-platform-otp-server.multi-platform-controller.svc.cluster.local/otp | base64 -w 0)"
           echo $OTP | base64 -d
@@ -81,10 +79,11 @@ spec:
           type: Opaque
         EOF
         else
+          KEY=$(cat id_rsa | base64 -w 0)
           cat >secret.yaml <<EOF
           apiVersion: v1
           data:
-            id_rsa: "$(echo $KEY | base64 -w 0)"
+            id_rsa: "$KEY"
             host: "$HOST"
             user-dir: "$DIR"
           kind: Secret
