@@ -63,14 +63,6 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 	var mgr ctrl.Manager
 	var err error
 
-	//if we are running this locally on the same cluster as the ckcp we want to ignore any synced pipeline runs
-	multiArchPipelines := labels.NewSelector()
-	requirement, lerr := labels.NewRequirement(taskrun.MultiPlatformLabel, selection.Exists, nil)
-	if lerr != nil {
-		return nil, lerr
-	}
-	multiArchPipelines = multiArchPipelines.Add(*requirement)
-
 	configMapSelector := labels.NewSelector()
 	configMapLabels, lerr := labels.NewRequirement(taskrun.ConfigMapLabel, selection.Exists, []string{})
 	if lerr != nil {
@@ -87,7 +79,7 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 
 	options.Cache = cache.Options{
 		ByObject: map[client.Object]cache.ByObject{
-			&pipelinev1.TaskRun{}: {Label: multiArchPipelines},
+			&pipelinev1.TaskRun{}: {},
 			&v1.Secret{}:          {Label: secretSelector},
 			&v1.ConfigMap{}:       {Label: configMapSelector},
 		},

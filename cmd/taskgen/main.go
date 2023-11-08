@@ -182,7 +182,6 @@ fi
 	}
 
 	task.Name = "buildah-remote"
-	task.Labels["build.appstudio.redhat.com/multi-platform-required"] = "true"
 	task.Spec.Params = append(task.Spec.Params, pipelinev1beta1.ParamSpec{Name: "PLATFORM", Type: pipelinev1beta1.ParamTypeString, Description: "The platform to build on"})
 
 	faleVar := false

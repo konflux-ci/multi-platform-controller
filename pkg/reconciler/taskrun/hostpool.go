@@ -122,7 +122,7 @@ func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, log *log
 		provision := v1.TaskRun{}
 		provision.GenerateName = "cleanup-task"
 		provision.Namespace = r.operatorNamespace
-		provision.Labels = map[string]string{TaskTypeLabel: TaskTypeClean, UserTaskName: tr.Name, UserTaskNamespace: tr.Namespace, MultiPlatformLabel: "true"}
+		provision.Labels = map[string]string{TaskTypeLabel: TaskTypeClean, UserTaskName: tr.Name, UserTaskNamespace: tr.Namespace}
 		provision.Spec.TaskRef = &v1.TaskRef{Name: "clean-shared-host"}
 		provision.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: selected.Secret}}}
 		provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
