@@ -16,7 +16,7 @@ package main
 import (
 	"bytes"
 	"flag"
-	pipelinev1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	tektonapi "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -47,11 +47,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	task := pipelinev1beta1.Task{}
+	task := tektonapi.Task{}
 	streamFileYamlToTektonObj(buildahTask, &task)
 
 	decodingScheme := runtime.NewScheme()
-	utilruntime.Must(pipelinev1beta1.AddToScheme(decodingScheme))
+	utilruntime.Must(tektonapi.AddToScheme(decodingScheme))
 	convertToSsh(&task)
 	y := printers.YAMLPrinter{}
 	b := bytes.Buffer{}
@@ -64,9 +64,9 @@ func main() {
 
 func decodeBytesToTektonObjbytes(bytes []byte, obj runtime.Object) runtime.Object {
 	decodingScheme := runtime.NewScheme()
-	utilruntime.Must(pipelinev1beta1.AddToScheme(decodingScheme))
+	utilruntime.Must(tektonapi.AddToScheme(decodingScheme))
 	decoderCodecFactory := serializer.NewCodecFactory(decodingScheme)
-	decoder := decoderCodecFactory.UniversalDecoder(pipelinev1beta1.SchemeGroupVersion)
+	decoder := decoderCodecFactory.UniversalDecoder(tektonapi.SchemeGroupVersion)
 	err := runtime.DecodeInto(decoder, bytes, obj)
 	if err != nil {
 		panic(err)
@@ -85,7 +85,7 @@ func streamFileYamlToTektonObj(path string, obj runtime.Object) runtime.Object {
 //script
 //set 1 sets up the ssh server
 
-func convertToSsh(task *pipelinev1beta1.Task) {
+func convertToSsh(task *tektonapi.Task) {
 
 	for stepPod := range task.Spec.Steps {
 		step := &task.Spec.Steps[stepPod]
@@ -182,7 +182,7 @@ fi
 	}
 
 	task.Name = "buildah-remote"
-	task.Spec.Params = append(task.Spec.Params, pipelinev1beta1.ParamSpec{Name: "PLATFORM", Type: pipelinev1beta1.ParamTypeString, Description: "The platform to build on"})
+	task.Spec.Params = append(task.Spec.Params, tektonapi.ParamSpec{Name: "PLATFORM", Type: tektonapi.ParamTypeString, Description: "The platform to build on"})
 
 	faleVar := false
 	task.Spec.Volumes = append(task.Spec.Volumes, v1.Volume{
