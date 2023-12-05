@@ -90,7 +90,6 @@ func (r *ReconcileTaskRun) Reconcile(ctx context.Context, request reconcile.Requ
 	ctx, cancel = context.WithTimeout(ctx, contextTimeout)
 	defer cancel()
 	log := ctrl.Log.WithName("taskrun").WithValues("request", request.NamespacedName)
-	log.Info("Reconciling")
 
 	pr := v1.TaskRun{}
 	prerr := r.client.Get(ctx, request.NamespacedName, &pr)
@@ -118,9 +117,11 @@ func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, log *logr.
 	if tr.Labels != nil {
 		taskType := tr.Labels[TaskTypeLabel]
 		if taskType == TaskTypeClean {
+			log.Info("Reconciling cleanup task")
 			return r.handleCleanTask(ctx, log, tr)
 		}
 		if taskType == TaskTypeProvision {
+			log.Info("Reconciling provision task")
 			return r.handleProvisionTask(ctx, log, tr)
 		}
 	}
@@ -154,6 +155,7 @@ func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, log *logr.
 		//this is not something we need to be concerned with
 		return reconcile.Result{}, nil
 	}
+	log.Info("Reconciling user task")
 
 	if tr.Status.TaskSpec == nil || tr.Status.TaskSpec.Volumes == nil {
 		return reconcile.Result{}, nil
@@ -230,11 +232,14 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 			break
 		}
 	}
+	userNamespace := tr.Labels[UserTaskNamespace]
+	userTaskName := tr.Labels[UserTaskName]
 	if !success {
 		assigned := tr.Labels[AssignedHost]
+		log.Info(fmt.Sprintf("provision task for host %s for user task %s/%sfailed", assigned, userNamespace, userTaskName))
 		if assigned != "" {
 			userTr := v1.TaskRun{}
-			err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Labels[UserTaskNamespace], Name: tr.Labels[UserTaskName]}, &userTr)
+			err := r.client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: userTaskName}, &userTr)
 			if err == nil {
 				if userTr.Annotations == nil {
 					userTr.Annotations = map[string]string{}
@@ -263,11 +268,11 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 		log.Info("provision task succeeded")
 		//verify we ended up with a secret
 		secret := v12.Secret{}
-		err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Labels[UserTaskNamespace], Name: secretName}, &secret)
+		err := r.client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: secretName}, &secret)
 		if err != nil {
 			if errors.IsNotFound(err) {
 				userTr := v1.TaskRun{}
-				err = r.client.Get(ctx, types.NamespacedName{Namespace: tr.Labels[UserTaskNamespace], Name: tr.Labels[UserTaskName]}, &userTr)
+				err = r.client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: userTaskName}, &userTr)
 				if err != nil {
 					if !errors.IsNotFound(err) {
 						//if the task run is not found then this is just old
