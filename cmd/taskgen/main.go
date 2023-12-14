@@ -137,8 +137,6 @@ fi
 			ret += "cd " + step.WorkingDir + "\n"
 		}
 
-		ret += "\nls -l \"$HOME/.docker/\"\n"
-
 		ret += step.Script
 		ret += "\nbuildah push \"$IMAGE\" oci:rhtap-final-image"
 		ret += "\nREMOTESSHEOF"
