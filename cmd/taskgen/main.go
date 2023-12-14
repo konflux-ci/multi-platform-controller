@@ -131,7 +131,7 @@ fi
 
 		ret += "\ncat >" + script + " <<'REMOTESSHEOF'\n"
 		if !strings.HasPrefix(step.Script, "#!") {
-			ret += "#!/bin/sh\nset -o verbose\nset -e\n"
+			ret += "#!/bin/bash\nset -o verbose\nset -e\n"
 		}
 		if step.WorkingDir != "" {
 			ret += "cd " + step.WorkingDir + "\n"
