@@ -82,9 +82,6 @@ func streamFileYamlToTektonObj(path string, obj runtime.Object) runtime.Object {
 	return decodeBytesToTektonObjbytes(bytes, obj)
 }
 
-//script
-//set 1 sets up the ssh server
-
 func convertToSsh(task *tektonapi.Task) {
 
 	for stepPod := range task.Spec.Steps {
@@ -123,21 +120,24 @@ fi
 `
 
 		env := "$PODMAN_PORT_FORWARD"
-		//before the build we sync the contents of the workspace to the remote host
+		// Before the build we sync the contents of the workspace to the remote host
 		for _, workspace := range task.Spec.Workspaces {
 			ret += "\nrsync -ra $(workspaces." + workspace.Name + ".path)/ \"$SSH_HOST:$BUILD_DIR/workspaces/" + workspace.Name + "/\""
 			podmanArgs += " -v \"$BUILD_DIR/workspaces/" + workspace.Name + ":$(workspaces." + workspace.Name + ".path):Z\" "
 		}
+		ret += "\nrsync -ra \"$HOME/.docker/\" \"$SSH_HOST:$BUILD_DIR/.docker/\""
+		podmanArgs += " -v \"$BUILD_DIR/.docker/:/root/.docker:Z\" "
 		script := "scripts/script-" + step.Name + ".sh"
 
 		ret += "\ncat >" + script + " <<'REMOTESSHEOF'\n"
 		if !strings.HasPrefix(step.Script, "#!") {
-			ret += "#!/bin/sh\nset -o verbose\n"
+			ret += "#!/bin/sh\nset -o verbose\nset -e\n"
 		}
 		if step.WorkingDir != "" {
 			ret += "cd " + step.WorkingDir + "\n"
-
 		}
+
+		ret += "\nls -l \"$HOME/.docker/\"\n"
 
 		ret += step.Script
 		ret += "\nbuildah push \"$IMAGE\" oci:rhtap-final-image"
@@ -157,7 +157,7 @@ fi
 
 		ret += "\nssh $SSH_ARGS \"$SSH_HOST\" $PORT_FORWARD podman  run " + env + " --rm " + podmanArgs + " -v $BUILD_DIR/scripts:/script:Z --user=0  \"$BUILDER_IMAGE\" " + containerScript
 
-		//sync the contents of the workspaces back so subsequent tasks can use them
+		// Sync the contents of the workspaces back so subsequent tasks can use them
 		for _, workspace := range task.Spec.Workspaces {
 			ret += "\nrsync -ra \"$SSH_HOST:$BUILD_DIR/workspaces/" + workspace.Name + "/\" \"$(workspaces." + workspace.Name + ".path)/\""
 		}
