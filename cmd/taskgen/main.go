@@ -119,16 +119,16 @@ PODMAN_PORT_FORWARD=" -e JVM_BUILD_WORKSPACE_ARTIFACT_CACHE_PORT_80_TCP_ADDR=loc
 fi
 `
 
-		env := "$PODMAN_PORT_FORWARD"
+		env := "$PODMAN_PORT_FORWARD \\\n"
 		// Before the build we sync the contents of the workspace to the remote host
 		for _, workspace := range task.Spec.Workspaces {
 			ret += "\nrsync -ra $(workspaces." + workspace.Name + ".path)/ \"$SSH_HOST:$BUILD_DIR/workspaces/" + workspace.Name + "/\""
-			podmanArgs += " -v \"$BUILD_DIR/workspaces/" + workspace.Name + ":$(workspaces." + workspace.Name + ".path):Z\" "
+			podmanArgs += " -v \"$BUILD_DIR/workspaces/" + workspace.Name + ":$(workspaces." + workspace.Name + ".path):Z\" \\\n"
 		}
 		ret += "\nrsync -ra \"$HOME/.docker/\" \"$SSH_HOST:$BUILD_DIR/.docker/\""
-		podmanArgs += " -v \"$BUILD_DIR/.docker/:/root/.docker:Z\" "
+		podmanArgs += " -v \"$BUILD_DIR/.docker/:/root/.docker:Z\" \\\n"
 		ret += "\nrsync -ra \"/tekton/results/\" \"$SSH_HOST:$BUILD_DIR/tekton-results/\""
-		podmanArgs += " -v \"$BUILD_DIR/tekton-results/:/tekton/results:Z\" "
+		podmanArgs += " -v \"$BUILD_DIR/tekton-results/:/tekton/results:Z\" \\\n"
 
 		script := "scripts/script-" + step.Name + ".sh"
 
@@ -146,16 +146,16 @@ fi
 
 		if task.Spec.StepTemplate != nil {
 			for _, e := range task.Spec.StepTemplate.Env {
-				env += " -e " + e.Name + "=\"$" + e.Name + "\""
+				env += " -e " + e.Name + "=\"$" + e.Name + "\" \\\n"
 			}
 		}
 		ret += "\nrsync -ra scripts \"$SSH_HOST:$BUILD_DIR\""
 		containerScript := "/script/script-" + step.Name + ".sh"
 		for _, e := range step.Env {
-			env += " -e " + e.Name + "=\"$" + e.Name + "\" "
+			env += " -e " + e.Name + "=\"$" + e.Name + "\" \\\n"
 		}
-
-		ret += "\nssh $SSH_ARGS \"$SSH_HOST\" $PORT_FORWARD podman  run " + env + " --rm " + podmanArgs + " -v $BUILD_DIR/scripts:/script:Z --user=0  \"$BUILDER_IMAGE\" " + containerScript
+		podmanArgs += " -v $BUILD_DIR/scripts:/script:Z \\\n"
+		ret += "\nssh $SSH_ARGS \"$SSH_HOST\" $PORT_FORWARD podman  run " + env + "" + podmanArgs + "--user=0  --rm  \"$BUILDER_IMAGE\" " + containerScript
 
 		// Sync the contents of the workspaces back so subsequent tasks can use them
 		for _, workspace := range task.Spec.Workspaces {
