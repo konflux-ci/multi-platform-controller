@@ -127,6 +127,9 @@ fi
 		}
 		ret += "\nrsync -ra \"$HOME/.docker/\" \"$SSH_HOST:$BUILD_DIR/.docker/\""
 		podmanArgs += " -v \"$BUILD_DIR/.docker/:/root/.docker:Z\" "
+		ret += "\nrsync -ra \"/tekton/results/\" \"$SSH_HOST:$BUILD_DIR/tekton-results/\""
+		podmanArgs += " -v \"$BUILD_DIR/tekton-results/:/tekton/results:Z\" "
+
 		script := "scripts/script-" + step.Name + ".sh"
 
 		ret += "\ncat >" + script + " <<'REMOTESSHEOF'\n"
@@ -136,7 +139,6 @@ fi
 		if step.WorkingDir != "" {
 			ret += "cd " + step.WorkingDir + "\n"
 		}
-
 		ret += step.Script
 		ret += "\nbuildah push \"$IMAGE\" oci:rhtap-final-image"
 		ret += "\nREMOTESSHEOF"
@@ -159,6 +161,9 @@ fi
 		for _, workspace := range task.Spec.Workspaces {
 			ret += "\nrsync -ra \"$SSH_HOST:$BUILD_DIR/workspaces/" + workspace.Name + "/\" \"$(workspaces." + workspace.Name + ".path)/\""
 		}
+		//sync back results
+		ret += "\nrsync -ra \"$SSH_HOST:$BUILD_DIR/tekton-results/\" \"/tekton/results/\""
+
 		ret += "\nbuildah pull oci:rhtap-final-image"
 		ret += "\nbuildah images"
 		ret += "\nbuildah tag localhost/rhtap-final-image \"$IMAGE\""
