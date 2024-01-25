@@ -11,7 +11,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"time"
 
-	jvmbs "github.com/redhat-appstudio/jvm-build-service/pkg/apis/jvmbuildservice/v1alpha1"
 	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
@@ -50,10 +49,6 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 
 	// pretty sure this is there by default but we will be explicit like build-service
 	if err := k8sscheme.AddToScheme(options.Scheme); err != nil {
-		return nil, err
-	}
-
-	if err := jvmbs.AddToScheme(options.Scheme); err != nil {
 		return nil, err
 	}
 
