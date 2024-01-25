@@ -6,13 +6,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/aws"
 	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
 	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
-	internalauth "github.com/aws/aws-sdk-go-v2/internal/auth"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	smithy "github.com/aws/smithy-go"
-	smithyendpoints "github.com/aws/smithy-go/endpoints"
 	"github.com/aws/smithy-go/middleware"
 	smithytime "github.com/aws/smithy-go/time"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
@@ -111,8 +108,8 @@ type DescribeInstancesInput struct {
 	//   instance. Specified as an name.
 	//   - image-id - The ID of the image used to launch the instance.
 	//   - instance-id - The ID of the instance.
-	//   - instance-lifecycle - Indicates whether this is a Spot Instance or a
-	//   Scheduled Instance ( spot | scheduled ).
+	//   - instance-lifecycle - Indicates whether this is a Spot Instance, a Scheduled
+	//   Instance, or a Capacity Block ( spot | scheduled | capacity-block ).
 	//   - instance-state-code - The state of the instance, as a 16-bit unsigned
 	//   integer. The high byte is used for internal purposes and should be ignored. The
 	//   low byte is set based on the state represented. The valid values are: 0
@@ -133,7 +130,6 @@ type DescribeInstancesInput struct {
 	//   format in the UTC time zone (YYYY-MM-DDThh:mm:ss.sssZ), for example,
 	//   2021-09-29T11:04:43.305Z . You can use a wildcard ( * ), for example,
 	//   2021-09-29T* , which matches an entire day.
-	//   - license-pool -
 	//   - maintenance-options.auto-recovery - The current automatic recovery behavior
 	//   of the instance ( disabled | default ).
 	//   - metadata-options.http-endpoint - The status of access to the HTTP metadata
@@ -152,50 +148,79 @@ type DescribeInstancesInput struct {
 	//   | applied ).
 	//   - monitoring-state - Indicates whether detailed monitoring is enabled (
 	//   disabled | enabled ).
-	//   - network-interface.addresses.primary - Specifies whether the IPv4 address of
-	//   the network interface is the primary private IPv4 address.
-	//   - network-interface.addresses.private-ip-address - The private IPv4 address
-	//   associated with the network interface.
-	//   - network-interface.addresses.association.public-ip - The ID of the
-	//   association of an Elastic IP address (IPv4) with a network interface.
+	//   - network-interface.addresses.association.allocation-id - The allocation ID.
+	//   - network-interface.addresses.association.association-id - The association ID.
+	//   - network-interface.addresses.association.carrier-ip - The carrier IP address.
+	//   - network-interface.addresses.association.customer-owned-ip - The
+	//   customer-owned IP address.
 	//   - network-interface.addresses.association.ip-owner-id - The owner ID of the
 	//   private IPv4 address associated with the network interface.
-	//   - network-interface.association.public-ip - The address of the Elastic IP
-	//   address (IPv4) bound to the network interface.
-	//   - network-interface.association.ip-owner-id - The owner of the Elastic IP
-	//   address (IPv4) associated with the network interface.
+	//   - network-interface.addresses.association.public-dns-name - The public DNS
+	//   name.
+	//   - network-interface.addresses.association.public-ip - The ID of the
+	//   association of an Elastic IP address (IPv4) with a network interface.
+	//   - network-interface.addresses.primary - Specifies whether the IPv4 address of
+	//   the network interface is the primary private IPv4 address.
+	//   - network-interface.addresses.private-dns-name - The private DNS name.
+	//   - network-interface.addresses.private-ip-address - The private IPv4 address
+	//   associated with the network interface.
 	//   - network-interface.association.allocation-id - The allocation ID returned
 	//   when you allocated the Elastic IP address (IPv4) for your network interface.
 	//   - network-interface.association.association-id - The association ID returned
 	//   when the network interface was associated with an IPv4 address.
+	//   - network-interface.association.carrier-ip - The customer-owned IP address.
+	//   - network-interface.association.customer-owned-ip - The customer-owned IP
+	//   address.
+	//   - network-interface.association.ip-owner-id - The owner of the Elastic IP
+	//   address (IPv4) associated with the network interface.
+	//   - network-interface.association.public-dns-name - The public DNS name.
+	//   - network-interface.association.public-ip - The address of the Elastic IP
+	//   address (IPv4) bound to the network interface.
+	//   - network-interface.attachment.attach-time - The time that the network
+	//   interface was attached to an instance.
 	//   - network-interface.attachment.attachment-id - The ID of the interface
 	//   attachment.
+	//   - network-interface.attachment.delete-on-termination - Specifies whether the
+	//   attachment is deleted when an instance is terminated.
+	//   - network-interface.attachment.device-index - The device index to which the
+	//   network interface is attached.
 	//   - network-interface.attachment.instance-id - The ID of the instance to which
 	//   the network interface is attached.
 	//   - network-interface.attachment.instance-owner-id - The owner ID of the
 	//   instance to which the network interface is attached.
-	//   - network-interface.attachment.device-index - The device index to which the
-	//   network interface is attached.
+	//   - network-interface.attachment.network-card-index - The index of the network
+	//   card.
 	//   - network-interface.attachment.status - The status of the attachment (
 	//   attaching | attached | detaching | detached ).
-	//   - network-interface.attachment.attach-time - The time that the network
-	//   interface was attached to an instance.
-	//   - network-interface.attachment.delete-on-termination - Specifies whether the
-	//   attachment is deleted when an instance is terminated.
 	//   - network-interface.availability-zone - The Availability Zone for the network
 	//   interface.
+	//   - network-interface.deny-all-igw-traffic - A Boolean that indicates whether a
+	//   network interface with an IPv6 address is unreachable from the public internet.
 	//   - network-interface.description - The description of the network interface.
 	//   - network-interface.group-id - The ID of a security group associated with the
 	//   network interface.
 	//   - network-interface.group-name - The name of a security group associated with
 	//   the network interface.
+	//   - network-interface.ipv4-prefixes.ipv4-prefix - The IPv4 prefixes that are
+	//   assigned to the network interface.
+	//   - network-interface.ipv6-address - The IPv6 address associated with the
+	//   network interface.
 	//   - network-interface.ipv6-addresses.ipv6-address - The IPv6 address associated
 	//   with the network interface.
+	//   - network-interface.ipv6-addresses.is-primary-ipv6 - A Boolean that indicates
+	//   whether this is the primary IPv6 address.
+	//   - network-interface.ipv6-native - A Boolean that indicates whether this is an
+	//   IPv6 only network interface.
+	//   - network-interface.ipv6-prefixes.ipv6-prefix - The IPv6 prefix assigned to
+	//   the network interface.
 	//   - network-interface.mac-address - The MAC address of the network interface.
 	//   - network-interface.network-interface-id - The ID of the network interface.
+	//   - network-interface.outpost-arn - The ARN of the Outpost.
 	//   - network-interface.owner-id - The ID of the owner of the network interface.
 	//   - network-interface.private-dns-name - The private DNS name of the network
 	//   interface.
+	//   - network-interface.private-ip-address - The private IPv4 address.
+	//   - network-interface.public-dns-name - The public DNS name.
 	//   - network-interface.requester-id - The requester ID for the network interface.
 	//   - network-interface.requester-managed - Indicates whether the network
 	//   interface is being managed by Amazon Web Services.
@@ -206,6 +231,10 @@ type DescribeInstancesInput struct {
 	//   and false means that checking is disabled. The value must be false for the
 	//   network interface to perform network address translation (NAT) in your VPC.
 	//   - network-interface.subnet-id - The ID of the subnet for the network
+	//   interface.
+	//   - network-interface.tag-key - The key of a tag assigned to the network
+	//   interface.
+	//   - network-interface.tag-value - The value of a tag assigned to the network
 	//   interface.
 	//   - network-interface.vpc-id - The ID of the VPC for the network interface.
 	//   - outpost-arn - The Amazon Resource Name (ARN) of the Outpost.
@@ -317,6 +346,9 @@ type DescribeInstancesOutput struct {
 }
 
 func (c *Client) addOperationDescribeInstancesMiddlewares(stack *middleware.Stack, options Options) (err error) {
+	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+		return err
+	}
 	err = stack.Serialize.Add(&awsEc2query_serializeOpDescribeInstances{}, middleware.After)
 	if err != nil {
 		return err
@@ -325,6 +357,10 @@ func (c *Client) addOperationDescribeInstancesMiddlewares(stack *middleware.Stac
 	if err != nil {
 		return err
 	}
+	if err := addProtocolFinalizerMiddlewares(stack, options, "DescribeInstances"); err != nil {
+		return fmt.Errorf("add protocol finalizers: %v", err)
+	}
+
 	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
 		return err
 	}
@@ -346,9 +382,6 @@ func (c *Client) addOperationDescribeInstancesMiddlewares(stack *middleware.Stac
 	if err = addRetryMiddlewares(stack, options); err != nil {
 		return err
 	}
-	if err = addHTTPSignerV4Middleware(stack, options); err != nil {
-		return err
-	}
 	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
 		return err
 	}
@@ -364,7 +397,7 @@ func (c *Client) addOperationDescribeInstancesMiddlewares(stack *middleware.Stac
 	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
-	if err = addDescribeInstancesResolveEndpointMiddleware(stack, options); err != nil {
+	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
 		return err
 	}
 	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDescribeInstances(options.Region), middleware.Before); err != nil {
@@ -382,7 +415,7 @@ func (c *Client) addOperationDescribeInstancesMiddlewares(stack *middleware.Stac
 	if err = addRequestResponseLogging(stack, options); err != nil {
 		return err
 	}
-	if err = addendpointDisableHTTPSMiddleware(stack, options); err != nil {
+	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
 	return nil
@@ -1367,130 +1400,6 @@ func newServiceMetadataMiddleware_opDescribeInstances(region string) *awsmiddlew
 	return &awsmiddleware.RegisterServiceMetadata{
 		Region:        region,
 		ServiceID:     ServiceID,
-		SigningName:   "ec2",
 		OperationName: "DescribeInstances",
 	}
-}
-
-type opDescribeInstancesResolveEndpointMiddleware struct {
-	EndpointResolver EndpointResolverV2
-	BuiltInResolver  builtInParameterResolver
-}
-
-func (*opDescribeInstancesResolveEndpointMiddleware) ID() string {
-	return "ResolveEndpointV2"
-}
-
-func (m *opDescribeInstancesResolveEndpointMiddleware) HandleSerialize(ctx context.Context, in middleware.SerializeInput, next middleware.SerializeHandler) (
-	out middleware.SerializeOutput, metadata middleware.Metadata, err error,
-) {
-	if awsmiddleware.GetRequiresLegacyEndpoints(ctx) {
-		return next.HandleSerialize(ctx, in)
-	}
-
-	req, ok := in.Request.(*smithyhttp.Request)
-	if !ok {
-		return out, metadata, fmt.Errorf("unknown transport type %T", in.Request)
-	}
-
-	if m.EndpointResolver == nil {
-		return out, metadata, fmt.Errorf("expected endpoint resolver to not be nil")
-	}
-
-	params := EndpointParameters{}
-
-	m.BuiltInResolver.ResolveBuiltIns(&params)
-
-	var resolvedEndpoint smithyendpoints.Endpoint
-	resolvedEndpoint, err = m.EndpointResolver.ResolveEndpoint(ctx, params)
-	if err != nil {
-		return out, metadata, fmt.Errorf("failed to resolve service endpoint, %w", err)
-	}
-
-	req.URL = &resolvedEndpoint.URI
-
-	for k := range resolvedEndpoint.Headers {
-		req.Header.Set(
-			k,
-			resolvedEndpoint.Headers.Get(k),
-		)
-	}
-
-	authSchemes, err := internalauth.GetAuthenticationSchemes(&resolvedEndpoint.Properties)
-	if err != nil {
-		var nfe *internalauth.NoAuthenticationSchemesFoundError
-		if errors.As(err, &nfe) {
-			// if no auth scheme is found, default to sigv4
-			signingName := "ec2"
-			signingRegion := m.BuiltInResolver.(*builtInResolver).Region
-			ctx = awsmiddleware.SetSigningName(ctx, signingName)
-			ctx = awsmiddleware.SetSigningRegion(ctx, signingRegion)
-
-		}
-		var ue *internalauth.UnSupportedAuthenticationSchemeSpecifiedError
-		if errors.As(err, &ue) {
-			return out, metadata, fmt.Errorf(
-				"This operation requests signer version(s) %v but the client only supports %v",
-				ue.UnsupportedSchemes,
-				internalauth.SupportedSchemes,
-			)
-		}
-	}
-
-	for _, authScheme := range authSchemes {
-		switch authScheme.(type) {
-		case *internalauth.AuthenticationSchemeV4:
-			v4Scheme, _ := authScheme.(*internalauth.AuthenticationSchemeV4)
-			var signingName, signingRegion string
-			if v4Scheme.SigningName == nil {
-				signingName = "ec2"
-			} else {
-				signingName = *v4Scheme.SigningName
-			}
-			if v4Scheme.SigningRegion == nil {
-				signingRegion = m.BuiltInResolver.(*builtInResolver).Region
-			} else {
-				signingRegion = *v4Scheme.SigningRegion
-			}
-			if v4Scheme.DisableDoubleEncoding != nil {
-				// The signer sets an equivalent value at client initialization time.
-				// Setting this context value will cause the signer to extract it
-				// and override the value set at client initialization time.
-				ctx = internalauth.SetDisableDoubleEncoding(ctx, *v4Scheme.DisableDoubleEncoding)
-			}
-			ctx = awsmiddleware.SetSigningName(ctx, signingName)
-			ctx = awsmiddleware.SetSigningRegion(ctx, signingRegion)
-			break
-		case *internalauth.AuthenticationSchemeV4A:
-			v4aScheme, _ := authScheme.(*internalauth.AuthenticationSchemeV4A)
-			if v4aScheme.SigningName == nil {
-				v4aScheme.SigningName = aws.String("ec2")
-			}
-			if v4aScheme.DisableDoubleEncoding != nil {
-				// The signer sets an equivalent value at client initialization time.
-				// Setting this context value will cause the signer to extract it
-				// and override the value set at client initialization time.
-				ctx = internalauth.SetDisableDoubleEncoding(ctx, *v4aScheme.DisableDoubleEncoding)
-			}
-			ctx = awsmiddleware.SetSigningName(ctx, *v4aScheme.SigningName)
-			ctx = awsmiddleware.SetSigningRegion(ctx, v4aScheme.SigningRegionSet[0])
-			break
-		case *internalauth.AuthenticationSchemeNone:
-			break
-		}
-	}
-
-	return next.HandleSerialize(ctx, in)
-}
-
-func addDescribeInstancesResolveEndpointMiddleware(stack *middleware.Stack, options Options) error {
-	return stack.Serialize.Insert(&opDescribeInstancesResolveEndpointMiddleware{
-		EndpointResolver: options.EndpointResolverV2,
-		BuiltInResolver: &builtInResolver{
-			Region:       options.Region,
-			UseDualStack: options.EndpointOptions.UseDualStackEndpoint,
-			UseFIPS:      options.EndpointOptions.UseFIPSEndpoint,
-			Endpoint:     options.BaseEndpoint,
-		},
-	}, "ResolveEndpoint", middleware.After)
 }
