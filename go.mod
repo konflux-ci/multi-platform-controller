@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/IBM/go-sdk-core/v4 v4.10.0
-	github.com/IBM/vpc-go-sdk v0.41.0
+	github.com/IBM/vpc-go-sdk v0.47.0
 	github.com/aws/aws-sdk-go-v2 v1.24.1
 	github.com/aws/aws-sdk-go-v2/config v1.26.6
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.145.0
@@ -31,7 +31,7 @@ require github.com/redhat-appstudio/jvm-build-service v0.0.0-20230322082207-66bf
 require (
 	contrib.go.opencensus.io/exporter/ocagent v0.7.1-0.20200907061046-05415f1de66d // indirect
 	contrib.go.opencensus.io/exporter/prometheus v0.4.0 // indirect
-	github.com/IBM/go-sdk-core/v5 v5.13.4 // indirect
+	github.com/IBM/go-sdk-core/v5 v5.14.1 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.16.16 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.14.11 // indirect
