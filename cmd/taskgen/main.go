@@ -84,6 +84,7 @@ func streamFileYamlToTektonObj(path string, obj runtime.Object) runtime.Object {
 
 func convertToSsh(task *tektonapi.Task) {
 
+	builderImage := ""
 	for stepPod := range task.Spec.Steps {
 		step := &task.Spec.Steps[stepPod]
 		if step.Name != "build" {
@@ -175,6 +176,7 @@ fi
 			}
 		}
 		step.Script = ret
+		builderImage = step.Image
 		step.Image = "quay.io/redhat-appstudio/multi-platform-runner:01c7670e81d5120347cf0ad13372742489985e5f@sha256:246adeaaba600e207131d63a7f706cffdcdc37d8f600c56187123ec62823ff44"
 		step.VolumeMounts = append(step.VolumeMounts, v1.VolumeMount{
 			Name:      "ssh",
@@ -196,5 +198,5 @@ fi
 			},
 		},
 	})
-	task.Spec.StepTemplate.Env = append(task.Spec.StepTemplate.Env, v1.EnvVar{Name: "BUILDER_IMAGE", Value: "$(params.BUILDER_IMAGE)"})
+	task.Spec.StepTemplate.Env = append(task.Spec.StepTemplate.Env, v1.EnvVar{Name: "BUILDER_IMAGE", Value: builderImage})
 }
