@@ -4,6 +4,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+type DependencyBuildState string
+
 const (
 	DependencyBuildStateNew          = "DependencyBuildStateNew"
 	DependencyBuildStateAnalyzeBuild = "DependencyBuildStateAnalyzeBuild"
@@ -26,21 +28,17 @@ type DependencyBuildStatus struct {
 	Conditions   []metav1.Condition `json:"conditions,omitempty"`
 	State        string             `json:"state,omitempty"`
 	Message      string             `json:"message,omitempty"`
-	Contaminants []Contaminant      `json:"contaminates,omitempty"`
-	//BuildRecipe the current build recipe. If build is done then this recipe was used
-	//to get to the current state
-	CurrentBuildRecipe *BuildRecipe `json:"currentBuildRecipe,omitempty"`
+	Contaminants []*Contaminant     `json:"contaminates,omitempty"`
 	// PotentialBuildRecipes additional recipes to try if the current recipe fails
-	PotentialBuildRecipes []*BuildRecipe `json:"potentialBuildRecipes,omitempty"`
-	//FailedBuildRecipes recipes that resulted in a failure
-	//if the current state is failed this may include the current BuildRecipe
-	FailedBuildRecipes            []*BuildRecipe `json:"failedBuildRecipes,omitempty"`
-	LastCompletedBuildPipelineRun string         `json:"lastCompletedBuildPipelineRun,omitempty"`
-	CommitTime                    int64          `json:"commitTime,omitempty"`
-	DeployedArtifacts             []string       `json:"deployedArtifacts,omitempty"`
-	FailedVerification            bool           `json:"failedVerification,omitempty"`
-	DiagnosticDockerFiles         []string       `json:"diagnosticDockerFiles,omitempty"`
-	PipelineRetries               int            `json:"pipelineRetries,omitempty"`
+	PotentialBuildRecipes      []*BuildRecipe   `json:"potentialBuildRecipes,omitempty"`
+	PotentialBuildRecipesIndex int              `json:"potentialBuildRecipesIndex,omitempty"`
+	CommitTime                 int64            `json:"commitTime,omitempty"`
+	DeployedArtifacts          []string         `json:"deployedArtifacts,omitempty"`
+	FailedVerification         bool             `json:"failedVerification,omitempty"`
+	Hermetic                   bool             `json:"hermetic,omitempty"`
+	PipelineRetries            int              `json:"pipelineRetries,omitempty"`
+	BuildAttempts              []*BuildAttempt  `json:"buildAttempts,omitempty"`
+	DiscoveryPipelineResults   *PipelineResults `json:"discoveryPipelineResults,omitempty"`
 }
 
 // +genclient
@@ -70,13 +68,83 @@ type DependencyBuildList struct {
 	Items           []DependencyBuild `json:"items"`
 }
 
+type BuildAttempt struct {
+	BuildId string            `json:"buildId,omitempty"`
+	Recipe  *BuildRecipe      `json:"buildRecipe,omitempty"`
+	Build   *BuildPipelineRun `json:"build,omitempty"`
+}
+
+type BuildPipelineRun struct {
+	PipelineName         string                   `json:"pipelineName"`
+	Complete             bool                     `json:"complete"`
+	Succeeded            bool                     `json:"succeeded,omitempty"`
+	DiagnosticDockerFile string                   `json:"diagnosticDockerFile,omitempty"`
+	Results              *BuildPipelineRunResults `json:"results,omitempty"`
+	StartTime            int64                    `json:"startTime,omitempty"`
+}
+
+type BuildPipelineRunResults struct {
+	//the image resulting from the run
+	Image       string `json:"image,omitempty"`
+	ImageDigest string `json:"imageDigest"`
+	//If the resulting image was verified
+	Verified            bool   `json:"verified,omitempty"`
+	VerificationResults string `json:"verificationFailures,omitempty"`
+	// The produced GAVs
+	Gavs []string `json:"gavs,omitempty"`
+	// The hermetic build image produced by the build
+	HermeticBuildImage string `json:"hermeticBuildImage,omitempty"`
+	// The git archive source information
+	GitArchive GitArchive `json:"gitArchive,omitempty"`
+
+	// The Tekton results
+	PipelineResults *PipelineResults `json:"pipelineResults,omitempty"`
+}
+
+type GitArchive struct {
+	URL string `json:"url,omitempty"`
+	Tag string `json:"tag,omitempty"`
+	SHA string `json:"sha,omitempty"`
+}
+
+func (r *DependencyBuildStatus) GetBuildPipelineRun(pipeline string) *BuildAttempt {
+	for i := range r.BuildAttempts {
+		ba := r.BuildAttempts[i]
+		if ba.Build != nil {
+			if ba.Build.PipelineName == pipeline {
+				return ba
+			}
+		}
+	}
+	return nil
+}
+func (r *DependencyBuildStatus) CurrentBuildAttempt() *BuildAttempt {
+	if len(r.BuildAttempts) == 0 {
+		return nil
+	}
+	return r.BuildAttempts[len(r.BuildAttempts)-1]
+}
+
+func (r *DependencyBuildStatus) ProblemContaminates() []*Contaminant {
+	problemContaminates := []*Contaminant{}
+	for _, i := range r.Contaminants {
+		if !i.Allowed {
+			problemContaminates = append(problemContaminates, i)
+		}
+	}
+	return problemContaminates
+}
+
 type BuildRecipe struct {
+	//Deprecated
 	Pipeline            string               `json:"pipeline,omitempty"`
 	Tool                string               `json:"tool,omitempty"`
 	Image               string               `json:"image,omitempty"`
+	ContextPath         string               `json:"contextPath,omitempty"`
 	CommandLine         []string             `json:"commandLine,omitempty"`
 	EnforceVersion      string               `json:"enforceVersion,omitempty"`
 	ToolVersion         string               `json:"toolVersion,omitempty"`
+	ToolVersions        map[string]string    `json:"toolVersions,omitempty"`
 	JavaVersion         string               `json:"javaVersion,omitempty"`
 	PreBuildScript      string               `json:"preBuildScript,omitempty"`
 	PostBuildScript     string               `json:"postBuildScript,omitempty"`
@@ -84,10 +152,16 @@ type BuildRecipe struct {
 	DisableSubmodules   bool                 `json:"disableSubmodules,omitempty"`
 	AdditionalMemory    int                  `json:"additionalMemory,omitempty"`
 	Repositories        []string             `json:"repositories,omitempty"`
+	AllowedDifferences  []string             `json:"allowedDifferences,omitempty"`
+	DisabledPlugins     []string             `json:"disabledPlugins,omitempty"`
 }
 type Contaminant struct {
 	GAV                   string   `json:"gav,omitempty"`
 	ContaminatedArtifacts []string `json:"contaminatedArtifacts,omitempty"`
+	BuildId               string   `json:"buildId,omitempty"`
+	Source                string   `json:"source,omitempty"`
+	Allowed               bool     `json:"allowed,omitempty"`
+	RebuildAvailable      bool     `json:"rebuildAvailable,omitempty"`
 }
 type AdditionalDownload struct {
 	Uri         string `json:"uri,omitempty"`
@@ -96,4 +170,11 @@ type AdditionalDownload struct {
 	BinaryPath  string `json:"binaryPath,omitempty"`
 	PackageName string `json:"packageName,omitempty"`
 	FileType    string `json:"type"`
+}
+
+// A representation of the Tekton Results records for a pipeline
+type PipelineResults struct {
+	Result string `json:"result,omitempty"`
+	Record string `json:"record,omitempty"`
+	Logs   string `json:"logs,omitempty"`
 }

@@ -1,15 +1,28 @@
 package v1alpha1
 
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+type HermeticBuildType string
 
 const (
 	JBSConfigName                           = "jvm-build-config"
-	ImageSecretName                         = "jvm-build-image-secrets" //#nosec
-	GitSecretName                           = "jvm-build-git-secrets"   //#nosec
-	TlsSecretName                           = "jvm-build-tls-secrets"   //#nosec
-	TlsConfigMapName                        = "jvm-build-tls-ca"        //#nosec
-	ImageSecretTokenKey                     = ".dockerconfigjson"       //#nosec
-	GitSecretTokenKey                       = ".git-credentials"        //#nosec
+	DefaultImageSecretName                  = "jvm-build-image-secrets"          //#nosec
+	GitSecretName                           = "jvm-build-git-secrets"            //#nosec
+	TlsSecretName                           = "jvm-build-tls-secrets"            //#nosec
+	TlsConfigMapName                        = "jvm-build-tls-ca"                 //#nosec
+	ImageSecretTokenKey                     = ".dockerconfigjson"                //#nosec
+	GitSecretTokenKey                       = ".git-credentials"                 //#nosec
+	MavenSecretKey                          = "mavenpassword"                    //#nosec
+	MavenSecretName                         = "jvm-build-maven-repo-secrets"     //#nosec
+	GitRepoSecretKey                        = "gitdeploytoken"                   //#nosec
+	GitRepoSecretName                       = "jvm-build-git-repo-secrets"       //#nosec
+	AWSAccessID                             = "awsaccesskey"                     //#nosec
+	AWSSecretKey                            = "awssecretkey"                     //#nosec
+	AWSProfile                              = "awsprofile"                       //#nosec
+	AWSRegion                               = "awsregion"                        //#nosec
+	AWSSecretName                           = "jvm-build-maven-repo-aws-secrets" //#nosec
 	CacheDeploymentName                     = "jvm-build-workspace-artifact-cache"
 	ConfigArtifactCacheRequestMemoryDefault = "512Mi"
 	ConfigArtifactCacheRequestCPUDefault    = "1"
@@ -18,6 +31,9 @@ const (
 	ConfigArtifactCacheIOThreadsDefault     = "4"
 	ConfigArtifactCacheWorkerThreadsDefault = "50"
 	ConfigArtifactCacheStorageDefault       = "10Gi"
+
+	HermeticBuildTypeNone     HermeticBuildType = "None"
+	HermeticBuildTypeRequired HermeticBuildType = "Required"
 )
 
 type JBSConfigSpec struct {
@@ -25,20 +41,35 @@ type JBSConfigSpec struct {
 
 	// If this is true then the build will fail if artifact verification fails
 	// otherwise deploy will happen as normal, but a field will be set on the DependencyBuild
-	RequireArtifactVerification bool `json:"requireArtifactVerification,omitempty"`
+	RequireArtifactVerification bool              `json:"requireArtifactVerification,omitempty"`
+	HermeticBuilds              HermeticBuildType `json:"hermeticBuilds,omitempty"`
 
 	AdditionalRecipes []string `json:"additionalRecipes,omitempty"`
 
 	MavenBaseLocations map[string]string `json:"mavenBaseLocations,omitempty"`
 
-	ImageRegistry      `json:",inline"`
+	SharedRegistries   []ImageRegistry            `json:"sharedRegistries,omitempty"`
+	Registry           ImageRegistrySpec          `json:"registry,omitempty"`
+	MavenDeployment    MavenDeployment            `json:"mavenDeployment,omitempty"`
+	GitSourceArchive   GitSourceArchive           `json:"gitSourceArchive,omitempty"`
 	CacheSettings      CacheSettings              `json:"cacheSettings,omitempty"`
 	BuildSettings      BuildSettings              `json:"buildSettings,omitempty"`
 	RelocationPatterns []RelocationPatternElement `json:"relocationPatterns,omitempty"`
 }
 
+type ImageRegistrySpec struct {
+	ImageRegistry `json:",inline,omitempty"`
+
+	//if this is true and we are automatically creating registries then we will make it private
+	Private *bool `json:"private,omitempty"`
+
+	DontReuseExisting *bool `json:"dontReuseExisting,omitempty"`
+}
+
 type JBSConfigStatus struct {
-	Message string `json:"message,omitempty"`
+	Message          string         `json:"message,omitempty"`
+	ImageRegistry    *ImageRegistry `json:"imageRegistry,omitempty"`
+	RebuildsPossible bool           `json:"rebuildsPossible,omitempty"`
 }
 
 type CacheSettings struct {
@@ -67,12 +98,24 @@ type BuildSettings struct {
 	TaskLimitCPU string `json:"taskLimitCPU,omitempty"`
 }
 type ImageRegistry struct {
-	Host       string `json:"host,omitempty"`
+	Host       string `json:"host,omitempty"` // Defaults to quay.io in ImageRegistry()
 	Port       string `json:"port,omitempty"`
 	Owner      string `json:"owner,omitempty"`
-	Repository string `json:"repository,omitempty"`
+	Repository string `json:"repository,omitempty"` // Defaults to artifact-deployments in ImageRegistry()
 	Insecure   bool   `json:"insecure,omitempty"`
 	PrependTag string `json:"prependTag,omitempty"`
+	SecretName string `json:"secretName,omitempty"`
+}
+
+type MavenDeployment struct {
+	Username   string `json:"username,omitempty"`
+	Repository string `json:"repository,omitempty"`
+}
+
+type GitSourceArchive struct {
+	Identity               string `json:"identity,omitempty"`
+	URL                    string `json:"url,omitempty"`
+	DisableSSLVerification bool   `json:"disableSSLVerification,omitempty"`
 }
 
 type RelocationPatternElement struct {
@@ -105,6 +148,41 @@ type JBSConfig struct {
 
 	Spec   JBSConfigSpec   `json:"spec"`
 	Status JBSConfigStatus `json:"status,omitempty"`
+}
+
+func (in *JBSConfig) ImageRegistry() ImageRegistry {
+	ret := in.Spec.Registry.ImageRegistry
+	if ret.Host == "" {
+		ret.Host = "quay.io"
+	}
+	if ret.Repository == "" {
+		ret.Repository = "artifact-deployments"
+	}
+	if in.Status.ImageRegistry == nil {
+		return ret
+	}
+	if in.Status.ImageRegistry.Host != "" {
+		ret.Host = in.Status.ImageRegistry.Host
+	}
+	if in.Status.ImageRegistry.Owner != "" {
+		ret.Owner = in.Status.ImageRegistry.Owner
+	}
+	if in.Status.ImageRegistry.Repository != "" {
+		ret.Repository = in.Status.ImageRegistry.Repository
+	}
+	if in.Status.ImageRegistry.Port != "" {
+		ret.Port = in.Status.ImageRegistry.Port
+	}
+	if in.Status.ImageRegistry.PrependTag != "" {
+		ret.PrependTag = in.Status.ImageRegistry.PrependTag
+	}
+	if in.Status.ImageRegistry.Insecure {
+		ret.Insecure = true
+	}
+	if in.Status.ImageRegistry.SecretName != "" {
+		ret.SecretName = in.Status.ImageRegistry.SecretName
+	}
+	return ret
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

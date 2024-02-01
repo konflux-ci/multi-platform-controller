@@ -42,6 +42,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&JBSConfigList{},
 		&RebuiltArtifact{},
 		&RebuiltArtifactList{},
+		&JvmImageScan{},
+		&JvmImageScanList{},
 	)
 	// &Condition{},
 	// &ConditionList{},

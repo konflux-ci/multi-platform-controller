@@ -3,27 +3,16 @@ package v1alpha1
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 const (
-	JDK7Builder           = "jdk7"
-	JDK8Builder           = "jdk8"
-	JDK11Builder          = "jdk11"
-	JDK17Builder          = "jdk17"
-	ControllerNamespace   = "jvm-build-service"
 	DefaultRecipeDatabase = "https://github.com/redhat-appstudio/jvm-build-data"
-
-	OpenShiftQuota = QuotaImpl("openshift")
-	K8SQuota       = QuotaImpl("kubernetes")
 )
 
-type QuotaImpl string
-
 type SystemConfigSpec struct {
-	Builders map[string]JavaVersionInfo `json:"builders,omitempty"`
-	//DEPRECATED
-	Quota          QuotaImpl `json:"quota,omitempty"`
-	RecipeDatabase string    `json:"recipeDatabase,omitempty"`
+	Builders            map[string]BuilderImageInfo `json:"builders,omitempty"`
+	MaxAdditionalMemory int                         `json:"maxAdditionalMemory,omitempty"`
+	RecipeDatabase      string                      `json:"recipeDatabase,omitempty"`
 }
 
-type JavaVersionInfo struct {
+type BuilderImageInfo struct {
 	Image    string `json:"image,omitempty"`
 	Tag      string `json:"tag,omitempty"`
 	Priority int    `json:"priority,omitempty"`

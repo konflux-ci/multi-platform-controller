@@ -6,8 +6,9 @@ import (
 
 type RebuiltArtifactSpec struct {
 	// The GAV of the rebuilt artifact
-	GAV   string `json:"gav,omitempty"`
-	Image string `json:"image,omitempty"`
+	GAV    string `json:"gav,omitempty"`
+	Image  string `json:"image,omitempty"`
+	Digest string `json:"digest,omitempty"`
 }
 
 type RebuiltArtifactStatus struct {
