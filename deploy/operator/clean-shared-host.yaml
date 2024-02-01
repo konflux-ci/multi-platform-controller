@@ -3,7 +3,6 @@ kind: Task
 metadata:
   name: clean-shared-host
 spec:
-  retries: 3
   description: >-
     This task will clean up after a build
   params:
