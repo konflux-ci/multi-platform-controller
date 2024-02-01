@@ -54,12 +54,11 @@ func main() {
 	var mgr ctrl.Manager
 	var err error
 	mopts := ctrl.Options{
-		MetricsBindAddress:     metricsAddr,
-		Port:                   9443,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "5483be8f.redhat.com",
 	}
+	mopts.Metrics.BindAddress = metricsAddr
 
 	mainLog.Info("The apis.kcp.dev group is not present - creating standard manager")
 	mgr, err = controller.NewManager(restConfig, mopts)
