@@ -1,0 +1,31 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: update-host
+  namespace: multi-platform-controller
+spec:
+  description: >-
+    This task will create a new user on a host, setup ssh keys, and then create the relevant secret.
+  params:
+    - name: HOST
+      type: string
+    - name: USER
+      type: string
+  workspaces:
+    - name: ssh
+  steps:
+    - name: provision
+      image: quay.io/redhat-appstudio/multi-platform-runner:01c7670e81d5120347cf0ad13372742489985e5f@sha256:246adeaaba600e207131d63a7f706cffdcdc37d8f600c56187123ec62823ff44
+      imagePullPolicy: IfNotPresent
+      script: |
+        #!/bin/bash
+        cd /tmp
+        set -o verbose
+        set -eu
+        set -o pipefail
+        mkdir -p /root/.ssh
+        cp $(workspaces.ssh.path)/id_rsa /tmp/master_key
+        chmod 0400 /tmp/master_key
+        export SSH_HOST=$(params.USER)@$(params.HOST)
+        ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST "sudo dnf update -y"
+
