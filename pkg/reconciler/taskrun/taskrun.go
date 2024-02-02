@@ -60,9 +60,10 @@ const (
 
 	ServiceAccountName = "multi-platform-controller"
 
-	PlatformParam     = "PLATFORM"
-	DynamicPlatforms  = "dynamic-platforms"
-	AllowedNamespaces = "allowed-namespaces"
+	PlatformParam        = "PLATFORM"
+	DynamicPlatforms     = "dynamic-platforms"
+	DynamicPoolPlatforms = "dynamic-pool-platforms"
+	AllowedNamespaces    = "allowed-namespaces"
 )
 
 type ReconcileTaskRun struct {
@@ -347,7 +348,14 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, log *logr.Logger,
 			return reconcile.Result{}, nil
 		}
 
-		return r.handleHostAllocation(ctx, log, tr, secretName)
+		res, err := r.handleHostAllocation(ctx, log, tr, secretName)
+		if err != nil && !errors.IsConflict(err) {
+			err := r.createErrorSecret(ctx, tr, secretName, err.Error())
+			if err != nil {
+				log.Error(err, "could not create error secret")
+			}
+		}
+		return res, err
 	}
 }
 
@@ -495,6 +503,40 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, log *logr.Logg
 		}
 	}
 
+	dynamicPool := cm.Data[DynamicPoolPlatforms]
+	for _, platform := range strings.Split(dynamicPool, ",") {
+		platformConfigName := strings.ReplaceAll(platform, "/", "-")
+		if platform == targetPlatform {
+
+			typeName := cm.Data["dynamic."+platformConfigName+".type"]
+			allocfunc := r.cloudProviders[typeName]
+			if allocfunc == nil {
+				return nil, "", errors2.New("unknown dynamic provisioning type " + typeName)
+			}
+			maxInstances, err := strconv.Atoi(cm.Data["dynamic."+platformConfigName+".max-instances"])
+			if err != nil {
+				return nil, "", err
+			}
+			concurrency, err := strconv.Atoi(cm.Data["dynamic."+platformConfigName+".concurrency"])
+			if err != nil {
+				return nil, "", err
+			}
+			maxAge, err := strconv.Atoi(cm.Data["dynamic."+platformConfigName+".max-age"]) // Minutes
+			if err != nil {
+				return nil, "", err
+			}
+			return DynamicHostPool{
+				CloudProvider: allocfunc(platformConfigName, cm.Data, r.operatorNamespace),
+				SshSecret:     cm.Data["dynamic."+platformConfigName+".ssh-secret"],
+				Platform:      platform,
+				MaxInstances:  maxInstances,
+				MaxAge:        time.Minute * time.Duration(maxAge),
+				Concurrency:   concurrency,
+				InstanceTag:   cm.Data["instance-tag"],
+			}, cm.Data["instance-tag"], nil
+		}
+	}
+
 	ret := HostPool{hosts: map[string]*Host{}, targetPlatform: targetPlatform}
 	for k, v := range cm.Data {
 		if !strings.HasPrefix(k, "host.") {
@@ -596,6 +638,7 @@ type Host struct {
 	Concurrency int
 	Platform    string
 	Secret      string
+	StartTime   *time.Time // Only used for the dynamic pool
 }
 
 func platformLabel(platform string) string {

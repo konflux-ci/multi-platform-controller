@@ -6,7 +6,8 @@ metadata:
   name: host-config
   namespace: multi-platform-controller
 data:
-  dynamic-platforms: linux/arm64,linux/amd64
+  dynamic-platforms: linux/amd64
+  dynamic-pool-platforms: linux/arm64
   instance-tag: QUAY_USERNAME-development
 
   dynamic.linux-arm64.type: aws
@@ -18,6 +19,8 @@ data:
   dynamic.linux-arm64.ssh-secret: awskeys
   dynamic.linux-arm64.security-group: "launch-wizard-1"
   dynamic.linux-arm64.max-instances: "2"
+  dynamic.linux-arm64.concurrency: "2"
+  dynamic.linux-arm64.max-age: "10"
 
   dynamic.linux-amd64.type: aws
   dynamic.linux-amd64.region: us-east-1

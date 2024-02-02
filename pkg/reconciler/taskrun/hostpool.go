@@ -2,6 +2,7 @@ package taskrun
 
 import (
 	"context"
+	"fmt"
 	"github.com/go-logr/logr"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v12 "k8s.io/api/core/v1"
@@ -22,7 +23,7 @@ type HostPool struct {
 func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, instanceTag string) (reconcile.Result, error) {
 	if len(hp.hosts) == 0 {
 		//no hosts configured
-		return reconcile.Result{}, r.createErrorSecret(ctx, tr, secretName, "no hosts configured")
+		return reconcile.Result{}, fmt.Errorf("no hosts configured")
 	}
 	failedString := tr.Annotations[FailedHosts]
 	failed := strings.Split(failedString, ",")
@@ -70,7 +71,7 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.
 	}
 	if !hostWithOurPlatform {
 		log.Info("no hosts with requested platform", "platform", hp.targetPlatform, "failed", failedString)
-		return reconcile.Result{}, r.createErrorSecret(ctx, tr, secretName, "no hosts configured for platform "+hp.targetPlatform+", attempted hosts: "+failedString)
+		return reconcile.Result{}, fmt.Errorf("no hosts configured for platform %s attempted hosts: %s", hp.targetPlatform, failedString)
 	}
 	if selected == nil {
 		if tr.Labels[WaitingForPlatformLabel] == platformLabel(hp.targetPlatform) {
@@ -104,12 +105,11 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.
 		updateErr := r.client.Update(ctx, tr)
 		if updateErr != nil {
 			log.Error(updateErr, "Could not unassign task after provisioning failure")
-			_ = r.createErrorSecret(ctx, tr, secretName, "Could not unassign task after provisioning failure")
+			return reconcile.Result{}, err
 		} else {
 			log.Error(err, "Failed to provision host from pool")
-			_ = r.createErrorSecret(ctx, tr, secretName, "Failed to provision host from pool "+err.Error())
+			return reconcile.Result{}, err
 		}
-		return reconcile.Result{}, err
 	}
 	return reconcile.Result{}, nil
 }

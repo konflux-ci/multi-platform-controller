@@ -5,6 +5,7 @@ import (
 	"crypto/md5" //#nosec
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"github.com/IBM/go-sdk-core/v4/core"
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
@@ -137,6 +138,9 @@ func (r IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, log 
 	return checkAddressLive(ip, log)
 }
 
+func (r IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
+	return nil, fmt.Errorf("not impelemented")
+}
 func (r IBMPowerDynamicConfig) TerminateInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
 	log.Info("attempting to terminate power server %s", "instance", instanceId)
 	service, err := r.authenticate(kubeClient, ctx)

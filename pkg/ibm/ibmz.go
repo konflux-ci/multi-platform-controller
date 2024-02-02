@@ -129,6 +129,35 @@ func (r IBMZDynamicConfig) CountInstances(kubeClient client.Client, log *logr.Lo
 	return count, nil
 }
 
+func (r IBMZDynamicConfig) ListInstances(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
+	vpcService, err := r.authenticate(kubeClient, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	vpc, err := r.lookupVpc(vpcService)
+	if err != nil {
+		return nil, err
+	}
+	instances, _, err := vpcService.ListInstances(&vpcv1.ListInstancesOptions{ResourceGroupID: vpc.ResourceGroup.ID, VPCName: &r.Vpc})
+	if err != nil {
+		return nil, err
+	}
+	ret := []cloud.CloudVMInstance{}
+	for _, instance := range instances.Instances {
+		if strings.HasPrefix(*instance.Name, instanceTag) {
+			identifier := cloud.InstanceIdentifier(*instance.ID)
+			addr, err := r.GetInstanceAddress(kubeClient, log, ctx, identifier)
+			if err != nil {
+				log.Error(err, "not listing instance as address cannot be assigned yet", "instance", *instance.ID)
+			} else {
+				ret = append(ret, cloud.CloudVMInstance{InstanceId: identifier, Address: addr, StartTime: time.Time(*instance.CreatedAt)})
+			}
+		}
+	}
+	return ret, nil
+}
+
 func (r IBMZDynamicConfig) lookupSubnet(vpcService *vpcv1.VpcV1) (*vpcv1.Subnet, error) {
 	subnets, _, err := vpcService.ListSubnets(&vpcv1.ListSubnetsOptions{})
 	if err != nil {
