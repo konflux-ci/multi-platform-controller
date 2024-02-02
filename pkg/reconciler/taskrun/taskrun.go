@@ -55,6 +55,7 @@ const (
 
 	TaskTypeLabel     = "build.appstudio.redhat.com/task-type"
 	TaskTypeProvision = "provision"
+	TaskTypeUpdate    = "update"
 	TaskTypeClean     = "clean"
 
 	ServiceAccountName = "multi-platform-controller"
@@ -124,6 +125,10 @@ func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, log *logr.
 		if taskType == TaskTypeProvision {
 			log.Info("Reconciling provision task")
 			return r.handleProvisionTask(ctx, log, tr)
+		}
+		if taskType == TaskTypeUpdate {
+			// We don't care about these
+			return reconcile.Result{}, nil
 		}
 	}
 	if tr.Spec.Params == nil {

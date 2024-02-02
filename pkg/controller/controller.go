@@ -90,5 +90,18 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 		return nil, err
 	}
 
+	ticker := time.NewTicker(time.Hour * 24)
+	go func() {
+		for range ticker.C {
+			taskrun.UpdateHostPools(operatorNamespace, mgr.GetClient(), &controllerLog)
+		}
+	}()
+	timer := time.NewTimer(time.Minute)
+	go func() {
+		<-timer.C
+		//update the nodes on startup
+		taskrun.UpdateHostPools(operatorNamespace, mgr.GetClient(), &controllerLog)
+	}()
+
 	return mgr, nil
 }

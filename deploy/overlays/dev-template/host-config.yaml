@@ -6,7 +6,7 @@ metadata:
   name: host-config
   namespace: multi-platform-controller
 data:
-  dynamic-platforms: linux/arm64,linux/s390x,linux/ppc64le,linux/amd64
+  dynamic-platforms: linux/arm64,linux/amd64
   instance-tag: QUAY_USERNAME-development
 
   dynamic.linux-arm64.type: aws
