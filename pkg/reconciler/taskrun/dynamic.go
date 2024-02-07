@@ -39,7 +39,7 @@ func (a DynamicResolver) Deallocate(r *ReconcileTaskRun, ctx context.Context, lo
 func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, instanceTag string) (reconcile.Result, error) {
 
 	if tr.Annotations[FailedHosts] != "" {
-		return reconcile.Result{}, r.createErrorSecret(ctx, tr, secretName, "failed to provision host")
+		return reconcile.Result{}, fmt.Errorf("failed to provision host")
 	}
 
 	if tr.Annotations == nil {
@@ -71,13 +71,13 @@ func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 				delete(tr.Labels, AssignedHost)
 				delete(tr.Annotations, CloudInstanceId)
 				delete(tr.Annotations, CloudDynamicPlatform)
-				err = r.client.Update(ctx, tr)
-				if err != nil {
-					log.Error(err, "Could not unassign task after provisioning failure")
-					_ = r.createErrorSecret(ctx, tr, secretName, "Could not unassign task after provisioning failure")
+				updateErr := r.client.Update(ctx, tr)
+				if updateErr != nil {
+					log.Error(updateErr, "Could not unassign task after provisioning failure")
+					return reconcile.Result{}, err
 				} else {
 					log.Error(err, "Failed to provision cloud host")
-					_ = r.createErrorSecret(ctx, tr, secretName, "Failed to provision cloud host "+err.Error())
+					return reconcile.Result{}, err
 
 				}
 			}
@@ -94,8 +94,8 @@ func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 	if instanceCount >= a.MaxInstances || err != nil {
 		if err != nil {
 			log.Error(err, "unable to count running instances, not allocating a new instance out of an abundance of caution")
-			_ = r.createErrorSecret(ctx, tr, secretName, "Failed to count existing cloud instances "+err.Error())
-			return reconcile.Result{}, nil
+			log.Error(err, "Failed to count existing cloud instances")
+			return reconcile.Result{}, err
 		}
 		if tr.Labels[WaitingForPlatformLabel] == platformLabel(a.Platform) {
 			//we are already in a waiting state
@@ -120,13 +120,12 @@ func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 			failureCount, err = strconv.Atoi(existingFailureString)
 			if err != nil {
 				log.Error(err, "failed to parse failure count")
-				_ = r.createErrorSecret(ctx, tr, secretName, "Failed to create cloud host, and could not retry "+err.Error())
-				return reconcile.Result{}, nil
+				return reconcile.Result{}, err
 			}
 		}
 		if failureCount == 2 {
-			_ = r.createErrorSecret(ctx, tr, secretName, "Failed to create cloud host, retries exceeded "+err.Error())
-			return reconcile.Result{}, nil
+			log.Error(err, "failed to create cloud host, retries exceeded ")
+			return reconcile.Result{}, err
 		}
 		failureCount++
 		tr.Annotations[CloudFailures] = strconv.Itoa(failureCount)
