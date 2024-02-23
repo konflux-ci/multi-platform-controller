@@ -16,6 +16,9 @@ spec:
       containers:
         - name: multi-platform-controller
           image: multi-platform-controller
+          ports:
+            - containerPort: 8080
+              name: http-metrics
           env:
             - name: POD_NAMESPACE
               valueFrom:

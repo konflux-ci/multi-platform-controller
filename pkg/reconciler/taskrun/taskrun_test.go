@@ -28,6 +28,7 @@ const systemNamespace = "multi-platform-controller"
 const userNamespace = "default"
 
 var cloudImpl MockCloud = MockCloud{Addressses: map[cloud.InstanceIdentifier]string{}}
+var platformMetrics = map[string]*PlatformMetrics{}
 
 func setupClientAndReconciler(objs []runtimeclient.Object) (runtimeclient.Client, *ReconcileTaskRun) {
 	scheme := runtime.NewScheme()
@@ -35,7 +36,7 @@ func setupClientAndReconciler(objs []runtimeclient.Object) (runtimeclient.Client
 	_ = v1.AddToScheme(scheme)
 	_ = appsv1.AddToScheme(scheme)
 	client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
-	reconciler := &ReconcileTaskRun{client: client, scheme: scheme, eventRecorder: &record.FakeRecorder{}, operatorNamespace: systemNamespace, cloudProviders: map[string]func(platform string, config map[string]string, systemnamespace string) cloud.CloudProvider{"mock": MockCloudSetup}}
+	reconciler := &ReconcileTaskRun{client: client, scheme: scheme, eventRecorder: &record.FakeRecorder{}, operatorNamespace: systemNamespace, cloudProviders: map[string]func(platform string, config map[string]string, systemnamespace string) cloud.CloudProvider{"mock": MockCloudSetup}, platformConfig: map[string]PlatformConfig{}, platformMetrics: platformMetrics}
 	return client, reconciler
 }
 
@@ -43,7 +44,7 @@ func TestConfigMapParsing(t *testing.T) {
 	g := NewGomegaWithT(t)
 	_, reconciler := setupClientAndReconciler(createHostConfig())
 	discard := logr.Discard()
-	configIface, _, err := reconciler.readConfiguration(context.Background(), &discard, "linux/arm64", userNamespace)
+	configIface, err := reconciler.readConfiguration(context.Background(), &discard, "linux/arm64", userNamespace)
 	config := configIface.(HostPool)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(len(config.hosts)).To(Equal(2))
@@ -54,9 +55,9 @@ func TestAllowedNamepsaces(t *testing.T) {
 	g := NewGomegaWithT(t)
 	_, reconciler := setupClientAndReconciler(createHostConfig())
 	discard := logr.Discard()
-	_, _, err := reconciler.readConfiguration(context.Background(), &discard, "linux/arm64", "system-test")
+	_, err := reconciler.readConfiguration(context.Background(), &discard, "linux/arm64", "system-test")
 	g.Expect(err).ToNot(HaveOccurred())
-	_, _, err = reconciler.readConfiguration(context.Background(), &discard, "linux/arm64", "other")
+	_, err = reconciler.readConfiguration(context.Background(), &discard, "linux/arm64", "other")
 	g.Expect(err).To(HaveOccurred())
 
 }

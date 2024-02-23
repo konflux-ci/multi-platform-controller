@@ -20,7 +20,7 @@ type HostPool struct {
 	targetPlatform string
 }
 
-func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, instanceTag string) (reconcile.Result, error) {
+func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
 	if len(hp.hosts) == 0 {
 		//no hosts configured
 		return reconcile.Result{}, fmt.Errorf("no hosts configured")
@@ -97,7 +97,7 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.
 		return reconcile.Result{}, err
 	}
 
-	err = launchProvisioningTask(r, ctx, log, tr, secretName, selected.Secret, selected.Address, selected.User)
+	err = launchProvisioningTask(r, ctx, log, tr, secretName, selected.Secret, selected.Address, selected.User, hp.targetPlatform)
 
 	if err != nil {
 		//ugh, try and unassign
@@ -124,6 +124,7 @@ func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, log *log
 		provision.GenerateName = "cleanup-task"
 		provision.Namespace = r.operatorNamespace
 		provision.Labels = map[string]string{TaskTypeLabel: TaskTypeClean, UserTaskName: tr.Name, UserTaskNamespace: tr.Namespace}
+		provision.Annotations = map[string]string{TaskTargetPlatformAnnotation: hp.targetPlatform}
 		provision.Spec.TaskRef = &v1.TaskRef{Name: "clean-shared-host"}
 		provision.Spec.Retries = 3
 		compute := map[v12.ResourceName]resource.Quantity{v12.ResourceCPU: resource.MustParse("100m"), v12.ResourceMemory: resource.MustParse("128Mi")}

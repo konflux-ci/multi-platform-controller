@@ -5,6 +5,8 @@ resources:
  - "../../operator"
  - "../../otp"
  - host-config.yaml
+ - servicemonitor.yaml
+ - servicemonitor_rbac.yaml
 
 images:
   - name: multi-platform-controller
