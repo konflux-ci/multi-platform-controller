@@ -1,3 +1,35 @@
+# v1.150.0 (2024-03-07)
+
+* **Feature**: This release adds an optional parameter to RegisterImage and CopyImage APIs to support tagging AMIs at the time of creation.
+* **Bug Fix**: Remove dependency on go-cmp.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.149.4 (2024-03-05)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.149.3 (2024-03-04)
+
+* **Bug Fix**: Update internal/presigned-url dependency for corrected API name.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.149.2 (2024-03-01)
+
+* **Documentation**: With this release, Amazon EC2 Auto Scaling groups, EC2 Fleet, and Spot Fleet improve the default price protection behavior of attribute-based instance type selection of Spot Instances, to consistently select from a wide range of instance types.
+
+# v1.149.1 (2024-02-23)
+
+* **Bug Fix**: Move all common, SDK-side middleware stack ops into the service client module to prevent cross-module compatibility issues in the future.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.149.0 (2024-02-22)
+
+* **Feature**: Add middleware stack snapshot tests.
+
+# v1.148.2 (2024-02-21)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.148.1 (2024-02-20)
 
 * **Bug Fix**: When sourcing values for a service's `EndpointParameters`, the lack of a configured region (i.e. `options.Region == ""`) will now translate to a `nil` value for `EndpointParameters.Region` instead of a pointer to the empty string `""`. This will result in a much more explicit error when calling an operation instead of an obscure hostname lookup failure.
