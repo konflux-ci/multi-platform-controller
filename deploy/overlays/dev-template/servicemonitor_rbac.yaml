@@ -1,0 +1,30 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: multi-platform-controller-monitor
+  namespace: multi-platform-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: multi-platform-controller-monitor
+subjects:
+  - kind: ServiceAccount
+    name: prometheus-k8s
+    namespace: openshift-monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: multi-platform-controller-monitor
+  namespace: multi-platform-controller
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - services
+      - endpoints
+      - pods
+    verbs:
+      - get
+      - list
+      - watch

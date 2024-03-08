@@ -16,16 +16,17 @@ import (
 
 type DynamicResolver struct {
 	cloud.CloudProvider
-	SshSecret    string
-	Platform     string
-	MaxInstances int
+	sshSecret    string
+	platform     string
+	maxInstances int
+	instanceTag  string
 }
 
-func (a DynamicResolver) Deallocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, selectedHost string) error {
+func (r DynamicResolver) Deallocate(taskRun *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, selectedHost string) error {
 
 	instance := tr.Annotations[CloudInstanceId]
 	log.Info(fmt.Sprintf("terminating cloud instances %s for TaskRun %s", instance, tr.Name))
-	err := a.CloudProvider.TerminateInstance(r.client, log, ctx, cloud.InstanceIdentifier(instance))
+	err := r.CloudProvider.TerminateInstance(taskRun.client, log, ctx, cloud.InstanceIdentifier(instance))
 	if err != nil {
 		log.Error(err, "Failed to terminate EC2 instance")
 		return err
@@ -36,7 +37,7 @@ func (a DynamicResolver) Deallocate(r *ReconcileTaskRun, ctx context.Context, lo
 	return nil
 }
 
-func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, instanceTag string) (reconcile.Result, error) {
+func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
 
 	if tr.Annotations[FailedHosts] != "" {
 		return reconcile.Result{}, fmt.Errorf("failed to provision host")
@@ -52,18 +53,18 @@ func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 	if tr.Annotations[CloudInstanceId] != "" {
 		log.Info("attempting to get instance address", "instance", tr.Annotations[CloudInstanceId])
 		//we already have an instance, get its address
-		address, _ := a.CloudProvider.GetInstanceAddress(r.client, log, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
+		address, _ := r.CloudProvider.GetInstanceAddress(taskRun.client, log, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
 		if address != "" {
 			tr.Labels[AssignedHost] = tr.Annotations[CloudInstanceId]
 			tr.Annotations[CloudAddress] = address
-			err := r.client.Update(ctx, tr)
+			err := taskRun.client.Update(ctx, tr)
 			if err != nil {
 				return reconcile.Result{}, err
 			}
-			err = launchProvisioningTask(r, ctx, log, tr, secretName, a.SshSecret, address, a.CloudProvider.SshUser())
+			err = launchProvisioningTask(taskRun, ctx, log, tr, secretName, r.sshSecret, address, r.CloudProvider.SshUser(), r.platform)
 			if err != nil {
 				//ugh, try and unassign
-				err := a.CloudProvider.TerminateInstance(r.client, log, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
+				err := r.CloudProvider.TerminateInstance(taskRun.client, log, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
 				if err != nil {
 					log.Error(err, "Failed to terminate EC2 instance")
 				}
@@ -71,7 +72,7 @@ func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 				delete(tr.Labels, AssignedHost)
 				delete(tr.Annotations, CloudInstanceId)
 				delete(tr.Annotations, CloudDynamicPlatform)
-				updateErr := r.client.Update(ctx, tr)
+				updateErr := taskRun.client.Update(ctx, tr)
 				if updateErr != nil {
 					log.Error(updateErr, "Could not unassign task after provisioning failure")
 					return reconcile.Result{}, err
@@ -81,7 +82,6 @@ func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 
 				}
 			}
-
 			return reconcile.Result{}, nil
 		} else {
 			//we are waiting for the instance to come up
@@ -90,26 +90,29 @@ func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 		}
 	}
 	//first check this would not exceed the max tasks
-	instanceCount, err := a.CloudProvider.CountInstances(r.client, log, ctx, instanceTag)
-	if instanceCount >= a.MaxInstances || err != nil {
+	instanceCount, err := r.CloudProvider.CountInstances(taskRun.client, log, ctx, r.instanceTag)
+	if instanceCount >= r.maxInstances || err != nil {
 		if err != nil {
 			log.Error(err, "unable to count running instances, not allocating a new instance out of an abundance of caution")
 			log.Error(err, "Failed to count existing cloud instances")
 			return reconcile.Result{}, err
 		}
-		if tr.Labels[WaitingForPlatformLabel] == platformLabel(a.Platform) {
+		if tr.Labels[WaitingForPlatformLabel] == platformLabel(r.platform) {
 			//we are already in a waiting state
 			return reconcile.Result{}, nil
 		}
 		log.Info("Too many running cloud tasks, waiting for existing tasks to finish")
 		//no host available
 		//add the waiting label
-		tr.Labels[WaitingForPlatformLabel] = platformLabel(a.Platform)
-		return reconcile.Result{RequeueAfter: time.Minute}, r.client.Update(ctx, tr)
+		tr.Labels[WaitingForPlatformLabel] = platformLabel(r.platform)
+		return reconcile.Result{RequeueAfter: time.Minute}, taskRun.client.Update(ctx, tr)
 	}
+	delete(tr.Labels, WaitingForPlatformLabel)
+	startTime := time.Now().Unix()
+	tr.Annotations[AllocationStartTimeAnnotation] = strconv.FormatInt(startTime, 10)
 	log.Info(fmt.Sprintf("%d instances are running, creating a new instance", instanceCount))
 	log.Info("attempting to launch a new host for " + tr.Name)
-	instance, err := a.CloudProvider.LaunchInstance(r.client, log, ctx, tr.Name, instanceTag)
+	instance, err := r.CloudProvider.LaunchInstance(taskRun.client, log, ctx, tr.Name, r.instanceTag)
 
 	if err != nil {
 		//launch failed
@@ -129,7 +132,7 @@ func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 		}
 		failureCount++
 		tr.Annotations[CloudFailures] = strconv.Itoa(failureCount)
-		err = r.client.Update(ctx, tr)
+		err = taskRun.client.Update(ctx, tr)
 		if err != nil {
 			//todo: handle conflict properly, for now you get an extra retry
 			log.Error(err, "failed to update failure count")
@@ -143,27 +146,27 @@ func (a DynamicResolver) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 	//we always read a new version direct from the API server on conflict
 	for {
 		tr.Annotations[CloudInstanceId] = string(instance)
-		tr.Labels[CloudDynamicPlatform] = platformLabel(a.Platform)
+		tr.Labels[CloudDynamicPlatform] = platformLabel(r.platform)
 
 		log.Info("updating instance id of cloud host", "instance", instance)
 		//add a finalizer to clean up
 		controllerutil.AddFinalizer(tr, PipelineFinalizer)
-		err = r.client.Update(ctx, tr)
+		err = taskRun.client.Update(ctx, tr)
 		if err == nil {
 			break
 		} else if !errors.IsConflict(err) {
 			log.Error(err, "failed to update")
-			err2 := a.CloudProvider.TerminateInstance(r.client, log, ctx, instance)
+			err2 := r.CloudProvider.TerminateInstance(taskRun.client, log, ctx, instance)
 			if err2 != nil {
 				log.Error(err2, "failed to delete cloud instance")
 			}
 			return reconcile.Result{}, err
 		} else {
 			log.Error(err, "conflict updating, retrying")
-			err := r.apiReader.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)
+			err := taskRun.apiReader.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)
 			if err != nil {
 				log.Error(err, "failed to update")
-				err2 := a.CloudProvider.TerminateInstance(r.client, log, ctx, instance)
+				err2 := r.CloudProvider.TerminateInstance(taskRun.client, log, ctx, instance)
 				if err2 != nil {
 					log.Error(err2, "failed to delete cloud instance")
 				}

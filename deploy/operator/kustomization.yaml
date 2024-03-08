@@ -12,3 +12,4 @@ resources:
   - clean-shared-host.yaml
   - openshift-specific-rbac.yaml
   - update-host.yaml
+  - metricservice.yaml
