@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM registry.access.redhat.com/ubi9/go-toolset:1.20.10-11@sha256:c7c3cf77133ff99b32e04ba1b6f238d15ed97403dae1a24e5b3f6ad82087f07e as builder
+FROM registry.access.redhat.com/ubi9/go-toolset:1.20.12-3@sha256:16d035e4a669b76ca73e04fe4ea3583cb3a7753842c3b9d954758f6726c3ba64 as builder
 
 # Copy the Go Modules manifests
 COPY go.mod go.mod
