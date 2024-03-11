@@ -30,18 +30,19 @@ func Ec2Provider(platformName string, config map[string]string, systemNamespace 
 		KeyName:         config["dynamic."+platformName+".key-name"],
 		Secret:          config["dynamic."+platformName+".aws-secret"],
 		SecurityGroup:   config["dynamic."+platformName+".security-group"],
+		SubnetId:        config["dynamic."+platformName+".subnet-id"],
 		SystemNamespace: systemNamespace,
 		Disk:            int32(disk),
 	}
 }
 
-func (configMapInfo AwsDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, name string, instanceTag string) (cloud.InstanceIdentifier, error) {
+func (r AwsDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, name string, instanceTag string) (cloud.InstanceIdentifier, error) {
 	log.Info(fmt.Sprintf("attempting to launch AWS instance for %s", name))
 	// Load AWS credentials and configuration
 
 	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithCredentialsProvider(SecretCredentialsProvider{Name: configMapInfo.Secret, Namespace: "multi-platform-controller", Client: kubeClient}),
-		config.WithRegion(configMapInfo.Region))
+		config.WithCredentialsProvider(SecretCredentialsProvider{Name: r.Secret, Namespace: "multi-platform-controller", Client: kubeClient}),
+		config.WithRegion(r.Region))
 	if err != nil {
 		return "", err
 	}
@@ -49,19 +50,24 @@ func (configMapInfo AwsDynamicConfig) LaunchInstance(kubeClient client.Client, l
 	// Create an EC2 client
 	ec2Client := ec2.NewFromConfig(cfg)
 
+	var subnet *string
+	if r.SubnetId != "" {
+		subnet = aws.String(r.SubnetId)
+	}
 	// Specify the parameters for the new EC2 instance
 	launchInput := &ec2.RunInstancesInput{
-		KeyName:        aws.String(configMapInfo.KeyName),
-		ImageId:        aws.String(configMapInfo.Ami), //ARM RHEL
-		InstanceType:   types.InstanceType(configMapInfo.InstanceType),
+		KeyName:        aws.String(r.KeyName),
+		ImageId:        aws.String(r.Ami), //ARM RHEL
+		InstanceType:   types.InstanceType(r.InstanceType),
 		MinCount:       aws.Int32(1),
 		MaxCount:       aws.Int32(1),
 		EbsOptimized:   aws.Bool(true),
-		SecurityGroups: []string{configMapInfo.SecurityGroup},
+		SecurityGroups: []string{r.SecurityGroup},
+		SubnetId:       subnet,
 		BlockDeviceMappings: []types.BlockDeviceMapping{{
 			DeviceName:  aws.String("/dev/sda1"),
 			VirtualName: aws.String("ephemeral0"),
-			Ebs:         &types.EbsBlockDevice{VolumeSize: aws.Int32(configMapInfo.Disk)},
+			Ebs:         &types.EbsBlockDevice{VolumeSize: aws.Int32(r.Disk)},
 		}},
 		InstanceInitiatedShutdownBehavior: types.ShutdownBehaviorTerminate,
 		TagSpecifications:                 []types.TagSpecification{{ResourceType: types.ResourceTypeInstance, Tags: []types.Tag{{Key: aws.String(MultiPlatformManaged), Value: aws.String("true")}, {Key: aws.String(cloud.InstanceTag), Value: aws.String(instanceTag)}, {Key: aws.String("Name"), Value: aws.String("multi-platform-builder-" + name)}}}},
@@ -82,11 +88,11 @@ func (configMapInfo AwsDynamicConfig) LaunchInstance(kubeClient client.Client, l
 	}
 }
 
-func (configMapInfo AwsDynamicConfig) CountInstances(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceTag string) (int, error) {
+func (r AwsDynamicConfig) CountInstances(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceTag string) (int, error) {
 	log.Info("attempting to count AWS instances")
 	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithCredentialsProvider(SecretCredentialsProvider{Name: configMapInfo.Secret, Namespace: configMapInfo.SystemNamespace, Client: kubeClient}),
-		config.WithRegion(configMapInfo.Region))
+		config.WithCredentialsProvider(SecretCredentialsProvider{Name: r.Secret, Namespace: r.SystemNamespace, Client: kubeClient}),
+		config.WithRegion(r.Region))
 	if err != nil {
 		return 0, err
 	}
@@ -101,7 +107,7 @@ func (configMapInfo AwsDynamicConfig) CountInstances(kubeClient client.Client, l
 	count := 0
 	for _, res := range res.Reservations {
 		for _, inst := range res.Instances {
-			if inst.State.Name != types.InstanceStateNameTerminated && string(inst.InstanceType) == configMapInfo.InstanceType {
+			if inst.State.Name != types.InstanceStateNameTerminated && string(inst.InstanceType) == r.InstanceType {
 				log.Info(fmt.Sprintf("counting instance %s towards running count", *inst.InstanceId))
 				count++
 			}
@@ -110,13 +116,13 @@ func (configMapInfo AwsDynamicConfig) CountInstances(kubeClient client.Client, l
 	return count, nil
 }
 
-func (configMapInfo AwsDynamicConfig) GetInstanceAddress(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
+func (r AwsDynamicConfig) GetInstanceAddress(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
 	log.Info(fmt.Sprintf("attempting to get AWS instance address %s", instanceId))
 	// Load AWS credentials and configuration
 
 	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithCredentialsProvider(SecretCredentialsProvider{Name: configMapInfo.Secret, Namespace: configMapInfo.SystemNamespace, Client: kubeClient}),
-		config.WithRegion(configMapInfo.Region))
+		config.WithCredentialsProvider(SecretCredentialsProvider{Name: r.Secret, Namespace: r.SystemNamespace, Client: kubeClient}),
+		config.WithRegion(r.Region))
 	if err != nil {
 		return "", err
 	}
@@ -131,13 +137,13 @@ func (configMapInfo AwsDynamicConfig) GetInstanceAddress(kubeClient client.Clien
 	if len(res.Reservations) > 0 {
 		if len(res.Reservations[0].Instances) > 0 {
 			instance := res.Reservations[0].Instances[0]
-			return configMapInfo.checkInstanceConnectivity(&instance, log)
+			return r.checkInstanceConnectivity(&instance, log)
 		}
 	}
 	return "", nil
 }
 
-func (configMapInfo AwsDynamicConfig) checkInstanceConnectivity(instance *types.Instance, log *logr.Logger) (string, error) {
+func (r AwsDynamicConfig) checkInstanceConnectivity(instance *types.Instance, log *logr.Logger) (string, error) {
 	if instance.PublicDnsName != nil && *instance.PublicDnsName != "" {
 
 		server, _ := net.ResolveTCPAddr("tcp", *instance.PublicDnsName+":22")
@@ -153,14 +159,14 @@ func (configMapInfo AwsDynamicConfig) checkInstanceConnectivity(instance *types.
 	return "", nil
 }
 
-func (configMapInfo AwsDynamicConfig) TerminateInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, instance cloud.InstanceIdentifier) error {
+func (r AwsDynamicConfig) TerminateInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, instance cloud.InstanceIdentifier) error {
 	log.Info(fmt.Sprintf("attempting to terminate AWS instance %s", instance))
 
 	// Load AWS credentials and configuration
 
 	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithCredentialsProvider(SecretCredentialsProvider{Name: configMapInfo.Secret, Namespace: "multi-platform-controller", Client: kubeClient}),
-		config.WithRegion(configMapInfo.Region))
+		config.WithCredentialsProvider(SecretCredentialsProvider{Name: r.Secret, Namespace: "multi-platform-controller", Client: kubeClient}),
+		config.WithRegion(r.Region))
 	if err != nil {
 		return err
 	}
@@ -170,11 +176,11 @@ func (configMapInfo AwsDynamicConfig) TerminateInstance(kubeClient client.Client
 	return err
 }
 
-func (configMapInfo AwsDynamicConfig) ListInstances(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
+func (r AwsDynamicConfig) ListInstances(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
 	log.Info("attempting to list AWS instances")
 	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithCredentialsProvider(SecretCredentialsProvider{Name: configMapInfo.Secret, Namespace: configMapInfo.SystemNamespace, Client: kubeClient}),
-		config.WithRegion(configMapInfo.Region))
+		config.WithCredentialsProvider(SecretCredentialsProvider{Name: r.Secret, Namespace: r.SystemNamespace, Client: kubeClient}),
+		config.WithRegion(r.Region))
 	if err != nil {
 		return nil, err
 	}
@@ -190,8 +196,8 @@ func (configMapInfo AwsDynamicConfig) ListInstances(kubeClient client.Client, lo
 	for _, res := range res.Reservations {
 		for i := range res.Instances {
 			inst := res.Instances[i]
-			if inst.State.Name != types.InstanceStateNameTerminated && string(inst.InstanceType) == configMapInfo.InstanceType {
-				address, err := configMapInfo.checkInstanceConnectivity(&inst, log)
+			if inst.State.Name != types.InstanceStateNameTerminated && string(inst.InstanceType) == r.InstanceType {
+				address, err := r.checkInstanceConnectivity(&inst, log)
 				if err == nil {
 					ret = append(ret, cloud.CloudVMInstance{InstanceId: cloud.InstanceIdentifier(*inst.InstanceId), StartTime: *inst.LaunchTime, Address: address})
 					log.Info(fmt.Sprintf("counting instance %s towards running count", *inst.InstanceId))
@@ -231,9 +237,10 @@ type AwsDynamicConfig struct {
 	Secret          string
 	SystemNamespace string
 	SecurityGroup   string
+	SubnetId        string
 	Disk            int32
 }
 
-func (configMapInfo AwsDynamicConfig) SshUser() string {
+func (r AwsDynamicConfig) SshUser() string {
 	return "ec2-user"
 }
