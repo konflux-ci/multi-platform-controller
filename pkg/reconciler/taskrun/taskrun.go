@@ -580,12 +580,16 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, log *logr.Logg
 			if err != nil {
 				return nil, err
 			}
+			instanceTag := cm.Data["dynamic."+platformConfigName+".instance-tag"]
+			if instanceTag == "" {
+				instanceTag = cm.Data["instance-tag"]
+			}
 			ret := DynamicResolver{
 				CloudProvider: allocfunc(platformConfigName, cm.Data, r.operatorNamespace),
 				sshSecret:     cm.Data["dynamic."+platformConfigName+".ssh-secret"],
 				platform:      platform,
 				maxInstances:  maxInstances,
-				instanceTag:   cm.Data["instance-tag"],
+				instanceTag:   instanceTag,
 			}
 			r.platformConfig[targetPlatform] = ret
 			metrics, err := r.registerMetrics(targetPlatform)
@@ -619,6 +623,11 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, log *logr.Logg
 			if err != nil {
 				return nil, err
 			}
+
+			instanceTag := cm.Data["dynamic."+platformConfigName+".instance-tag"]
+			if instanceTag == "" {
+				instanceTag = cm.Data["instance-tag"]
+			}
 			ret := DynamicHostPool{
 				cloudProvider: allocfunc(platformConfigName, cm.Data, r.operatorNamespace),
 				sshSecret:     cm.Data["dynamic."+platformConfigName+".ssh-secret"],
@@ -626,7 +635,7 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, log *logr.Logg
 				maxInstances:  maxInstances,
 				maxAge:        time.Minute * time.Duration(maxAge),
 				concurrency:   concurrency,
-				instanceTag:   cm.Data["instance-tag"],
+				instanceTag:   instanceTag,
 			}
 			r.platformConfig[targetPlatform] = ret
 			metrics, err := r.registerMetrics(targetPlatform)
