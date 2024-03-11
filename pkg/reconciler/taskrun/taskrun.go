@@ -718,8 +718,9 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, log *logr.
 	provision.Annotations = map[string]string{TaskTargetPlatformAnnotation: platformLabel(platform)}
 	provision.Spec.TaskRef = &v1.TaskRef{Name: "provision-shared-host"}
 	provision.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: sshSecret}}}
-	compute := map[v12.ResourceName]resource.Quantity{v12.ResourceCPU: resource.MustParse("100m"), v12.ResourceMemory: resource.MustParse("256Mi")}
-	provision.Spec.ComputeResources = &v12.ResourceRequirements{Requests: compute, Limits: compute}
+	computeRequests := map[v12.ResourceName]resource.Quantity{v12.ResourceCPU: resource.MustParse("100m"), v12.ResourceMemory: resource.MustParse("256Mi")}
+	computeLimits := map[v12.ResourceName]resource.Quantity{v12.ResourceCPU: resource.MustParse("100m"), v12.ResourceMemory: resource.MustParse("512Mi")}
+	provision.Spec.ComputeResources = &v12.ResourceRequirements{Requests: computeRequests, Limits: computeLimits}
 	provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
 	provision.Spec.Params = []v1.Param{
 		{
