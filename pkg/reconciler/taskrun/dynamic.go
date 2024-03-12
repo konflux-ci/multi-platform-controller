@@ -115,6 +115,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 	instance, err := r.CloudProvider.LaunchInstance(taskRun.client, log, ctx, tr.Name, r.instanceTag)
 
 	if err != nil {
+		launchErr := err
 		//launch failed
 		log.Error(err, "Failed to create cloud host")
 		failureCount := 0
@@ -128,7 +129,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 		}
 		if failureCount == 2 {
 			log.Error(err, "failed to create cloud host, retries exceeded ")
-			return reconcile.Result{}, err
+			return reconcile.Result{}, launchErr
 		}
 		failureCount++
 		tr.Annotations[CloudFailures] = strconv.Itoa(failureCount)
