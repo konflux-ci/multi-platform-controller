@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/IBM/go-sdk-core/v4/core"
+	"github.com/IBM/go-sdk-core/v5/core"
 	"github.com/IBM/vpc-go-sdk/vpcv1"
 )
 
@@ -27,7 +27,7 @@ func IBMZProvider(arch string, config map[string]string, systemNamespace string)
 		Subnet:          config["dynamic."+arch+".subnet"],
 		Vpc:             config["dynamic."+arch+".vpc"],
 		SecurityGroup:   config["dynamic."+arch+".security-group"],
-		Image:           config["dynamic."+arch+".image"],
+		ImageId:         config["dynamic."+arch+".image-id"],
 		Secret:          config["dynamic."+arch+".secret"],
 		Url:             config["dynamic."+arch+".url"],
 		Profile:         config["dynamic."+arch+".profile"],
@@ -59,10 +59,7 @@ func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Lo
 		return "", err
 	}
 
-	image, err := r.lookupImage(vpcService)
-	if err != nil {
-		return "", err
-	}
+	image := r.ImageId
 	subnet, err := r.lookupSubnet(vpcService)
 	if err != nil {
 		return "", err
@@ -94,7 +91,7 @@ func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Lo
 				Subnet:          &vpcv1.SubnetIdentityByID{ID: subnet.ID},
 				SecurityGroups:  []vpcv1.SecurityGroupIdentityIntf{&vpcv1.SecurityGroupIdentityByID{ID: vpc.DefaultSecurityGroup.ID}},
 			},
-			Image: &vpcv1.ImageIdentityByID{ID: image.ID},
+			Image: &vpcv1.ImageIdentityByID{ID: &image},
 		},
 	})
 	log.Info(response.String())
@@ -174,23 +171,6 @@ func (r IBMZDynamicConfig) lookupSubnet(vpcService *vpcv1.VpcV1) (*vpcv1.Subnet,
 		return nil, fmt.Errorf("failed to find subnet %s", r.Subnet)
 	}
 	return subnet, nil
-}
-func (r IBMZDynamicConfig) lookupImage(vpcService *vpcv1.VpcV1) (*vpcv1.Image, error) {
-	images, _, err := vpcService.ListImages(&vpcv1.ListImagesOptions{})
-	if err != nil {
-		return nil, err
-	}
-	var image *vpcv1.Image
-	for i := range images.Images {
-		if *images.Images[i].Name == r.Image {
-			image = &images.Images[i]
-			break
-		}
-	}
-	if image == nil {
-		return nil, fmt.Errorf("failed to find image %s", r.Image)
-	}
-	return image, nil
 }
 func (r IBMZDynamicConfig) lookupSSHKey(vpcService *vpcv1.VpcV1) (*vpcv1.Key, error) {
 	keys, _, err := vpcService.ListKeys(&vpcv1.ListKeysOptions{})
@@ -386,7 +366,7 @@ type IBMZDynamicConfig struct {
 	Subnet          string
 	Vpc             string
 	SecurityGroup   string
-	Image           string
+	ImageId         string
 	Url             string
 	Profile         string
 }

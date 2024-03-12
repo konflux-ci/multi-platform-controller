@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/IBM/go-sdk-core/v4/core"
+	"github.com/IBM/go-sdk-core/v5/core"
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 	"github.com/redhat-appstudio/multi-platform-controller/pkg/cloud"

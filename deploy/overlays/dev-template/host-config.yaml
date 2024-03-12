@@ -6,7 +6,7 @@ metadata:
   name: host-config
   namespace: multi-platform-controller
 data:
-  dynamic-platforms: linux/amd64
+  dynamic-platforms: linux/amd64,linux/s390x
   dynamic-pool-platforms: linux/arm64
   instance-tag: QUAY_USERNAME-development
 
@@ -38,7 +38,7 @@ data:
   dynamic.linux-s390x.vpc: "us-east-default-vpc"
   dynamic.linux-s390x.key: "sdouglas-test"
   dynamic.linux-s390x.subnet: "us-east-2-default-subnet"
-  dynamic.linux-s390x.image: "sdouglas-rhel-snapshot"
+  dynamic.linux-s390x.image-id: "r014-17c957e0-01a1-4f7f-bc24-191f5f10eba8"
   dynamic.linux-s390x.region: "us-east-2"
   dynamic.linux-s390x.url: "https://us-east.iaas.cloud.ibm.com/v1"
   dynamic.linux-s390x.profile: "bz2-1x4"
