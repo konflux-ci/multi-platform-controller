@@ -233,8 +233,8 @@ func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, log *logr.Logger
 			metrics.provisionFailures.Inc()
 		})
 	}
-	//leave the TR for an hour
-	if tr.Status.CompletionTime.Add(time.Hour).Before(time.Now()) {
+	//leave the failed TR for an hour to view logs
+	if success || tr.Status.CompletionTime.Add(time.Hour).Before(time.Now()) {
 		return reconcile.Result{}, r.client.Delete(ctx, tr)
 	}
 	return reconcile.Result{RequeueAfter: time.Hour}, nil
@@ -248,16 +248,16 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 	if tr.Annotations == nil {
 		tr.Annotations = map[string]string{}
 	}
+	success := tr.Status.GetCondition(apis.ConditionSucceeded).IsTrue()
 	if tr.Annotations[ProvisionTaskProcessed] == "true" {
-		//leave the TR for an hour so we can view logs
+		//leave the failed TR for an hour so we can view logs
 		//TODO: tekton results integration
-		if tr.Status.CompletionTime.Add(time.Hour).Before(time.Now()) {
+		if success || tr.Status.CompletionTime.Add(time.Hour).Before(time.Now()) {
 			return reconcile.Result{}, r.client.Delete(ctx, tr)
 		}
 		return reconcile.Result{RequeueAfter: time.Hour}, nil
 	}
 	tr.Annotations[ProvisionTaskProcessed] = "true"
-	success := tr.Status.GetCondition(apis.ConditionSucceeded).IsTrue()
 	secretName := ""
 	for _, i := range tr.Spec.Params {
 		if i.Name == "SECRET_NAME" {
