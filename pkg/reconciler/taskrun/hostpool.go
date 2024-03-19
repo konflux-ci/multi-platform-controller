@@ -117,13 +117,25 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.
 func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, selectedHost string) error {
 	selected := hp.hosts[selectedHost]
 	if selected != nil {
+		labelMap := map[string]string{TaskTypeLabel: TaskTypeClean, UserTaskName: tr.Name, UserTaskNamespace: tr.Namespace}
+		list := v1.TaskRunList{}
+		err := r.client.List(ctx, &list, client.MatchingLabels(labelMap))
+		if err != nil {
+			log.Error(err, "failed to check for existing cleanup task")
+		} else {
+			if len(list.Items) > 0 {
+				log.Info("cleanup task already exists")
+				return nil
+			}
+		}
+
 		log.Info("starting cleanup task")
 		//kick off the clean task
 		//kick off the provisioning task
 		provision := v1.TaskRun{}
 		provision.GenerateName = "cleanup-task"
 		provision.Namespace = r.operatorNamespace
-		provision.Labels = map[string]string{TaskTypeLabel: TaskTypeClean, UserTaskName: tr.Name, UserTaskNamespace: tr.Namespace}
+		provision.Labels = labelMap
 		provision.Annotations = map[string]string{TaskTargetPlatformAnnotation: hp.targetPlatform}
 		provision.Spec.TaskRef = &v1.TaskRef{Name: "clean-shared-host"}
 		provision.Spec.Retries = 3
@@ -153,7 +165,7 @@ func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, log *log
 				Value: *v1.NewStructuredValues(selected.User),
 			},
 		}
-		err := r.client.Create(ctx, &provision)
+		err = r.client.Create(ctx, &provision)
 		return err
 	}
 	return nil
