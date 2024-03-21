@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/IBM/go-sdk-core/v5 v5.16.1
-	github.com/IBM/vpc-go-sdk v0.48.0
+	github.com/IBM/vpc-go-sdk v0.49.0
 	github.com/aws/aws-sdk-go-v2 v1.25.3
 	github.com/aws/aws-sdk-go-v2/config v1.27.7
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.150.0
