@@ -1,3 +1,11 @@
+# v1.154.0 (2024-03-26)
+
+* **Feature**: Documentation updates for Elastic Compute Cloud (EC2).
+
+# v1.153.0 (2024-03-25)
+
+* **Feature**: Added support for ModifyInstanceMetadataDefaults and GetInstanceMetadataDefaults to set Instance Metadata Service account defaults
+
 # v1.152.0 (2024-03-19)
 
 * **Feature**: This release adds the new DescribeMacHosts API operation for getting information about EC2 Mac Dedicated Hosts. Users can now see the latest macOS versions that their underlying Apple Mac can support without needing to be updated.
