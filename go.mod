@@ -5,9 +5,9 @@ go 1.20
 require (
 	github.com/IBM/go-sdk-core/v5 v5.16.3
 	github.com/IBM/vpc-go-sdk v0.50.0
-	github.com/aws/aws-sdk-go-v2 v1.26.0
-	github.com/aws/aws-sdk-go-v2/config v1.27.9
-	github.com/aws/aws-sdk-go-v2/service/ec2 v1.154.0
+	github.com/aws/aws-sdk-go-v2 v1.26.1
+	github.com/aws/aws-sdk-go-v2/config v1.27.11
+	github.com/aws/aws-sdk-go-v2/service/ec2 v1.156.0
 	github.com/go-logr/logr v1.4.1
 	github.com/google/uuid v1.6.0
 	github.com/onsi/gomega v1.32.0
@@ -32,17 +32,17 @@ require (
 	contrib.go.opencensus.io/exporter/prometheus v0.4.2 // indirect
 	github.com/antlr/antlr4/runtime/Go/antlr/v4 v4.0.0-20230305170008-8188dc5388df // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.17.9 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.0 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.4 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.4 // indirect
+	github.com/aws/aws-sdk-go-v2/credentials v1.17.11 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.1 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.5 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.5 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.0 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.11.1 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.11.6 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.20.3 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.23.3 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sts v1.28.5 // indirect
-	github.com/aws/smithy-go v1.20.1 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.11.2 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.11.7 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.20.5 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.23.4 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sts v1.28.6 // indirect
+	github.com/aws/smithy-go v1.20.2 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blendle/zapdriver v1.3.1 // indirect
 	github.com/census-instrumentation/opencensus-proto v0.4.1 // indirect
