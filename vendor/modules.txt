@@ -4,7 +4,7 @@ contrib.go.opencensus.io/exporter/ocagent
 # contrib.go.opencensus.io/exporter/prometheus v0.4.2
 ## explicit; go 1.13
 contrib.go.opencensus.io/exporter/prometheus
-# github.com/IBM/go-sdk-core/v5 v5.16.3
+# github.com/IBM/go-sdk-core/v5 v5.16.4
 ## explicit; go 1.20
 github.com/IBM/go-sdk-core/v5/core
 # github.com/IBM/vpc-go-sdk v0.50.0
