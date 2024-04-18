@@ -113,6 +113,51 @@ func TestAllocateCloudHost(t *testing.T) {
 
 }
 
+func TestAllocateCloudHostInstanceFailure(t *testing.T) {
+	g := NewGomegaWithT(t)
+	client, reconciler := setupClientAndReconciler(createDynamicHostConfig())
+	cloudImpl.FailGetAddress = true
+	defer func() {
+		cloudImpl.FailGetAddress = false
+	}()
+	createUserTaskRun(g, client, "test", "linux/arm64")
+	_, err := reconciler.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
+	g.Expect(err).ToNot(HaveOccurred())
+	_, err = reconciler.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
+	g.Expect(err).To(HaveOccurred())
+	_, err = reconciler.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
+	g.Expect(err).ToNot(HaveOccurred())
+	tr := getUserTaskRun(g, client, "test")
+	g.Expect(tr.Labels[AssignedHost]).To(BeEmpty())
+	g.Expect(cloudImpl.Running).Should(Equal(0))
+	g.Expect(cloudImpl.Addressses["multi-platform-builder-test"]).Should(BeEmpty())
+}
+
+func TestAllocateCloudHostInstanceTimeout(t *testing.T) {
+	g := NewGomegaWithT(t)
+	client, reconciler := setupClientAndReconciler(createDynamicHostConfig())
+	cloudImpl.TimeoutGetAddress = true
+	defer func() {
+		cloudImpl.TimeoutGetAddress = false
+	}()
+	createUserTaskRun(g, client, "test", "linux/arm64")
+	_, err := reconciler.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
+	g.Expect(err).ToNot(HaveOccurred())
+	_, err = reconciler.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
+	g.Expect(err).ToNot(HaveOccurred())
+	_, err = reconciler.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
+	g.Expect(err).ToNot(HaveOccurred())
+	time.Sleep(time.Second)
+	_, err = reconciler.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
+	g.Expect(err).ToNot(HaveOccurred())
+	time.Sleep(time.Second * 2)
+	_, err = reconciler.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
+	g.Expect(err).To(HaveOccurred())
+	tr := getUserTaskRun(g, client, "test")
+	g.Expect(tr.Labels[AssignedHost]).To(BeEmpty())
+	g.Expect(cloudImpl.Running).Should(Equal(0))
+	g.Expect(cloudImpl.Addressses["multi-platform-builder-test"]).Should(BeEmpty())
+}
 func TestAllocateCloudHostProvisionFailureInMiddle(t *testing.T) {
 	g := NewGomegaWithT(t)
 	client, reconciler := setupClientAndReconciler(createDynamicHostConfig())
@@ -486,15 +531,16 @@ func createDynamicHostConfig() []runtimeclient.Object {
 	cm.Namespace = systemNamespace
 	cm.Labels = map[string]string{ConfigMapLabel: "hosts"}
 	cm.Data = map[string]string{
-		"dynamic-platforms":                 "linux/arm64",
-		"dynamic.linux-arm64.type":          "mock",
-		"dynamic.linux-arm64.region":        "us-east-1",
-		"dynamic.linux-arm64.ami":           "ami-03d6a5256a46c9feb",
-		"dynamic.linux-arm64.instance-type": "t4g.medium",
-		"dynamic.linux-arm64.key-name":      "sdouglas-arm-test",
-		"dynamic.linux-arm64.aws-secret":    "awsiam",
-		"dynamic.linux-arm64.ssh-secret":    "awskeys",
-		"dynamic.linux-arm64.max-instances": "2",
+		"dynamic-platforms":                      "linux/arm64",
+		"dynamic.linux-arm64.type":               "mock",
+		"dynamic.linux-arm64.region":             "us-east-1",
+		"dynamic.linux-arm64.ami":                "ami-03d6a5256a46c9feb",
+		"dynamic.linux-arm64.instance-type":      "t4g.medium",
+		"dynamic.linux-arm64.key-name":           "sdouglas-arm-test",
+		"dynamic.linux-arm64.aws-secret":         "awsiam",
+		"dynamic.linux-arm64.ssh-secret":         "awskeys",
+		"dynamic.linux-arm64.max-instances":      "2",
+		"dynamic.linux-arm64.allocation-timeout": "2",
 	}
 	sec := v1.Secret{}
 	sec.Name = "awskeys"
@@ -529,9 +575,11 @@ func createDynamicPoolHostConfig() []runtimeclient.Object {
 }
 
 type MockCloud struct {
-	Running    int
-	Terminated int
-	Addressses map[cloud.InstanceIdentifier]string
+	Running           int
+	Terminated        int
+	Addressses        map[cloud.InstanceIdentifier]string
+	FailGetAddress    bool
+	TimeoutGetAddress bool
 }
 
 func (m *MockCloud) ListInstances(kubeClient runtimeclient.Client, log *logr.Logger, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
@@ -566,6 +614,11 @@ func (m *MockCloud) TerminateInstance(kubeClient runtimeclient.Client, log *logr
 }
 
 func (m *MockCloud) GetInstanceAddress(kubeClient runtimeclient.Client, log *logr.Logger, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
+	if m.FailGetAddress {
+		return "", fmt.Errorf("failed")
+	} else if m.TimeoutGetAddress {
+		return "", nil
+	}
 	addr := m.Addressses[instanceId]
 	if addr == "" {
 		addr = string(instanceId) + ".host.com"

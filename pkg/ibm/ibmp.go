@@ -133,7 +133,7 @@ func (r IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, log 
 	}
 	ip, err := r.lookupIp(ctx, service, string(instanceId))
 	if err != nil {
-		return "", err
+		return "", nil //todo: check for permanent errors
 	}
 	return checkAddressLive(ip, log)
 }
