@@ -91,7 +91,8 @@ func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Lo
 				Subnet:          &vpcv1.SubnetIdentityByID{ID: subnet.ID},
 				SecurityGroups:  []vpcv1.SecurityGroupIdentityIntf{&vpcv1.SecurityGroupIdentityByID{ID: vpc.DefaultSecurityGroup.ID}},
 			},
-			Image: &vpcv1.ImageIdentityByID{ID: &image},
+			AvailabilityPolicy: &vpcv1.InstanceAvailabilityPolicyPrototype{HostFailure: ptr("stop")},
+			Image:              &vpcv1.ImageIdentityByID{ID: &image},
 		},
 	})
 	log.Info(response.String())
@@ -242,12 +243,12 @@ func (r IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, log *log
 	}
 	instance, _, err := vpcService.GetInstance(&vpcv1.GetInstanceOptions{ID: ptr(string(instanceId))})
 	if err != nil {
-		return "", err
+		return "", nil //not permanent, this can take a while to appear
 	}
 	ips, _, err := vpcService.ListInstanceNetworkInterfaceFloatingIps(&vpcv1.ListInstanceNetworkInterfaceFloatingIpsOptions{InstanceID: instance.ID, NetworkInterfaceID: instance.PrimaryNetworkInterface.ID})
 
 	if err != nil {
-		return "", err
+		return "", nil //not permanent, this can take a while to appear
 	}
 	if len(ips.FloatingIps) > 0 {
 		return checkAddressLive(*ips.FloatingIps[0].Address, log)
@@ -308,7 +309,7 @@ func checkAddressLive(addr string, log *logr.Logger) (string, error) {
 	conn, err := net.DialTCP("tcp", nil, server)
 	if err != nil {
 		log.Info("failed to connect to IBM host " + addr)
-		return "", err
+		return "", nil
 	}
 	defer conn.Close()
 	return addr, nil

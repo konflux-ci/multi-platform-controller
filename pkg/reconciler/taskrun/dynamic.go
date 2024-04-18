@@ -20,6 +20,7 @@ type DynamicResolver struct {
 	platform     string
 	maxInstances int
 	instanceTag  string
+	timeout      int64
 }
 
 func (r DynamicResolver) Deallocate(taskRun *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, selectedHost string) error {
@@ -46,6 +47,31 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 	if tr.Annotations == nil {
 		tr.Annotations = map[string]string{}
 	}
+	if tr.Annotations[AllocationStartTimeAnnotation] != "" && tr.Annotations[CloudInstanceId] != "" {
+		allocStart := tr.Annotations[AllocationStartTimeAnnotation]
+		startTime, err := strconv.ParseInt(allocStart, 10, 64)
+		if err == nil {
+			if startTime+r.timeout < time.Now().Unix() {
+				err = fmt.Errorf("timed out waiting for instance address")
+				log.Error(err, "timed out waiting for instance address")
+				//ugh, try and unassign
+				terr := r.CloudProvider.TerminateInstance(taskRun.client, log, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
+				if terr != nil {
+					log.Error(err, "Failed to terminate instance")
+				}
+				delete(tr.Labels, AssignedHost)
+				delete(tr.Annotations, CloudInstanceId)
+				delete(tr.Annotations, CloudDynamicPlatform)
+				updateErr := taskRun.client.Update(ctx, tr)
+				if updateErr != nil {
+					log.Error(updateErr, "Could not unassign task after timeout")
+					return reconcile.Result{}, err
+				} else {
+					return reconcile.Result{}, err
+				}
+			}
+		}
+	}
 	//this is called multiple times
 	//the first time starts the instance
 	//then it can be called repeatedly until the instance has an address
@@ -53,8 +79,25 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 	if tr.Annotations[CloudInstanceId] != "" {
 		log.Info("attempting to get instance address", "instance", tr.Annotations[CloudInstanceId])
 		//we already have an instance, get its address
-		address, _ := r.CloudProvider.GetInstanceAddress(taskRun.client, log, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
-		if address != "" {
+		address, err := r.CloudProvider.GetInstanceAddress(taskRun.client, log, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
+		if err != nil {
+			log.Error(err, "Failed to get instance address for cloud host")
+			//ugh, try and unassign
+			terr := r.CloudProvider.TerminateInstance(taskRun.client, log, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
+			if terr != nil {
+				log.Error(terr, "Failed to terminate instance")
+			}
+			delete(tr.Labels, AssignedHost)
+			delete(tr.Annotations, CloudInstanceId)
+			delete(tr.Annotations, CloudDynamicPlatform)
+			updateErr := taskRun.client.Update(ctx, tr)
+			if updateErr != nil {
+				log.Error(updateErr, "Could not unassign task after instance address failure")
+				return reconcile.Result{}, err
+			} else {
+				return reconcile.Result{}, err
+			}
+		} else if address != "" {
 			tr.Labels[AssignedHost] = tr.Annotations[CloudInstanceId]
 			tr.Annotations[CloudAddress] = address
 			err := taskRun.client.Update(ctx, tr)
@@ -66,7 +109,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 				//ugh, try and unassign
 				err := r.CloudProvider.TerminateInstance(taskRun.client, log, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
 				if err != nil {
-					log.Error(err, "Failed to terminate EC2 instance")
+					log.Error(err, "Failed to terminate instance")
 				}
 
 				delete(tr.Labels, AssignedHost)

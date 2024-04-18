@@ -584,12 +584,23 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, log *logr.Logg
 			if instanceTag == "" {
 				instanceTag = cm.Data["instance-tag"]
 			}
+			timeoutSeconds := cm.Data["dynamic."+platformConfigName+".allocation-timeout"]
+			timeout := int64(600) //default to 10 minutes
+			if timeoutSeconds != "" {
+				timeoutInt, err := strconv.Atoi(timeoutSeconds)
+				if err != nil {
+					log.Error(err, "unable to parse allocation timeout")
+				} else {
+					timeout = int64(timeoutInt)
+				}
+			}
 			ret := DynamicResolver{
 				CloudProvider: allocfunc(platformConfigName, cm.Data, r.operatorNamespace),
 				sshSecret:     cm.Data["dynamic."+platformConfigName+".ssh-secret"],
 				platform:      platform,
 				maxInstances:  maxInstances,
 				instanceTag:   instanceTag,
+				timeout:       timeout,
 			}
 			r.platformConfig[targetPlatform] = ret
 			metrics, err := r.registerMetrics(targetPlatform)
