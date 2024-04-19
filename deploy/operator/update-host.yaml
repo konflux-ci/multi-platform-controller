@@ -21,11 +21,24 @@ spec:
         #!/bin/bash
         cd /tmp
         set -o verbose
-        set -eu
-        set -o pipefail
         mkdir -p /root/.ssh
         cp $(workspaces.ssh.path)/id_rsa /tmp/master_key
         chmod 0400 /tmp/master_key
         export SSH_HOST=$(params.USER)@$(params.HOST)
         ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST "sudo dnf update -y"
 
+        #now clean up any dangling users, if their cleanup failed for whatever reason
+
+        cat >script.sh <<EOF
+        threshold=$(date -d "1 day ago" +%s)
+        cd /home
+        for file in *; do
+          # Check if the file is a regular file and older than the threshold
+          if [[ $(stat -c "%Y" "$file") -lt $threshold ]]; then
+          # Delete the user
+          sudo userdel -f -r -Z $file
+          echo "Deleted: $file"
+          fi
+        done
+        EOF
+        ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST "bash -s" <script.sh
