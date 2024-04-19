@@ -46,7 +46,7 @@ spec:
         ssh-keygen -N '' -f $USERNAME
         sudo su $USERNAME -c 'mkdir /home/$USERNAME/.ssh'
         sudo su $USERNAME -c 'mkdir /home/$USERNAME/build'
-        sudo cp $USERNAME.pub /home/$USERNAME/.ssh/authorized_keys
+        sudo mv $USERNAME.pub /home/$USERNAME/.ssh/authorized_keys
         sudo chown $USERNAME /home/$USERNAME/.ssh/authorized_keys
         EOF
         ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST "bash -s" <script.sh

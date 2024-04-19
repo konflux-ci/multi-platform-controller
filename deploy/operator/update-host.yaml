@@ -32,7 +32,7 @@ spec:
         cat >script.sh <<EOF
         threshold=$(date -d "1 day ago" +%s)
         cd /home
-        for file in *; do
+        for file in u-*; do
           # Check if the file is a regular file and older than the threshold
           if [[ $(stat -c "%Y" "$file") -lt $threshold ]]; then
           # Delete the user
