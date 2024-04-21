@@ -132,7 +132,8 @@ func (r AwsDynamicConfig) GetInstanceAddress(kubeClient client.Client, log *logr
 	res, err := ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{InstanceIds: []string{string(instanceId)}})
 	if err != nil {
 		log.Error(err, "failed to describe instance")
-		return "", err
+		//this might be transient, just log it
+		return "", nil
 	}
 	if len(res.Reservations) > 0 {
 		if len(res.Reservations[0].Instances) > 0 {
