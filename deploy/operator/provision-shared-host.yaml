@@ -48,6 +48,7 @@ spec:
         sudo su $USERNAME -c 'mkdir /home/$USERNAME/build'
         sudo mv $USERNAME.pub /home/$USERNAME/.ssh/authorized_keys
         sudo chown $USERNAME /home/$USERNAME/.ssh/authorized_keys
+        sudo restorecon -FRvv /home/$USERNAME/.ssh
         EOF
         ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST "bash -s" <script.sh
         ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST cat $USERNAME  >id_rsa
