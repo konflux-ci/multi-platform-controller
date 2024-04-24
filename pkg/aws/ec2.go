@@ -3,6 +3,10 @@ package aws
 import (
 	"context"
 	"fmt"
+	"net"
+	"os"
+	"strconv"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -11,10 +15,7 @@ import (
 	"github.com/redhat-appstudio/multi-platform-controller/pkg/cloud"
 	v1 "k8s.io/api/core/v1"
 	types2 "k8s.io/apimachinery/pkg/types"
-	"net"
-	"os"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strconv"
 )
 
 const MultiPlatformManaged = "MultiPlatformManaged"
@@ -138,7 +139,12 @@ func (r AwsDynamicConfig) GetInstanceAddress(kubeClient client.Client, log *logr
 	if len(res.Reservations) > 0 {
 		if len(res.Reservations[0].Instances) > 0 {
 			instance := res.Reservations[0].Instances[0]
-			return r.checkInstanceConnectivity(&instance, log)
+			address, err := r.checkInstanceConnectivity(&instance, log)
+			if err != nil {
+				// this might be transient, wait more for the instance to be ready
+				return "", nil
+			}
+			return address, nil
 		}
 	}
 	return "", nil
