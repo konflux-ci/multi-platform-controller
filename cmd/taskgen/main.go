@@ -16,6 +16,10 @@ package main
 import (
 	"bytes"
 	"flag"
+	"os"
+	"path/filepath"
+	"strings"
+
 	tektonapi "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -23,10 +27,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/cli-runtime/pkg/printers"
 	"k8s.io/klog/v2"
-	"os"
-	"path/filepath"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	"strings"
 )
 
 func main() {
@@ -110,7 +111,22 @@ export BUILD_DIR=$(cat /ssh/user-dir)
 export SSH_ARGS="-o StrictHostKeyChecking=no"
 mkdir -p scripts
 echo "$BUILD_DIR"
-ssh $SSH_ARGS "$SSH_HOST"  mkdir -p "$BUILD_DIR/workspaces" "$BUILD_DIR/scripts"
+
+# Retry several times in case remote VM is not ready yet.
+max_connect_attempts=10
+delay_between_connect_attempts_sec=10
+for connect_attempt in $(seq 1 $max_connect_attempts); do
+  ssh $SSH_ARGS "$SSH_HOST"  mkdir -p "$BUILD_DIR/workspaces" "$BUILD_DIR/scripts"
+  connect_status=$?
+  if [ "$connect_status" -eq 0 ]; then
+    break
+  fi
+  sleep $delay_between_connect_attempts_sec
+done
+if [ "$connect_status" -ne 0 ]; then
+  echo "Failed to connect to remote VM after ${max_connect_attempts} attempts. Giving up."
+  exit 1
+fi
 
 PORT_FORWARD=""
 PODMAN_PORT_FORWARD=""
