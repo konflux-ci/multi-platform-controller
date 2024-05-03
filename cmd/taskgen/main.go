@@ -29,6 +29,8 @@ import (
 	"strings"
 )
 
+const RunnerImage = "quay.io/redhat-appstudio/multi-platform-runner:01c7670e81d5120347cf0ad13372742489985e5f@sha256:246adeaaba600e207131d63a7f706cffdcdc37d8f600c56187123ec62823ff44"
+
 func main() {
 	var buildahTask string
 	var buildahRemoteTask string
@@ -84,53 +86,26 @@ func streamFileYamlToTektonObj(path string, obj runtime.Object) runtime.Object {
 
 func convertToSsh(task *tektonapi.Task) {
 
-	builderImage := ""
+	podmanArgs := ""
+	scriptContents := ""
+	// Before the build we sync the contents of the workspace to the remote host
+	for _, workspace := range task.Spec.Workspaces {
+		scriptContents += "\nrsync -ra $(workspaces." + workspace.Name + ".path)/ \"$SSH_HOST:$BUILD_DIR/workspaces/" + workspace.Name + "/\""
+		podmanArgs += " -v \"$BUILD_DIR/workspaces/" + workspace.Name + ":$(workspaces." + workspace.Name + ".path):Z\" \\\n"
+	}
+	scriptContents += "\nrsync -ra \"$HOME/.docker/\" \"$SSH_HOST:$BUILD_DIR/.docker/\""
+	scriptContents += "\nrsync -ra \"/tekton/results/\" \"$SSH_HOST:$BUILD_DIR/tekton-results/\""
+	podmanArgs += " -v \"$BUILD_DIR/.docker/:/root/.docker:Z\" \\\n"
+	podmanArgs += " -v \"$BUILD_DIR/tekton-results/:/tekton/results:Z\" \\\n"
+
 	for stepPod := range task.Spec.Steps {
 		step := &task.Spec.Steps[stepPod]
-		if step.Name != "build" {
-			continue
-		}
-		podmanArgs := ""
-
 		ret := `set -o verbose
-mkdir -p ~/.ssh
-if [ -e "/ssh/error" ]; then
-  #no server could be provisioned
-  cat /ssh/error
-  exit 1
-elif [ -e "/ssh/otp" ]; then
- curl --cacert /ssh/otp-ca -XPOST -d @/ssh/otp $(cat /ssh/otp-server) >~/.ssh/id_rsa
- echo "" >> ~/.ssh/id_rsa
-else
-  cp /ssh/id_rsa ~/.ssh
-fi
-chmod 0400 ~/.ssh/id_rsa
-export SSH_HOST=$(cat /ssh/host)
-export BUILD_DIR=$(cat /ssh/user-dir)
-export SSH_ARGS="-o StrictHostKeyChecking=no"
-mkdir -p scripts
-echo "$BUILD_DIR"
-ssh $SSH_ARGS "$SSH_HOST"  mkdir -p "$BUILD_DIR/workspaces" "$BUILD_DIR/scripts"
-
-PORT_FORWARD=""
-PODMAN_PORT_FORWARD=""
-if [ -n "$JVM_BUILD_WORKSPACE_ARTIFACT_CACHE_PORT_80_TCP_ADDR" ] ; then
-PORT_FORWARD=" -L 80:$JVM_BUILD_WORKSPACE_ARTIFACT_CACHE_PORT_80_TCP_ADDR:80"
-PODMAN_PORT_FORWARD=" -e JVM_BUILD_WORKSPACE_ARTIFACT_CACHE_PORT_80_TCP_ADDR=localhost"
-fi
+source /ssh-env/env
+/ssh-env/setup.sh
 `
 
 		env := "$PODMAN_PORT_FORWARD \\\n"
-		// Before the build we sync the contents of the workspace to the remote host
-		for _, workspace := range task.Spec.Workspaces {
-			ret += "\nrsync -ra $(workspaces." + workspace.Name + ".path)/ \"$SSH_HOST:$BUILD_DIR/workspaces/" + workspace.Name + "/\""
-			podmanArgs += " -v \"$BUILD_DIR/workspaces/" + workspace.Name + ":$(workspaces." + workspace.Name + ".path):Z\" \\\n"
-		}
-		ret += "\nrsync -ra \"$HOME/.docker/\" \"$SSH_HOST:$BUILD_DIR/.docker/\""
-		podmanArgs += " -v \"$BUILD_DIR/.docker/:/root/.docker:Z\" \\\n"
-		ret += "\nrsync -ra \"/tekton/results/\" \"$SSH_HOST:$BUILD_DIR/tekton-results/\""
-		podmanArgs += " -v \"$BUILD_DIR/tekton-results/:/tekton/results:Z\" \\\n"
-
 		script := "scripts/script-" + step.Name + ".sh"
 
 		ret += "\ncat >" + script + " <<'REMOTESSHEOF'\n"
@@ -141,7 +116,6 @@ fi
 			ret += "cd " + step.WorkingDir + "\n"
 		}
 		ret += step.Script
-		ret += "\nbuildah push \"$IMAGE\" oci:rhtap-final-image"
 		ret += "\nREMOTESSHEOF"
 		ret += "\nchmod +x " + script
 
@@ -156,19 +130,10 @@ fi
 			env += " -e " + e.Name + "=\"$" + e.Name + "\" \\\n"
 		}
 		podmanArgs += " -v $BUILD_DIR/scripts:/script:Z \\\n"
-		ret += "\nssh $SSH_ARGS \"$SSH_HOST\" $PORT_FORWARD podman  run " + env + "" + podmanArgs + "--user=0  --rm  \"$BUILDER_IMAGE\" " + containerScript
+		ret += "\nssh $SSH_ARGS \"$SSH_HOST\" $PORT_FORWARD podman  run " + env + "" + podmanArgs + "--user=0  --rm  \"" + step.Image + "\" " + containerScript
 
-		// Sync the contents of the workspaces back so subsequent tasks can use them
-		for _, workspace := range task.Spec.Workspaces {
-			ret += "\nrsync -ra \"$SSH_HOST:$BUILD_DIR/workspaces/" + workspace.Name + "/\" \"$(workspaces." + workspace.Name + ".path)/\""
-		}
 		//sync back results
 		ret += "\nrsync -ra \"$SSH_HOST:$BUILD_DIR/tekton-results/\" \"/tekton/results/\""
-
-		ret += "\nbuildah pull oci:rhtap-final-image"
-		ret += "\nbuildah images"
-		ret += "\nbuildah tag localhost/rhtap-final-image \"$IMAGE\""
-		ret += "\ncontainer=$(buildah from --pull-never \"$IMAGE\")\nbuildah mount \"$container\" | tee /workspace/container_path\necho $container > /workspace/container_name"
 
 		for _, i := range strings.Split(ret, "\n") {
 			if strings.HasSuffix(i, " ") {
@@ -176,27 +141,100 @@ fi
 			}
 		}
 		step.Script = ret
-		builderImage = step.Image
-		step.Image = "quay.io/redhat-appstudio/multi-platform-runner:01c7670e81d5120347cf0ad13372742489985e5f@sha256:246adeaaba600e207131d63a7f706cffdcdc37d8f600c56187123ec62823ff44"
+		step.Image = RunnerImage
 		step.VolumeMounts = append(step.VolumeMounts, v1.VolumeMount{
-			Name:      "ssh",
+			Name:      "ssh-env",
 			ReadOnly:  true,
-			MountPath: "/ssh",
+			MountPath: "/ssh-env",
 		})
 	}
 
 	task.Name = "buildah-remote"
 	task.Spec.Params = append(task.Spec.Params, tektonapi.ParamSpec{Name: "PLATFORM", Type: tektonapi.ParamTypeString, Description: "The platform to build on"})
 
-	faleVar := false
 	task.Spec.Volumes = append(task.Spec.Volumes, v1.Volume{
 		Name: "ssh",
 		VolumeSource: v1.VolumeSource{
 			Secret: &v1.SecretVolumeSource{
 				SecretName: "multi-platform-ssh-$(context.taskRun.name)",
-				Optional:   &faleVar,
+				Optional:   ref(false),
 			},
 		},
 	})
-	task.Spec.StepTemplate.Env = append(task.Spec.StepTemplate.Env, v1.EnvVar{Name: "BUILDER_IMAGE", Value: builderImage})
+	task.Spec.Volumes = append(task.Spec.Volumes, v1.Volume{
+		Name:         "ssh-env",
+		VolumeSource: v1.VolumeSource{EmptyDir: &v1.EmptyDirVolumeSource{}},
+	})
+
+	// Add init step, that prepares the remote host, and writes data to the data volume
+
+	script := `set -o verbose
+
+#Retrieve the secret and copy it to the working volume
+if [ -e "/ssh/error" ]; then
+  #no server could be provisioned
+  cat /ssh/error
+  exit 1
+elif [ -e "/ssh/otp" ]; then
+ curl --cacert /ssh/otp-ca -XPOST -d @/ssh/otp $(cat /ssh/otp-server) >~/.ssh/id_rsa
+ echo "" >> /ssh-env/id_rsa
+else
+  cp /ssh/id_rsa /ssh-env/.ssh
+fi
+
+cat >/ssh-env/setup.sh <<EOF
+#!/bin/bash
+#Create the SSH dir and copy the key with correct permissions
+mkdir -p ~/.ssh
+cp /ssh-env/id_rsa ~/.ssh/id_rsa
+chmod 0400 ~/.ssh/id_rsa
+mkdir -p scripts
+
+EOF
+
+export SSH_HOST=$(cat /ssh/host)
+export BUILD_DIR=$(cat /ssh/user-dir)
+export SSH_ARGS="-o StrictHostKeyChecking=no"
+ssh $SSH_ARGS "$SSH_HOST"  mkdir -p "$BUILD_DIR/workspaces" "$BUILD_DIR/scripts"
+
+cat >/ssh-env/env <<EOF
+SSH_HOST=$SSH_HOST
+BUILD_DIR=$BUILD_DIR
+SSH_ARGS=$SSH_ARGS
+EOF
+
+if [ -n "$JVM_BUILD_WORKSPACE_ARTIFACT_CACHE_PORT_80_TCP_ADDR" ] ; then
+ echo PORT_FORWARD="\" -L 80:$JVM_BUILD_WORKSPACE_ARTIFACT_CACHE_PORT_80_TCP_ADDR:80\"">>/ssh-env/env
+ echo PODMAN_PORT_FORWARD="\" -e JVM_BUILD_WORKSPACE_ARTIFACT_CACHE_PORT_80_TCP_ADDR=localhost\"">>/ssh-env/env
+else
+ echo 'PORT_FORWARD=""'>>/ssh-env/env
+ echo 'PODMAN_PORT_FORWARD=""'>>/ssh-env/env
+fi
+
+` + scriptContents
+
+	step := tektonapi.Step{
+		Name:       "prepare-multi-platform-build",
+		Image:      RunnerImage,
+		WorkingDir: "",
+		VolumeMounts: []v1.VolumeMount{
+			{
+				Name:      "ssh",
+				ReadOnly:  true,
+				MountPath: "/ssh",
+			},
+			{
+				Name:      "ssh-env",
+				ReadOnly:  false,
+				MountPath: "/ssh-env",
+			},
+		},
+		Script: script,
+	}
+	// Add this initial step to the start
+	task.Spec.Steps = append([]tektonapi.Step{step}, task.Spec.Steps...)
+}
+
+func ref(val bool) *bool {
+	return &val
 }
