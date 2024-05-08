@@ -592,12 +592,12 @@ type AssociatedRole struct {
 	// The name of the Amazon S3 bucket in which the Amazon S3 object is stored.
 	CertificateS3BucketName *string
 
-	// The key of the Amazon S3 object ey where the certificate, certificate chain,
-	// and encrypted private key bundle is stored. The object key is formated as
-	// follows: role_arn / certificate_arn .
+	// The key of the Amazon S3 object where the certificate, certificate chain, and
+	// encrypted private key bundle are stored. The object key is formatted as follows:
+	// role_arn / certificate_arn .
 	CertificateS3ObjectKey *string
 
-	// The ID of the KMS customer master key (CMK) used to encrypt the private key.
+	// The ID of the KMS key used to encrypt the private key.
 	EncryptionKmsKeyId *string
 
 	noSmithyDocumentSerde
@@ -5296,6 +5296,9 @@ type Image struct {
 	// the seconds to the nearest minute.
 	DeprecationTime *string
 
+	// Indicates whether deregistration protection is enabled for the AMI.
+	DeregistrationProtection *string
+
 	// The description of the AMI that was provided during image creation.
 	Description *string
 
@@ -5328,6 +5331,12 @@ type Image struct {
 	// The kernel associated with the image, if any. Only applicable for machine
 	// images.
 	KernelId *string
+
+	// The date and time, in ISO 8601 date-time format (http://www.iso.org/iso/iso8601)
+	// , when the AMI was last used to launch an EC2 instance. When the AMI is used to
+	// launch an instance, there is a 24-hour delay before that usage is reported.
+	// lastLaunchedTime data is available starting April 2017.
+	LastLaunchedTime *string
 
 	// The name of the AMI that was provided during image creation.
 	Name *string
@@ -9310,7 +9319,11 @@ type LaunchTemplateInstanceNetworkInterfaceSpecificationRequest struct {
 	// A description for the network interface.
 	Description *string
 
-	// The device index for the network interface attachment.
+	// The device index for the network interface attachment. Each network interface
+	// requires a device index. If you create a launch template that includes secondary
+	// network interfaces but not a primary network interface, then you must add a
+	// primary network interface as a launch parameter when you launch an instance from
+	// the template.
 	DeviceIndex *int32
 
 	// Configure ENA Express settings for your launch template.
@@ -9579,22 +9592,21 @@ type LaunchTemplatesMonitoringRequest struct {
 	noSmithyDocumentSerde
 }
 
-// The launch template to use. You must specify either the launch template ID or
-// launch template name in the request, but not both.
+// Describes the launch template to use.
 type LaunchTemplateSpecification struct {
 
-	// The ID of the launch template. You must specify the LaunchTemplateId or the
-	// LaunchTemplateName , but not both.
+	// The ID of the launch template. You must specify either the launch template ID
+	// or the launch template name, but not both.
 	LaunchTemplateId *string
 
-	// The name of the launch template. You must specify the LaunchTemplateName or the
-	// LaunchTemplateId , but not both.
+	// The name of the launch template. You must specify either the launch template ID
+	// or the launch template name, but not both.
 	LaunchTemplateName *string
 
-	// The launch template version number, $Latest , or $Default . If the value is
-	// $Latest , Amazon EC2 uses the latest version of the launch template. If the
-	// value is $Default , Amazon EC2 uses the default version of the launch template.
-	// Default: The default version of the launch template.
+	// The launch template version number, $Latest , or $Default . A value of $Latest
+	// uses the latest version of the launch template. A value of $Default uses the
+	// default version of the launch template. Default: The default version of the
+	// launch template.
 	Version *string
 
 	noSmithyDocumentSerde
@@ -17870,7 +17882,8 @@ type VgwTelemetry struct {
 // Describes a volume.
 type Volume struct {
 
-	// Information about the volume attachments.
+	// This parameter is not returned by CreateVolume. Information about the volume
+	// attachments.
 	Attachments []VolumeAttachment
 
 	// The Availability Zone for the volume.
@@ -17882,7 +17895,8 @@ type Volume struct {
 	// Indicates whether the volume is encrypted.
 	Encrypted *bool
 
-	// Indicates whether the volume was created using fast snapshot restore.
+	// This parameter is not returned by CreateVolume. Indicates whether the volume
+	// was created using fast snapshot restore.
 	FastRestored *bool
 
 	// The number of I/O operations per second (IOPS). For gp3 , io1 , and io2
@@ -17907,7 +17921,7 @@ type Volume struct {
 	// The snapshot from which the volume was created, if applicable.
 	SnapshotId *string
 
-	// Reserved for future use.
+	// This parameter is not returned by CreateVolume. Reserved for future use.
 	SseType SSEType
 
 	// The volume state.

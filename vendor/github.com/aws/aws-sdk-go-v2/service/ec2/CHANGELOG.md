@@ -1,3 +1,19 @@
+# v1.160.0 (2024-05-02)
+
+* **Feature**: This release includes a new API for retrieving the public endorsement key of the EC2 instance's Nitro Trusted Platform Module (NitroTPM).
+
+# v1.159.1 (2024-05-01)
+
+* **Documentation**: Documentation updates for Amazon EC2.
+
+# v1.159.0 (2024-04-24)
+
+* **Feature**: Launching capability for customers to enable or disable automatic assignment of public IPv4 addresses to their network interface
+
+# v1.158.0 (2024-04-23)
+
+* **Feature**: This release introduces EC2 AMI Deregistration Protection, a new AMI property that can be enabled by customers to protect an AMI against an unintended deregistration. This release also enables the AMI owners to view the AMI 'LastLaunchedTime' in DescribeImages API.
+
 # v1.157.0 (2024-04-17)
 
 * **Feature**: Documentation updates for Elastic Compute Cloud (EC2).
