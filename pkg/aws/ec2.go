@@ -26,14 +26,15 @@ func Ec2Provider(platformName string, config map[string]string, systemNamespace 
 		disk = 40
 	}
 	return AwsDynamicConfig{Region: config["dynamic."+platformName+".region"],
-		Ami:             config["dynamic."+platformName+".ami"],
-		InstanceType:    config["dynamic."+platformName+".instance-type"],
-		KeyName:         config["dynamic."+platformName+".key-name"],
-		Secret:          config["dynamic."+platformName+".aws-secret"],
-		SecurityGroup:   config["dynamic."+platformName+".security-group"],
-		SubnetId:        config["dynamic."+platformName+".subnet-id"],
-		SystemNamespace: systemNamespace,
-		Disk:            int32(disk),
+		Ami:               config["dynamic."+platformName+".ami"],
+		InstanceType:      config["dynamic."+platformName+".instance-type"],
+		KeyName:           config["dynamic."+platformName+".key-name"],
+		Secret:            config["dynamic."+platformName+".aws-secret"],
+		SecurityGroup:     config["dynamic."+platformName+".security-group"],
+		SubnetId:          config["dynamic."+platformName+".subnet-id"],
+		SpotInstancePrice: config["dynamic."+platformName+".spot-price"],
+		SystemNamespace:   systemNamespace,
+		Disk:              int32(disk),
 	}
 }
 
@@ -72,6 +73,9 @@ func (r AwsDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Log
 		}},
 		InstanceInitiatedShutdownBehavior: types.ShutdownBehaviorTerminate,
 		TagSpecifications:                 []types.TagSpecification{{ResourceType: types.ResourceTypeInstance, Tags: []types.Tag{{Key: aws.String(MultiPlatformManaged), Value: aws.String("true")}, {Key: aws.String(cloud.InstanceTag), Value: aws.String(instanceTag)}, {Key: aws.String("Name"), Value: aws.String("multi-platform-builder-" + name)}}}},
+	}
+	if r.SpotInstancePrice != "" {
+		launchInput.InstanceMarketOptions = &types.InstanceMarketOptionsRequest{MarketType: types.MarketTypeSpot, SpotOptions: &types.SpotMarketOptions{MaxPrice: aws.String(r.SpotInstancePrice), InstanceInterruptionBehavior: types.InstanceInterruptionBehaviorTerminate, SpotInstanceType: types.SpotInstanceTypeOneTime}}
 	}
 
 	// Launch the new EC2 instance
@@ -237,15 +241,16 @@ func (r SecretCredentialsProvider) Retrieve(ctx context.Context) (aws.Credential
 }
 
 type AwsDynamicConfig struct {
-	Region          string
-	Ami             string
-	InstanceType    string
-	KeyName         string
-	Secret          string
-	SystemNamespace string
-	SecurityGroup   string
-	SubnetId        string
-	Disk            int32
+	Region            string
+	Ami               string
+	InstanceType      string
+	KeyName           string
+	Secret            string
+	SystemNamespace   string
+	SecurityGroup     string
+	SubnetId          string
+	Disk              int32
+	SpotInstancePrice string
 }
 
 func (r AwsDynamicConfig) SshUser() string {
