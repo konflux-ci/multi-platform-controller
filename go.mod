@@ -3,7 +3,7 @@ module github.com/redhat-appstudio/multi-platform-controller
 go 1.20
 
 require (
-	github.com/IBM/go-sdk-core/v5 v5.17.0
+	github.com/IBM/go-sdk-core/v5 v5.17.3
 	github.com/IBM/vpc-go-sdk v0.50.0
 	github.com/aws/aws-sdk-go-v2 v1.26.1
 	github.com/aws/aws-sdk-go-v2/config v1.27.11
