@@ -58,11 +58,11 @@ func (r AwsDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Log
 		subnet = aws.String(r.SubnetId)
 	}
 	// Specify the parameters for the new EC2 instance
-	securityGroups := []string{}
+	var securityGroups []string = nil
 	if r.SecurityGroup != "" {
 		securityGroups = []string{r.SecurityGroup}
 	}
-	securityGroupIds := []string{}
+	var securityGroupIds []string = nil
 	if r.SecurityGroupId != "" {
 		securityGroupIds = []string{r.SecurityGroupId}
 	}
