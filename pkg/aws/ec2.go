@@ -31,6 +31,7 @@ func Ec2Provider(platformName string, config map[string]string, systemNamespace 
 		KeyName:           config["dynamic."+platformName+".key-name"],
 		Secret:            config["dynamic."+platformName+".aws-secret"],
 		SecurityGroup:     config["dynamic."+platformName+".security-group"],
+		SecurityGroupId:   config["dynamic."+platformName+".security-group-id"],
 		SubnetId:          config["dynamic."+platformName+".subnet-id"],
 		SpotInstancePrice: config["dynamic."+platformName+".spot-price"],
 		SystemNamespace:   systemNamespace,
@@ -57,15 +58,24 @@ func (r AwsDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Log
 		subnet = aws.String(r.SubnetId)
 	}
 	// Specify the parameters for the new EC2 instance
+	securityGroups := []string{}
+	if r.SecurityGroup != "" {
+		securityGroups = []string{r.SecurityGroup}
+	}
+	securityGroupIds := []string{}
+	if r.SecurityGroupId != "" {
+		securityGroupIds = []string{r.SecurityGroupId}
+	}
 	launchInput := &ec2.RunInstancesInput{
-		KeyName:        aws.String(r.KeyName),
-		ImageId:        aws.String(r.Ami), //ARM RHEL
-		InstanceType:   types.InstanceType(r.InstanceType),
-		MinCount:       aws.Int32(1),
-		MaxCount:       aws.Int32(1),
-		EbsOptimized:   aws.Bool(true),
-		SecurityGroups: []string{r.SecurityGroup},
-		SubnetId:       subnet,
+		KeyName:          aws.String(r.KeyName),
+		ImageId:          aws.String(r.Ami), //ARM RHEL
+		InstanceType:     types.InstanceType(r.InstanceType),
+		MinCount:         aws.Int32(1),
+		MaxCount:         aws.Int32(1),
+		EbsOptimized:     aws.Bool(true),
+		SecurityGroups:   securityGroups,
+		SecurityGroupIds: securityGroupIds,
+		SubnetId:         subnet,
 		BlockDeviceMappings: []types.BlockDeviceMapping{{
 			DeviceName:  aws.String("/dev/sda1"),
 			VirtualName: aws.String("ephemeral0"),
@@ -248,6 +258,7 @@ type AwsDynamicConfig struct {
 	Secret            string
 	SystemNamespace   string
 	SecurityGroup     string
+	SecurityGroupId   string
 	SubnetId          string
 	Disk              int32
 	SpotInstancePrice string
