@@ -484,9 +484,9 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.L
 func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
 	//already exists
 	if tr.Status.CompletionTime != nil || tr.GetDeletionTimestamp() != nil {
-		log.Info("unassigning host from task")
-
 		selectedHost := tr.Labels[AssignedHost]
+		log.Info(fmt.Sprintf("unassigning host %s from task", AssignedHost))
+
 		platform, err := extracPlatform(tr)
 		if err != nil {
 			return reconcile.Result{}, err
