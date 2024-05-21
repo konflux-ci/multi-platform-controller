@@ -166,18 +166,23 @@ func (r AwsDynamicConfig) GetInstanceAddress(kubeClient client.Client, log *logr
 
 func (r AwsDynamicConfig) checkInstanceConnectivity(instance *types.Instance, log *logr.Logger) (string, error) {
 	if instance.PublicDnsName != nil && *instance.PublicDnsName != "" {
-
-		server, _ := net.ResolveTCPAddr("tcp", *instance.PublicDnsName+":22")
-		conn, err := net.DialTCP("tcp", nil, server)
-		if err != nil {
-			log.Error(err, "failed to connect to AWS instance")
-			return "", err
-		}
-		defer conn.Close()
-
-		return *instance.PublicDnsName, nil
+		return pingSSHIp(*instance.PublicDnsName, log)
+	} else if instance.PrivateIpAddress != nil && *instance.PrivateIpAddress != "" {
+		return pingSSHIp(*instance.PrivateIpAddress, log)
 	}
 	return "", nil
+}
+
+func pingSSHIp(ipAddress string, log *logr.Logger) (string, error) {
+	server, _ := net.ResolveTCPAddr("tcp", ipAddress+":22")
+	conn, err := net.DialTCP("tcp", nil, server)
+	if err != nil {
+		log.Error(err, "failed to connect to AWS instance")
+		return "", err
+	}
+	defer conn.Close()
+
+	return ipAddress, nil
 }
 
 func (r AwsDynamicConfig) TerminateInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, instance cloud.InstanceIdentifier) error {
