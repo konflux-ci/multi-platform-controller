@@ -34,9 +34,11 @@ const RunnerImage = "quay.io/redhat-appstudio/multi-platform-runner:01c7670e81d5
 func main() {
 	var buildahTask string
 	var buildahRemoteTask string
+	var taskName string
 
 	flag.StringVar(&buildahTask, "buildah-task", "", "The location of the buildah task")
 	flag.StringVar(&buildahRemoteTask, "remote-task", "", "The location of the buildah-remote task to overwrite")
+	flag.StringVar(&taskName, "task-name", "", "The task name")
 
 	opts := zap.Options{
 		Development: true,
@@ -48,13 +50,16 @@ func main() {
 		println("Must specify both buildah-task and remote-task params")
 		os.Exit(1)
 	}
+	if taskName == "" {
+		taskName = "buildah-remote"
+	}
 
 	task := tektonapi.Task{}
 	streamFileYamlToTektonObj(buildahTask, &task)
 
 	decodingScheme := runtime.NewScheme()
 	utilruntime.Must(tektonapi.AddToScheme(decodingScheme))
-	convertToSsh(&task)
+	convertToSsh(&task, taskName)
 	y := printers.YAMLPrinter{}
 	b := bytes.Buffer{}
 	_ = y.PrintObj(&task, &b)
@@ -84,19 +89,27 @@ func streamFileYamlToTektonObj(path string, obj runtime.Object) runtime.Object {
 	return decodeBytesToTektonObjbytes(bytes, obj)
 }
 
-func convertToSsh(task *tektonapi.Task) {
+func convertToSsh(task *tektonapi.Task, taskName string) {
 
-	podmanArgs := ""
+	globalPodmanArgs := ""
 	scriptContents := ""
 	// Before the build we sync the contents of the workspace to the remote host
 	for _, workspace := range task.Spec.Workspaces {
 		scriptContents += "\nrsync -ra $(workspaces." + workspace.Name + ".path)/ \"$SSH_HOST:$BUILD_DIR/workspaces/" + workspace.Name + "/\""
-		podmanArgs += " -v \"$BUILD_DIR/workspaces/" + workspace.Name + ":$(workspaces." + workspace.Name + ".path):Z\" \\\n"
+		globalPodmanArgs += " -v \"$BUILD_DIR/workspaces/" + workspace.Name + ":$(workspaces." + workspace.Name + ".path):Z\" \\\n"
+	}
+	for _, volume := range task.Spec.Volumes {
+		//TODO: merge all SSH commands on init into a single execution
+		scriptContents += "\nssh $SSH_ARGS \"$SSH_HOST\"  mkdir -p \"$BUILD_DIR/volumes/" + volume.Name + "\""
+	}
+	for _, volumeMount := range task.Spec.StepTemplate.VolumeMounts {
+		globalPodmanArgs += " -v \"$BUILD_DIR/volumes/" + volumeMount.Name + ":" + volumeMount.MountPath + ":Z\" \\\n"
 	}
 	scriptContents += "\nrsync -ra \"$HOME/.docker/\" \"$SSH_HOST:$BUILD_DIR/.docker/\""
 	scriptContents += "\nrsync -ra \"/tekton/results/\" \"$SSH_HOST:$BUILD_DIR/tekton-results/\""
-	podmanArgs += " -v \"$BUILD_DIR/.docker/:/root/.docker:Z\" \\\n"
-	podmanArgs += " -v \"$BUILD_DIR/tekton-results/:/tekton/results:Z\" \\\n"
+	globalPodmanArgs += " -v \"$BUILD_DIR/.docker/:/root/.docker:Z\" \\\n"
+	globalPodmanArgs += " -v \"$BUILD_DIR/tekton-results/:/tekton/results:Z\" \\\n"
+	globalPodmanArgs += " -v $BUILD_DIR/scripts:/script:Z \\\n"
 
 	for stepPod := range task.Spec.Steps {
 		step := &task.Spec.Steps[stepPod]
@@ -129,7 +142,11 @@ source /ssh-env/env
 		for _, e := range step.Env {
 			env += " -e " + e.Name + "=\"$" + e.Name + "\" \\\n"
 		}
-		podmanArgs += " -v $BUILD_DIR/scripts:/script:Z \\\n"
+		podmanArgs := globalPodmanArgs
+
+		for _, volumeMount := range step.VolumeMounts {
+			podmanArgs += " -v \"$BUILD_DIR/volumes/" + volumeMount.Name + ":" + volumeMount.MountPath + ":Z\" \\\n"
+		}
 		ret += "\nssh $SSH_ARGS \"$SSH_HOST\" $PORT_FORWARD podman  run " + env + "" + podmanArgs + "--user=0  --rm  \"" + step.Image + "\" " + containerScript
 
 		//sync back results
@@ -149,7 +166,7 @@ source /ssh-env/env
 		})
 	}
 
-	task.Name = "buildah-remote"
+	task.Name = taskName
 	task.Spec.Params = append(task.Spec.Params, tektonapi.ParamSpec{Name: "PLATFORM", Type: tektonapi.ParamTypeString, Description: "The platform to build on"})
 
 	task.Spec.Volumes = append(task.Spec.Volumes, v1.Volume{
@@ -172,14 +189,14 @@ source /ssh-env/env
 
 #Retrieve the secret and copy it to the working volume
 if [ -e "/ssh/error" ]; then
-  #no server could be provisioned
-  cat /ssh/error
-  exit 1
+ #no server could be provisioned
+ cat /ssh/error
+ exit 1
 elif [ -e "/ssh/otp" ]; then
  curl --cacert /ssh/otp-ca -XPOST -d @/ssh/otp $(cat /ssh/otp-server) >~/.ssh/id_rsa
  echo "" >> /ssh-env/id_rsa
 else
-  cp /ssh/id_rsa /ssh-env/.ssh
+ cp /ssh/id_rsa /ssh-env/.ssh
 fi
 
 cat >/ssh-env/setup.sh <<EOF
@@ -189,9 +206,9 @@ mkdir -p ~/.ssh
 cp /ssh-env/id_rsa ~/.ssh/id_rsa
 chmod 0400 ~/.ssh/id_rsa
 mkdir -p scripts
-
 EOF
-
+chmod +x /ssh-env/setup.sh
+/ssh-env/setup.sh
 export SSH_HOST=$(cat /ssh/host)
 export BUILD_DIR=$(cat /ssh/user-dir)
 export SSH_ARGS="-o StrictHostKeyChecking=no"

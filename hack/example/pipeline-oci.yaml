@@ -1,0 +1,226 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  annotations:
+    appstudio.openshift.io/snapshot: my-app-w92sw
+    build.appstudio.openshift.io/repo: https://github.com/nodeshift-starters/devfile-sample?rev=1879fa9159b28f63265dad2cd618c3d0ffd03e79
+    build.appstudio.redhat.com/bundle: quay.io/redhat-appstudio-tekton-catalog/pipeline-docker-build:35642514a64075bbfed77db63d5bcdf81fab1da0
+    build.appstudio.redhat.com/commit_sha: 1879fa9159b28f63265dad2cd618c3d0ffd03e79
+    build.appstudio.redhat.com/pipeline_name: docker-build
+    build.appstudio.redhat.com/target_branch: main
+  generateName: pipeline-
+  labels:
+    appstudio.openshift.io/application: my-app
+    appstudio.openshift.io/component: devfile-sample
+    pipelines.appstudio.openshift.io/type: build
+    pipelines.openshift.io/runtime: generic
+    pipelines.openshift.io/strategy: docker
+    pipelines.openshift.io/used-by: build-cloud
+    tekton.dev/pipeline: docker-build
+spec:
+  params:
+  - name: dockerfile
+    value: Dockerfile
+  - name: git-url
+    value: https://github.com/nodeshift-starters/devfile-sample.git
+  - name: output-image
+    value: quay.io/sdouglas/artifact-deployments:ppc64le-build
+  - name: path-context
+    value: .
+  - name: revision
+    value: main
+  - name: skip-checks
+    value: "true"
+  - name: rebuild
+    value: "true"
+  pipelineSpec:
+      finally:
+        - name: show-summary
+          params:
+            - name: pipelinerun-name
+              value: devfile-sample-h4lt5
+            - name: git-url
+              value: $(tasks.clone-repository.results.url)?rev=$(tasks.clone-repository.results.commit)
+            - name: image-url
+              value: quay.io/sdouglas/artifact-deployments:ppc64le-build
+            - name: build-task-status
+              value: $(tasks.build-container.status)
+          taskRef:
+            kind: Task
+            params:
+              - name: name
+                value: summary
+              - name: bundle
+                value: quay.io/redhat-appstudio-tekton-catalog/task-summary:0.1@sha256:bd6a2285974541df01260deca99a84b3b48a6b40759049e7e41e96b4942d83d3
+              - name: kind
+                value: task
+            resolver: bundles
+      params:
+        - description: Source Repository URL
+          name: git-url
+          type: string
+        - default: ""
+          description: Revision of the Source Repository
+          name: revision
+          type: string
+        - description: Fully Qualified Output Image
+          name: output-image
+          type: string
+        - default: .
+          description: The path to your source code
+          name: path-context
+          type: string
+        - default: Dockerfile
+          description: Path to the Dockerfile
+          name: dockerfile
+          type: string
+        - default: "true"
+          description: Force rebuild image
+          name: rebuild
+          type: string
+        - default: "false"
+          description: Skip checks against built image
+          name: skip-checks
+          type: string
+        - default: "true"
+          description: Skip optional checks, set false if you want to run optional checks
+          name: skip-optional
+          type: string
+        - default: "false"
+          description: Execute the build with network isolation
+          name: hermetic
+          type: string
+        - default: ""
+          description: Build dependencies to be prefetched by Cachi2
+          name: prefetch-input
+          type: string
+        - default: "false"
+          description: Java build
+          name: java
+          type: string
+        - default: ""
+          description: Image tag expiration time, time values could be something like
+            1h, 2d, 3w for hours, days, and weeks, respectively.
+          name: image-expires-after
+          type: string
+      results:
+        - description: ""
+          name: IMAGE_URL
+          value: $(tasks.build-container.results.IMAGE_URL)
+        - description: ""
+          name: IMAGE_DIGEST
+          value: $(tasks.build-container.results.IMAGE_DIGEST)
+        - description: ""
+          name: CHAINS-GIT_URL
+          value: $(tasks.clone-repository.results.url)
+        - description: ""
+          name: CHAINS-GIT_COMMIT
+          value: $(tasks.clone-repository.results.commit)
+        - description: ""
+          name: JAVA_COMMUNITY_DEPENDENCIES
+          value: $(tasks.build-container.results.JAVA_COMMUNITY_DEPENDENCIES)
+      tasks:
+        - name: init
+          params:
+            - name: image-url
+              value: quay.io/sdouglas/artifact-deployments:ppc64le-build
+            - name: rebuild
+              value: "true"
+            - name: skip-checks
+              value: "true"
+            - name: skip-optional
+              value: "true"
+            - name: pipelinerun-name
+              value: devfile-sample-h4lt5
+            - name: pipelinerun-uid
+              value: 8cab504d-4fb0-4b4e-9571-681481ba9003
+          taskRef:
+            kind: Task
+            params:
+              - name: name
+                value: init
+              - name: bundle
+                value: quay.io/redhat-appstudio-tekton-catalog/task-init:0.1@sha256:26586a7ef08c3e86dfdaf0a5cc38dd3d70c4c02db1331b469caaed0a0f5b3d86
+              - name: kind
+                value: task
+            resolver: bundles
+        - name: clone-repository
+          params:
+            - name: url
+              value: https://github.com/nodeshift-starters/devfile-sample.git
+            - name: revision
+              value: main
+            - name:  ociStorage
+              value: $(params.output-image)-prefetch
+          runAfter:
+            - init
+          taskRef:
+            kind: Task
+            params:
+              - name: name
+                value: git-clone-oci-ta
+              - name: bundle
+                value: quay.io/redhat-appstudio-tekton-catalog/task-git-clone-oci-ta:0.1@sha256:c18dc89b0c35f425a5dd10aa48a7e5177deb6addcc06db99646df17fcdde5a2d
+              - name: kind
+                value: task
+            resolver: bundles
+          when:
+            - input: $(tasks.init.results.build)
+              operator: in
+              values:
+                - "true"
+        - name: prefetch-dependencies
+          params:
+            - name: input
+              value: ""
+            - name: SOURCE_ARTIFACT
+              value: $(tasks.clone-repository.results.SOURCE_ARTIFACT)
+            - name:  ociStorage
+              value: $(params.output-image)-prefetch
+          runAfter:
+            - clone-repository
+          taskRef:
+            kind: Task
+            params:
+              - name: name
+                value: prefetch-dependencies-oci-ta
+              - name: bundle
+                value: quay.io/redhat-appstudio-tekton-catalog/task-prefetch-dependencies-oci-ta:0.1@sha256:fe351ee58ed07d7455b32a01dddecf7512dc56506b6260c17fa9a1b4513d02dc
+              - name: kind
+                value: task
+            resolver: bundles
+        - name: build-container
+          params:
+            - name: IMAGE
+              value: quay.io/sdouglas/artifact-deployments:arm64-build
+            - name: DOCKERFILE
+              value: Dockerfile
+            - name: CONTEXT
+              value: .
+            - name: HERMETIC
+              value: "false"
+            - name: PREFETCH_INPUT
+              value: ""
+            - name: IMAGE_EXPIRES_AFTER
+              value: ""
+            - name: COMMIT_SHA
+              value: $(tasks.clone-repository.results.commit)
+            - name: PLATFORM
+              value: linux/s390x
+            - name: "SOURCE_ARTIFACT"
+              value: "$(tasks.prefetch-dependencies.results.SOURCE_ARTIFACT)"
+            - name: "CACHI2_ARTIFACT"
+              value: "$(tasks.prefetch-dependencies.results.CACHI2_ARTIFACT)"
+            - name:  OCI_STORAGE
+              value: $(params.output-image)-prefetch
+
+          runAfter:
+            - prefetch-dependencies
+          taskRef:
+            kind: Task
+            name: buildah-remote-oci-ta
+          when:
+            - input: $(tasks.init.results.build)
+              operator: in
+              values:
+                - "true"
