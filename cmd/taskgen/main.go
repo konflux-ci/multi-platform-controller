@@ -193,26 +193,37 @@ if [ -e "/ssh/error" ]; then
  cat /ssh/error
  exit 1
 elif [ -e "/ssh/otp" ]; then
- curl --cacert /ssh/otp-ca -XPOST -d @/ssh/otp $(cat /ssh/otp-server) >~/.ssh/id_rsa
+ curl --cacert /ssh/otp-ca -XPOST -d @/ssh/otp $(cat /ssh/otp-server) >/ssh-env/id_rsa
  echo "" >> /ssh-env/id_rsa
 else
  cp /ssh/id_rsa /ssh-env/.ssh
 fi
+
+#set the permissions
+chmod 0400 /ssh-env/id_rsa
+cp /ssh-env/id_rsa ~/.ssh/id_rsa
+
+export SSH_HOST=$(cat /ssh/host)
+export BUILD_DIR=$(cat /ssh/user-dir)
+export SSH_ARGS=""
+
+#initial SSH connection, this both creates some directories we need and creates the known_hosts entry
+ssh "-o StrictHostKeyChecking=no" "$SSH_HOST"  mkdir -p "$BUILD_DIR/workspaces" "$BUILD_DIR/scripts"
+
+#copy the known hosts file
+cp ~/.ssh/known_hosts /ssh-env/known_hosts
 
 cat >/ssh-env/setup.sh <<EOF
 #!/bin/bash
 #Create the SSH dir and copy the key with correct permissions
 mkdir -p ~/.ssh
 cp /ssh-env/id_rsa ~/.ssh/id_rsa
+cp /ssh-env/known_hosts ~/.ssh/known_hosts
 chmod 0400 ~/.ssh/id_rsa
 mkdir -p scripts
 EOF
 chmod +x /ssh-env/setup.sh
 /ssh-env/setup.sh
-export SSH_HOST=$(cat /ssh/host)
-export BUILD_DIR=$(cat /ssh/user-dir)
-export SSH_ARGS="-o StrictHostKeyChecking=no"
-ssh $SSH_ARGS "$SSH_HOST"  mkdir -p "$BUILD_DIR/workspaces" "$BUILD_DIR/scripts"
 
 cat >/ssh-env/env <<EOF
 SSH_HOST=$SSH_HOST
