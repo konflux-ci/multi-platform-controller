@@ -21,6 +21,7 @@ type DynamicResolver struct {
 	maxInstances int
 	instanceTag  string
 	timeout      int64
+	sudoCommands string
 }
 
 func (r DynamicResolver) Deallocate(taskRun *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, selectedHost string) error {
@@ -104,7 +105,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 			if err != nil {
 				return reconcile.Result{}, err
 			}
-			err = launchProvisioningTask(taskRun, ctx, log, tr, secretName, r.sshSecret, address, r.CloudProvider.SshUser(), r.platform)
+			err = launchProvisioningTask(taskRun, ctx, log, tr, secretName, r.sshSecret, address, r.CloudProvider.SshUser(), r.platform, r.sudoCommands)
 			if err != nil {
 				//ugh, try and unassign
 				err := r.CloudProvider.TerminateInstance(taskRun.client, log, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))

@@ -73,6 +73,12 @@ const (
 	DynamicPoolPlatforms   = "dynamic-pool-platforms"
 	AllowedNamespaces      = "allowed-namespaces"
 	MultiPlatformSubsystem = "multi_platform_controller"
+	ParamNamespace         = "NAMESPACE"
+	ParamTaskrunName       = "TASKRUN_NAME"
+	ParamSecretName        = "SECRET_NAME"
+	ParamHost              = "HOST"
+	ParamUser              = "USER"
+	ParamSudoCommands      = "SUDO_COMMANDS"
 )
 
 type ReconcileTaskRun struct {
@@ -601,6 +607,7 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, log *logr.Logg
 				maxInstances:  maxInstances,
 				instanceTag:   instanceTag,
 				timeout:       timeout,
+				sudoCommands:  cm.Data["dynamic."+platformConfigName+".sudo-commands"],
 			}
 			r.platformConfig[targetPlatform] = ret
 			metrics, err := r.registerMetrics(targetPlatform)
@@ -710,7 +717,7 @@ type PlatformConfig interface {
 	Deallocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, selectedHost string) error
 }
 
-func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, sshSecret string, address string, user string, platform string) error {
+func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, sshSecret string, address string, user string, platform string, sudoCommands string) error {
 	//kick off the provisioning task
 	//note that we can't use owner refs here because this task runs in a different namespace
 
@@ -733,26 +740,31 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, log *logr.
 	computeLimits := map[v12.ResourceName]resource.Quantity{v12.ResourceCPU: resource.MustParse("100m"), v12.ResourceMemory: resource.MustParse("512Mi")}
 	provision.Spec.ComputeResources = &v12.ResourceRequirements{Requests: computeRequests, Limits: computeLimits}
 	provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
+
 	provision.Spec.Params = []v1.Param{
 		{
-			Name:  "SECRET_NAME",
+			Name:  ParamSecretName,
 			Value: *v1.NewStructuredValues(secretName),
 		},
 		{
-			Name:  "TASKRUN_NAME",
+			Name:  ParamTaskrunName,
 			Value: *v1.NewStructuredValues(tr.Name),
 		},
 		{
-			Name:  "NAMESPACE",
+			Name:  ParamNamespace,
 			Value: *v1.NewStructuredValues(tr.Namespace),
 		},
 		{
-			Name:  "HOST",
+			Name:  ParamHost,
 			Value: *v1.NewStructuredValues(address),
 		},
 		{
-			Name:  "USER",
+			Name:  ParamUser,
 			Value: *v1.NewStructuredValues(user),
+		},
+		{
+			Name:  ParamSudoCommands,
+			Value: *v1.NewStructuredValues(sudoCommands),
 		},
 	}
 

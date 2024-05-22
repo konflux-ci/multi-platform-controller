@@ -17,6 +17,8 @@ spec:
       type: string
     - name: USER
       type: string
+    - name: SUDO_COMMANDS
+      type: string
   workspaces:
     - name: ssh
   steps:
@@ -50,6 +52,14 @@ spec:
         sudo chown $USERNAME /home/$USERNAME/.ssh/authorized_keys
         sudo restorecon -FRvv /home/$USERNAME/.ssh
         EOF
+
+        if [ ! -z "$(params.SUDO_COMMANDS)" ]; then
+
+        cat >>script.sh <<EOF
+          echo "$USERNAME ALL=(ALL) NOPASSWD: $(params.SUDO_COMMANDS)" | sudo tee /etc/sudoers
+        EOF
+        
+        fi
         ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST "bash -s" <script.sh
         ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST cat $USERNAME  >id_rsa
         ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST rm $USERNAME
