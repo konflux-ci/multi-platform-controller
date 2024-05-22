@@ -1,0 +1,63 @@
+apiVersion: tekton.dev/v1
+kind: TaskRun
+metadata:
+  generateName: sudo-test-
+  namespace: test-jvm-namespace
+spec:
+  params:
+    - name: PLATFORM
+      value: linux-root/amd64
+  serviceAccountName: pipeline
+  timeout: 1h0m0s
+  taskSpec:
+    params:
+      - description: The platform to build on
+        name: PLATFORM
+        type: string
+    steps:
+      - image: quay.io/redhat-appstudio/multi-platform-runner:01c7670e81d5120347cf0ad13372742489985e5f@sha256:246adeaaba600e207131d63a7f706cffdcdc37d8f600c56187123ec62823ff44
+        name: build
+        computeResources:
+          limits:
+            memory: 512Mi
+          requests:
+            cpu: 250m
+            memory: 128Mi
+        script: |-
+          set -o verbose
+          set -eu
+          set -o pipefail
+          mkdir -p ~/.ssh
+          if [ -e "/ssh/error" ]; then
+            #no server could be provisioned
+            cat /ssh/error
+            exit 1
+          elif [ -e "/ssh/otp" ]; then
+           curl --cacert /ssh/otp-ca -XPOST -d @/ssh/otp $(cat /ssh/otp-server) >~/.ssh/id_rsa
+           echo "" >> ~/.ssh/id_rsa
+          else
+            cp /ssh/id_rsa ~/.ssh
+          fi
+          chmod 0400 ~/.ssh/id_rsa
+          export SSH_HOST=$(cat /ssh/host)
+          export BUILD_DIR=$(cat /ssh/user-dir)
+          export SSH_ARGS="-o StrictHostKeyChecking=no"
+          mkdir -p scripts
+          echo "$BUILD_DIR"
+          ssh $SSH_ARGS "$SSH_HOST"  mkdir -p "$BUILD_DIR/workspaces" "$BUILD_DIR/scripts" "$BUILD_DIR/tmp"
+          
+          cat >scripts/script-build.sh <<'REMOTESSHEOF'
+          #!/bin/sh
+          sudo podman pull quay.io/centos-bootc/centos-bootc:stream9
+          REMOTESSHEOF
+          chmod +x scripts/script-build.sh
+          ssh $SSH_ARGS "$SSH_HOST" "bash -s" <scripts/script-build.sh
+        volumeMounts:
+          - mountPath: /ssh
+            name: ssh
+            readOnly: true
+    volumes:
+      - name: ssh
+        secret:
+          optional: false
+          secretName: multi-platform-ssh-$(context.taskRun.name)
