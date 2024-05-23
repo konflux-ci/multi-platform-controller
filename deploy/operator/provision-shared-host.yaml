@@ -21,6 +21,20 @@ spec:
       type: string
   workspaces:
     - name: ssh
+  stepTemplate:
+    env:
+      - name: SECRET_NAME
+        value: $(params.SECRET_NAME)
+      - name: TASKRUN_NAME
+        value: $(params.TASKRUN_NAME)
+      - name: NAMESPACE
+        value: $(params.NAMESPACE)
+      - name: HOST
+        value: $(params.HOST)
+      - name: USER
+        value: $(params.USER)
+      - name: SUDO_COMMANDS
+        value: $(params.SUDO_COMMANDS)
   steps:
     - name: provision
       image: quay.io/redhat-appstudio/multi-platform-runner:01c7670e81d5120347cf0ad13372742489985e5f@sha256:246adeaaba600e207131d63a7f706cffdcdc37d8f600c56187123ec62823ff44
@@ -37,9 +51,9 @@ spec:
         mkdir -p /root/.ssh
         cp $(workspaces.ssh.path)/id_rsa /tmp/master_key
         chmod 0400 /tmp/master_key
-        export SSH_HOST=$(params.USER)@$(params.HOST)
+        export SSH_HOST="$USER@$HOST"
         
-        export USERNAME=u-$(echo $(params.TASKRUN_NAME)$(params.NAMESPACE) | md5sum | cut -b-28)
+        export USERNAME=u-$(echo "$TASKRUN_NAME$NAMESPACE" | md5sum | cut -b-28)
         
         cat >script.sh <<EOF
         sudo dnf install podman -y
@@ -52,20 +66,18 @@ spec:
         sudo chown $USERNAME /home/$USERNAME/.ssh/authorized_keys
         sudo restorecon -FRvv /home/$USERNAME/.ssh
         EOF
-
-        if [ ! -z "$(params.SUDO_COMMANDS)" ]; then
-
-        cat >>script.sh <<EOF
-          echo "$USERNAME ALL=(ALL) NOPASSWD: $(params.SUDO_COMMANDS)" | sudo tee /etc/sudoers
-        EOF
         
+        if [ ! -z "$SUDO_COMMANDS" ]; then
+        #if we need sudo access add it to the script
+        cat >>script.sh <<EOF
+        echo "$USERNAME ALL=(ALL) NOPASSWD: $SUDO_COMMANDS" | sudo tee /etc/sudoers
+        EOF
         fi
         ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST "bash -s" <script.sh
         ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST cat $USERNAME  >id_rsa
         ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST rm $USERNAME
         chmod 0400 id_rsa
-        ssh -i id_rsa -o StrictHostKeyChecking=no $USERNAME@$(params.HOST) echo "test"
-        HOST=$(echo $USERNAME@$(params.HOST) | base64 -w 0)
+        HOST=$(echo "$USERNAME@$HOST" | base64 -w 0)
         DIR=$(echo /home/$USERNAME | base64 -w 0)
         
         if [ -e "/tls/tls.crt" ]; then
@@ -83,8 +95,8 @@ spec:
             user-dir: "$DIR"
           kind: Secret
           metadata:
-            name: $(params.SECRET_NAME)
-            namespace: $(params.NAMESPACE)
+            name: "$SECRET_NAME"
+            namespace: "$NAMESPACE"
             labels:
               build.appstudio.redhat.com/multi-platform-secret: "true"
           type: Opaque
@@ -99,8 +111,8 @@ spec:
             user-dir: "$DIR"
           kind: Secret
           metadata:
-            name: $(params.SECRET_NAME)
-            namespace: $(params.NAMESPACE)
+            name: "$SECRET_NAME"
+            namespace: "$NAMESPACE"
             labels:
               build.appstudio.redhat.com/multi-platform-secret: "true"
           type: Opaque
