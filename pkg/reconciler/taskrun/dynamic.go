@@ -24,11 +24,12 @@ type DynamicResolver struct {
 	sudoCommands string
 }
 
-func (r DynamicResolver) Deallocate(taskRun *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, selectedHost string) error {
+func (r DynamicResolver) Deallocate(taskRun *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string, selectedHost string) error {
 
+	log := logr.FromContextOrDiscard(ctx)
 	instance := tr.Annotations[CloudInstanceId]
 	log.Info(fmt.Sprintf("terminating cloud instances %s for TaskRun %s", instance, tr.Name))
-	err := r.CloudProvider.TerminateInstance(taskRun.client, log, ctx, cloud.InstanceIdentifier(instance))
+	err := r.CloudProvider.TerminateInstance(taskRun.client, ctx, cloud.InstanceIdentifier(instance))
 	if err != nil {
 		log.Error(err, "Failed to terminate EC2 instance")
 		return err
@@ -39,8 +40,9 @@ func (r DynamicResolver) Deallocate(taskRun *ReconcileTaskRun, ctx context.Conte
 	return nil
 }
 
-func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
+func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
 
+	log := logr.FromContextOrDiscard(ctx)
 	if tr.Annotations[FailedHosts] != "" {
 		return reconcile.Result{}, fmt.Errorf("failed to provision host")
 	}
@@ -56,7 +58,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 				err = fmt.Errorf("timed out waiting for instance address")
 				log.Error(err, "timed out waiting for instance address")
 				//ugh, try and unassign
-				terr := r.CloudProvider.TerminateInstance(taskRun.client, log, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
+				terr := r.CloudProvider.TerminateInstance(taskRun.client, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
 				if terr != nil {
 					log.Error(err, "Failed to terminate instance")
 				}
@@ -80,11 +82,11 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 	if tr.Annotations[CloudInstanceId] != "" {
 		log.Info("attempting to get instance address", "instance", tr.Annotations[CloudInstanceId])
 		//we already have an instance, get its address
-		address, err := r.CloudProvider.GetInstanceAddress(taskRun.client, log, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
+		address, err := r.CloudProvider.GetInstanceAddress(taskRun.client, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
 		if err != nil {
 			log.Error(err, "Failed to get instance address for cloud host")
 			//ugh, try and unassign
-			terr := r.CloudProvider.TerminateInstance(taskRun.client, log, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
+			terr := r.CloudProvider.TerminateInstance(taskRun.client, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
 			if terr != nil {
 				log.Error(terr, "Failed to terminate instance")
 			}
@@ -105,10 +107,10 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 			if err != nil {
 				return reconcile.Result{}, err
 			}
-			err = launchProvisioningTask(taskRun, ctx, log, tr, secretName, r.sshSecret, address, r.CloudProvider.SshUser(), r.platform, r.sudoCommands)
+			err = launchProvisioningTask(taskRun, ctx, tr, secretName, r.sshSecret, address, r.CloudProvider.SshUser(), r.platform, r.sudoCommands)
 			if err != nil {
 				//ugh, try and unassign
-				err := r.CloudProvider.TerminateInstance(taskRun.client, log, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
+				err := r.CloudProvider.TerminateInstance(taskRun.client, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
 				if err != nil {
 					log.Error(err, "Failed to terminate instance")
 				}
@@ -134,7 +136,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 		}
 	}
 	//first check this would not exceed the max tasks
-	instanceCount, err := r.CloudProvider.CountInstances(taskRun.client, log, ctx, r.instanceTag)
+	instanceCount, err := r.CloudProvider.CountInstances(taskRun.client, ctx, r.instanceTag)
 	if instanceCount >= r.maxInstances || err != nil {
 		if err != nil {
 			log.Error(err, "unable to count running instances, not allocating a new instance out of an abundance of caution")
@@ -156,7 +158,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 	tr.Annotations[AllocationStartTimeAnnotation] = strconv.FormatInt(startTime, 10)
 	log.Info(fmt.Sprintf("%d instances are running, creating a new instance", instanceCount))
 	log.Info("attempting to launch a new host for " + tr.Name)
-	instance, err := r.CloudProvider.LaunchInstance(taskRun.client, log, ctx, tr.Name, r.instanceTag)
+	instance, err := r.CloudProvider.LaunchInstance(taskRun.client, ctx, tr.Name, r.instanceTag)
 
 	if err != nil {
 		launchErr := err
@@ -201,7 +203,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 			break
 		} else if !errors.IsConflict(err) {
 			log.Error(err, "failed to update")
-			err2 := r.CloudProvider.TerminateInstance(taskRun.client, log, ctx, instance)
+			err2 := r.CloudProvider.TerminateInstance(taskRun.client, ctx, instance)
 			if err2 != nil {
 				log.Error(err2, "failed to delete cloud instance")
 			}
@@ -211,7 +213,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 			err := taskRun.apiReader.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)
 			if err != nil {
 				log.Error(err, "failed to update")
-				err2 := r.CloudProvider.TerminateInstance(taskRun.client, log, ctx, instance)
+				err2 := r.CloudProvider.TerminateInstance(taskRun.client, ctx, instance)
 				if err2 != nil {
 					log.Error(err2, "failed to delete cloud instance")
 				}

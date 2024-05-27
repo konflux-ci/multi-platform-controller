@@ -3,7 +3,6 @@ package taskrun
 import (
 	"context"
 	"fmt"
-	"github.com/go-logr/logr"
 	"github.com/redhat-appstudio/multi-platform-controller/pkg/cloud"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -43,8 +42,7 @@ func setupClientAndReconciler(objs []runtimeclient.Object) (runtimeclient.Client
 func TestConfigMapParsing(t *testing.T) {
 	g := NewGomegaWithT(t)
 	_, reconciler := setupClientAndReconciler(createHostConfig())
-	discard := logr.Discard()
-	configIface, err := reconciler.readConfiguration(context.Background(), &discard, "linux/arm64", userNamespace)
+	configIface, err := reconciler.readConfiguration(context.Background(), "linux/arm64", userNamespace)
 	config := configIface.(HostPool)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(len(config.hosts)).To(Equal(2))
@@ -54,10 +52,9 @@ func TestConfigMapParsing(t *testing.T) {
 func TestAllowedNamepsaces(t *testing.T) {
 	g := NewGomegaWithT(t)
 	_, reconciler := setupClientAndReconciler(createHostConfig())
-	discard := logr.Discard()
-	_, err := reconciler.readConfiguration(context.Background(), &discard, "linux/arm64", "system-test")
+	_, err := reconciler.readConfiguration(context.Background(), "linux/arm64", "system-test")
 	g.Expect(err).ToNot(HaveOccurred())
-	_, err = reconciler.readConfiguration(context.Background(), &discard, "linux/arm64", "other")
+	_, err = reconciler.readConfiguration(context.Background(), "linux/arm64", "other")
 	g.Expect(err).To(HaveOccurred())
 
 }
@@ -582,7 +579,7 @@ type MockCloud struct {
 	TimeoutGetAddress bool
 }
 
-func (m *MockCloud) ListInstances(kubeClient runtimeclient.Client, log *logr.Logger, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
+func (m *MockCloud) ListInstances(kubeClient runtimeclient.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
 	ret := []cloud.CloudVMInstance{}
 	for k, v := range m.Addressses {
 		ret = append(ret, cloud.CloudVMInstance{InstanceId: k, StartTime: time.Now(), Address: v})
@@ -590,7 +587,7 @@ func (m *MockCloud) ListInstances(kubeClient runtimeclient.Client, log *logr.Log
 	return ret, nil
 }
 
-func (m *MockCloud) CountInstances(kubeClient runtimeclient.Client, log *logr.Logger, ctx context.Context, instanceTag string) (int, error) {
+func (m *MockCloud) CountInstances(kubeClient runtimeclient.Client, ctx context.Context, instanceTag string) (int, error) {
 	return m.Running, nil
 }
 
@@ -598,7 +595,7 @@ func (m *MockCloud) SshUser() string {
 	return "root"
 }
 
-func (m *MockCloud) LaunchInstance(kubeClient runtimeclient.Client, log *logr.Logger, ctx context.Context, name string, instanceTag string) (cloud.InstanceIdentifier, error) {
+func (m *MockCloud) LaunchInstance(kubeClient runtimeclient.Client, ctx context.Context, name string, instanceTag string) (cloud.InstanceIdentifier, error) {
 	m.Running++
 	addr := string(name) + ".host.com"
 	identifier := cloud.InstanceIdentifier(name)
@@ -606,14 +603,14 @@ func (m *MockCloud) LaunchInstance(kubeClient runtimeclient.Client, log *logr.Lo
 	return identifier, nil
 }
 
-func (m *MockCloud) TerminateInstance(kubeClient runtimeclient.Client, log *logr.Logger, ctx context.Context, instance cloud.InstanceIdentifier) error {
+func (m *MockCloud) TerminateInstance(kubeClient runtimeclient.Client, ctx context.Context, instance cloud.InstanceIdentifier) error {
 	m.Running--
 	m.Terminated++
 	delete(m.Addressses, instance)
 	return nil
 }
 
-func (m *MockCloud) GetInstanceAddress(kubeClient runtimeclient.Client, log *logr.Logger, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
+func (m *MockCloud) GetInstanceAddress(kubeClient runtimeclient.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
 	if m.FailGetAddress {
 		return "", fmt.Errorf("failed")
 	} else if m.TimeoutGetAddress {
