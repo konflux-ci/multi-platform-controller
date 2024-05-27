@@ -20,7 +20,8 @@ type HostPool struct {
 	targetPlatform string
 }
 
-func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
+func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
+	log := logr.FromContextOrDiscard(ctx)
 	if len(hp.hosts) == 0 {
 		//no hosts configured
 		return reconcile.Result{}, fmt.Errorf("no hosts configured")
@@ -97,7 +98,7 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.
 		return reconcile.Result{}, err
 	}
 
-	err = launchProvisioningTask(r, ctx, log, tr, secretName, selected.Secret, selected.Address, selected.User, hp.targetPlatform, "")
+	err = launchProvisioningTask(r, ctx, tr, secretName, selected.Secret, selected.Address, selected.User, hp.targetPlatform, "")
 
 	if err != nil {
 		//ugh, try and unassign
@@ -114,7 +115,8 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.
 	return reconcile.Result{}, nil
 }
 
-func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, selectedHost string) error {
+func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string, selectedHost string) error {
+	log := logr.FromContextOrDiscard(ctx)
 	selected := hp.hosts[selectedHost]
 	if selected != nil {
 		labelMap := map[string]string{TaskTypeLabel: TaskTypeClean, UserTaskName: tr.Name, UserTaskNamespace: tr.Namespace}

@@ -27,9 +27,10 @@ func (a DynamicHostPool) InstanceTag() string {
 	return a.instanceTag
 }
 
-func (a DynamicHostPool) buildHostPool(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, instanceTag string) (*HostPool, int, error) {
+func (a DynamicHostPool) buildHostPool(r *ReconcileTaskRun, ctx context.Context, instanceTag string) (*HostPool, int, error) {
+	log := logr.FromContextOrDiscard(ctx)
 	ret := map[string]*Host{}
-	instances, err := a.cloudProvider.ListInstances(r.client, log, ctx, instanceTag)
+	instances, err := a.cloudProvider.ListInstances(r.client, ctx, instanceTag)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -44,7 +45,7 @@ func (a DynamicHostPool) buildHostPool(r *ReconcileTaskRun, ctx context.Context,
 			if err == nil {
 				if idle {
 					log.Info("deallocating old instance", "instance", inst.InstanceId)
-					err = a.cloudProvider.TerminateInstance(r.client, log, ctx, inst.InstanceId)
+					err = a.cloudProvider.TerminateInstance(r.client, ctx, inst.InstanceId)
 					if err != nil {
 						log.Error(err, "unable to shut down instance", "instance", inst.InstanceId)
 					}
@@ -58,13 +59,13 @@ func (a DynamicHostPool) buildHostPool(r *ReconcileTaskRun, ctx context.Context,
 	return &HostPool{hosts: ret, targetPlatform: a.platform}, oldInstanceCount, nil
 }
 
-func (a DynamicHostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, selectedHost string) error {
+func (a DynamicHostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string, selectedHost string) error {
 
-	hostPool, oldInstanceCount, err := a.buildHostPool(r, ctx, log, a.instanceTag)
+	hostPool, oldInstanceCount, err := a.buildHostPool(r, ctx, a.instanceTag)
 	if err != nil {
 		return err
 	}
-	err = hostPool.Deallocate(r, ctx, log, tr, secretName, selectedHost)
+	err = hostPool.Deallocate(r, ctx, tr, secretName, selectedHost)
 	if err != nil {
 		return err
 	}
@@ -77,8 +78,9 @@ func (a DynamicHostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, lo
 				return err
 			}
 			if idle {
+				log := logr.FromContextOrDiscard(ctx)
 				log.Info("deallocating old instance", "instance", selectedHost)
-				err = a.cloudProvider.TerminateInstance(r.client, log, ctx, cloud.InstanceIdentifier(selectedHost))
+				err = a.cloudProvider.TerminateInstance(r.client, ctx, cloud.InstanceIdentifier(selectedHost))
 				if err != nil {
 					return err
 				}
@@ -97,14 +99,15 @@ func (a DynamicHostPool) isHostIdle(r *ReconcileTaskRun, ctx context.Context, se
 	return len(trs.Items) == 0, nil
 }
 
-func (a DynamicHostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
+func (a DynamicHostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
 
-	hostPool, oldInstanceCount, err := a.buildHostPool(r, ctx, log, a.instanceTag)
+	log := logr.FromContextOrDiscard(ctx)
+	hostPool, oldInstanceCount, err := a.buildHostPool(r, ctx, a.instanceTag)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 	if len(hostPool.hosts) > 0 {
-		_, err = hostPool.Allocate(r, ctx, log, tr, secretName)
+		_, err = hostPool.Allocate(r, ctx, tr, secretName)
 		if err != nil {
 			log.Error(err, "could not allocate host from pool")
 		}
@@ -118,7 +121,7 @@ func (a DynamicHostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 	log.Info("could not allocate existing host, attempting to start a new one")
 
 	// Count will handle instances that are not ready yet
-	count, err := a.cloudProvider.CountInstances(r.client, log, ctx, a.instanceTag)
+	count, err := a.cloudProvider.CountInstances(r.client, ctx, a.instanceTag)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -138,7 +141,7 @@ func (a DynamicHostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, log 
 	// Counter intuitively we don't need the instance id
 	// It will be picked up on the list call
 	log.Info(fmt.Sprintf("launching instance %s", name))
-	inst, err := a.cloudProvider.LaunchInstance(r.client, log, ctx, name, a.instanceTag)
+	inst, err := a.cloudProvider.LaunchInstance(r.client, ctx, name, a.instanceTag)
 	if err != nil {
 		return reconcile.Result{}, err
 	}

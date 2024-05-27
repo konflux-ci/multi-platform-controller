@@ -136,25 +136,34 @@ func (r *ReconcileTaskRun) Reconcile(ctx context.Context, request reconcile.Requ
 		log.Info(msg)
 		return ctrl.Result{}, nil
 	}
-
+	if pr.Annotations != nil {
+		if pr.Annotations[CloudInstanceId] != "" {
+			log.WithValues(CloudInstanceId, pr.Annotations[CloudInstanceId])
+		}
+		if pr.Annotations[AssignedHost] != "" {
+			log.WithValues(AssignedHost, pr.Annotations[AssignedHost])
+		}
+	}
+	ctx = logr.NewContext(ctx, log)
 	switch {
 	case prerr == nil:
-		return r.handleTaskRunReceived(ctx, &log, &pr)
+		return r.handleTaskRunReceived(ctx, &pr)
 	}
 
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, log *logr.Logger, tr *v1.TaskRun) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, tr *v1.TaskRun) (reconcile.Result, error) {
+	log := logr.FromContextOrDiscard(ctx)
 	if tr.Labels != nil {
 		taskType := tr.Labels[TaskTypeLabel]
 		if taskType == TaskTypeClean {
 			log.Info("Reconciling cleanup task")
-			return r.handleCleanTask(ctx, log, tr)
+			return r.handleCleanTask(ctx, tr)
 		}
 		if taskType == TaskTypeProvision {
 			log.Info("Reconciling provision task")
-			return r.handleProvisionTask(ctx, log, tr)
+			return r.handleProvisionTask(ctx, tr)
 		}
 		if taskType == TaskTypeUpdate {
 			// We don't care about these
@@ -196,12 +205,12 @@ func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, log *logr.
 	if tr.Status.TaskSpec == nil || tr.Status.TaskSpec.Volumes == nil {
 		return reconcile.Result{}, nil
 	}
-	return r.handleUserTask(ctx, log, tr)
+	return r.handleUserTask(ctx, tr)
 }
 
 // called when a task has finished, we look for waiting tasks
 // and then potentially requeue one of them
-func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, log *logr.Logger, platform string) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, platform string) (reconcile.Result, error) {
 
 	//try and requeue a waiting task if one exists
 	taskList := v1.TaskRunList{}
@@ -228,12 +237,13 @@ func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, log *logr.Log
 
 }
 
-func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, log *logr.Logger, tr *v1.TaskRun) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, tr *v1.TaskRun) (reconcile.Result, error) {
 	if tr.Status.CompletionTime == nil {
 		return reconcile.Result{}, nil
 	}
 	success := tr.Status.GetCondition(apis.ConditionSucceeded).IsTrue()
 	if !success {
+		log := logr.FromContextOrDiscard(ctx)
 		log.Info("cleanup task failed", "task", tr.Name)
 		r.handleMetrics(tr.Annotations[TaskTargetPlatformAnnotation], func(metrics *PlatformMetrics) {
 			metrics.provisionFailures.Inc()
@@ -246,7 +256,7 @@ func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, log *logr.Logger
 	return reconcile.Result{RequeueAfter: time.Hour}, nil
 }
 
-func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Logger, tr *v1.TaskRun) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *v1.TaskRun) (reconcile.Result, error) {
 
 	if tr.Status.CompletionTime == nil {
 		return reconcile.Result{}, nil
@@ -273,6 +283,7 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 	}
 	userNamespace := tr.Labels[UserTaskNamespace]
 	userTaskName := tr.Labels[UserTaskName]
+	log := logr.FromContextOrDiscard(ctx)
 	if !success {
 		r.handleMetrics(tr.Annotations[TaskTargetPlatformAnnotation], func(metrics *PlatformMetrics) {
 			metrics.provisionFailures.Inc()
@@ -321,7 +332,7 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 						return reconcile.Result{}, err
 					}
 				} else {
-					err = r.createErrorSecret(ctx, log, &userTr, secretName, "provision task failed to create a secret")
+					err = r.createErrorSecret(ctx, &userTr, secretName, "provision task failed to create a secret")
 					if err != nil {
 						return reconcile.Result{}, err
 					}
@@ -337,13 +348,14 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 
 // This creates an secret with the 'error' field set
 // This will result in the pipeline run immediately failing with the message printed in the logs
-func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, msg string) error {
+func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, tr *v1.TaskRun, secretName string, msg string) error {
 	if controllerutil.AddFinalizer(tr, PipelineFinalizer) {
 		err := r.client.Update(ctx, tr)
 		if err != nil {
 			return err
 		}
 	}
+	log := logr.FromContextOrDiscard(ctx)
 	log.Info("creating error secret " + msg)
 
 	secret := v12.Secret{}
@@ -369,16 +381,17 @@ func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, log *logr.Logg
 	return nil
 }
 
-func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, log *logr.Logger, tr *v1.TaskRun) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *v1.TaskRun) (reconcile.Result, error) {
 
+	log := logr.FromContextOrDiscard(ctx)
 	secretName := SecretPrefix + tr.Name
 	if tr.Labels[AssignedHost] != "" {
-		return r.handleHostAssigned(ctx, log, tr, secretName)
+		return r.handleHostAssigned(ctx, tr, secretName)
 	} else {
 		//if the PR is done we ignore it
 		if tr.Status.CompletionTime != nil || tr.GetDeletionTimestamp() != nil {
 			if controllerutil.ContainsFinalizer(tr, PipelineFinalizer) {
-				return r.handleHostAssigned(ctx, log, tr, secretName)
+				return r.handleHostAssigned(ctx, tr, secretName)
 
 			}
 			return reconcile.Result{}, nil
@@ -386,18 +399,18 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, log *logr.Logger,
 
 		targetPlatform, err := extracPlatform(tr)
 		if err != nil {
-			err := r.createErrorSecret(ctx, log, tr, secretName, err.Error())
+			err := r.createErrorSecret(ctx, tr, secretName, err.Error())
 			if err != nil {
 				log.Error(err, "could not create error secret")
 			}
 			return reconcile.Result{}, nil
 		}
-		res, err := r.handleHostAllocation(ctx, log, tr, secretName, targetPlatform)
+		res, err := r.handleHostAllocation(ctx, tr, secretName, targetPlatform)
 		if err != nil && !errors.IsConflict(err) {
 			r.handleMetrics(targetPlatform, func(metrics *PlatformMetrics) {
 				metrics.hostAllocationFailures.Inc()
 			})
-			err := r.createErrorSecret(ctx, log, tr, secretName, err.Error())
+			err := r.createErrorSecret(ctx, tr, secretName, err.Error())
 			if err != nil {
 				log.Error(err, "could not create error secret")
 			}
@@ -415,7 +428,8 @@ func extracPlatform(tr *v1.TaskRun) (string, error) {
 	return "", errors2.New("failed to determine platform")
 }
 
-func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, targetPlatform string) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *v1.TaskRun, secretName string, targetPlatform string) (reconcile.Result, error) {
+	log := logr.FromContextOrDiscard(ctx)
 	log.Info("attempting to allocate host")
 
 	if tr.Labels == nil {
@@ -440,18 +454,18 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.L
 	}
 
 	//lets allocate a host, get the map with host info
-	hosts, err := r.readConfiguration(ctx, log, targetPlatform, tr.Namespace)
+	hosts, err := r.readConfiguration(ctx, targetPlatform, tr.Namespace)
 	if err != nil {
 		log.Error(err, "failed to read host config")
 		r.handleMetrics(targetPlatform, func(metrics *PlatformMetrics) { metrics.hostAllocationFailures.Inc() })
-		return reconcile.Result{}, r.createErrorSecret(ctx, log, tr, secretName, "failed to read host config "+err.Error())
+		return reconcile.Result{}, r.createErrorSecret(ctx, tr, secretName, "failed to read host config "+err.Error())
 	}
 	if tr.Annotations == nil {
 		tr.Annotations = map[string]string{}
 	}
 	wasWaiting := tr.Labels[WaitingForPlatformLabel] != ""
 	startTime := time.Now().Unix()
-	ret, err := hosts.Allocate(r, ctx, log, tr, secretName)
+	ret, err := hosts.Allocate(r, ctx, tr, secretName)
 	isWaiting := tr.Labels[WaitingForPlatformLabel] != ""
 
 	if err != nil {
@@ -487,7 +501,8 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.L
 	return ret, err
 }
 
-func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
+	log := logr.FromContextOrDiscard(ctx)
 	//already exists
 	if tr.Status.CompletionTime != nil || tr.GetDeletionTimestamp() != nil {
 		log.Info("unassigning host from task")
@@ -497,7 +512,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, log *logr.Log
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		config, err := r.readConfiguration(ctx, log, platform, tr.Namespace)
+		config, err := r.readConfiguration(ctx, platform, tr.Namespace)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -509,7 +524,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, log *logr.Log
 			metrics.taskRunTime.Observe(float64(time.Now().Unix() - tr.CreationTimestamp.Unix()))
 			metrics.runningTasks.Dec()
 		})
-		err = config.Deallocate(r, ctx, log, tr, secretName, selectedHost)
+		err = config.Deallocate(r, ctx, tr, secretName, selectedHost)
 		if err != nil {
 			log.Error(err, "Failed to deallocate host "+selectedHost)
 		}
@@ -536,17 +551,18 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, log *logr.Log
 		} else {
 			log.Info("could not find secret", "secret", secretName)
 		}
-		return r.handleWaitingTasks(ctx, log, platform)
+		return r.handleWaitingTasks(ctx, platform)
 	}
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, log *logr.Logger, targetPlatform string, targetNamespace string) (PlatformConfig, error) {
+func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform string, targetNamespace string) (PlatformConfig, error) {
 	cm := v12.ConfigMap{}
 	err := r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: HostConfig}, &cm)
 	if err != nil {
 		return nil, err
 	}
+	log := logr.FromContextOrDiscard(ctx)
 
 	namespaces := cm.Data[AllowedNamespaces]
 	if namespaces != "" {
@@ -713,11 +729,11 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, log *logr.Logg
 }
 
 type PlatformConfig interface {
-	Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string) (reconcile.Result, error)
-	Deallocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, selectedHost string) error
+	Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string) (reconcile.Result, error)
+	Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string, selectedHost string) error
 }
 
-func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, sshSecret string, address string, user string, platform string, sudoCommands string) error {
+func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string, sshSecret string, address string, user string, platform string, sudoCommands string) error {
 	//kick off the provisioning task
 	//note that we can't use owner refs here because this task runs in a different namespace
 
@@ -725,8 +741,9 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, log *logr.
 	secret := v12.Secret{}
 	err := r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: sshSecret}, &secret)
 	if err != nil {
+		log := logr.FromContextOrDiscard(ctx)
 		log.Error(fmt.Errorf("failed to find SSH secret %s", sshSecret), "failed to find SSH secret")
-		return r.createErrorSecret(ctx, log, tr, secretName, "failed to get SSH secret, system may not be configured correctly")
+		return r.createErrorSecret(ctx, tr, secretName, "failed to get SSH secret, system may not be configured correctly")
 	}
 
 	provision := v1.TaskRun{}

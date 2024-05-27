@@ -39,7 +39,8 @@ func Ec2Provider(platformName string, config map[string]string, systemNamespace 
 	}
 }
 
-func (r AwsDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, name string, instanceTag string) (cloud.InstanceIdentifier, error) {
+func (r AwsDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, name string, instanceTag string) (cloud.InstanceIdentifier, error) {
+	log := logr.FromContextOrDiscard(ctx)
 	log.Info(fmt.Sprintf("attempting to launch AWS instance for %s", name))
 	// Load AWS credentials and configuration
 
@@ -103,7 +104,8 @@ func (r AwsDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Log
 	}
 }
 
-func (r AwsDynamicConfig) CountInstances(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceTag string) (int, error) {
+func (r AwsDynamicConfig) CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error) {
+	log := logr.FromContextOrDiscard(ctx)
 	log.Info("attempting to count AWS instances")
 	cfg, err := config.LoadDefaultConfig(ctx,
 		config.WithCredentialsProvider(SecretCredentialsProvider{Name: r.Secret, Namespace: r.SystemNamespace, Client: kubeClient}),
@@ -131,7 +133,8 @@ func (r AwsDynamicConfig) CountInstances(kubeClient client.Client, log *logr.Log
 	return count, nil
 }
 
-func (r AwsDynamicConfig) GetInstanceAddress(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
+func (r AwsDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
+	log := logr.FromContextOrDiscard(ctx)
 	log.Info(fmt.Sprintf("attempting to get AWS instance address %s", instanceId))
 	// Load AWS credentials and configuration
 
@@ -153,7 +156,7 @@ func (r AwsDynamicConfig) GetInstanceAddress(kubeClient client.Client, log *logr
 	if len(res.Reservations) > 0 {
 		if len(res.Reservations[0].Instances) > 0 {
 			instance := res.Reservations[0].Instances[0]
-			address, err := r.checkInstanceConnectivity(&instance, log)
+			address, err := r.checkInstanceConnectivity(ctx, &instance)
 			if err != nil {
 				// this might be transient, wait more for the instance to be ready
 				return "", nil
@@ -164,19 +167,20 @@ func (r AwsDynamicConfig) GetInstanceAddress(kubeClient client.Client, log *logr
 	return "", nil
 }
 
-func (r AwsDynamicConfig) checkInstanceConnectivity(instance *types.Instance, log *logr.Logger) (string, error) {
+func (r AwsDynamicConfig) checkInstanceConnectivity(ctx context.Context, instance *types.Instance) (string, error) {
 	if instance.PublicDnsName != nil && *instance.PublicDnsName != "" {
-		return pingSSHIp(*instance.PublicDnsName, log)
+		return pingSSHIp(ctx, *instance.PublicDnsName)
 	} else if instance.PrivateIpAddress != nil && *instance.PrivateIpAddress != "" {
-		return pingSSHIp(*instance.PrivateIpAddress, log)
+		return pingSSHIp(ctx, *instance.PrivateIpAddress)
 	}
 	return "", nil
 }
 
-func pingSSHIp(ipAddress string, log *logr.Logger) (string, error) {
+func pingSSHIp(ctx context.Context, ipAddress string) (string, error) {
 	server, _ := net.ResolveTCPAddr("tcp", ipAddress+":22")
 	conn, err := net.DialTCP("tcp", nil, server)
 	if err != nil {
+		log := logr.FromContextOrDiscard(ctx)
 		log.Error(err, "failed to connect to AWS instance")
 		return "", err
 	}
@@ -185,7 +189,8 @@ func pingSSHIp(ipAddress string, log *logr.Logger) (string, error) {
 	return ipAddress, nil
 }
 
-func (r AwsDynamicConfig) TerminateInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, instance cloud.InstanceIdentifier) error {
+func (r AwsDynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instance cloud.InstanceIdentifier) error {
+	log := logr.FromContextOrDiscard(ctx)
 	log.Info(fmt.Sprintf("attempting to terminate AWS instance %s", instance))
 
 	// Load AWS credentials and configuration
@@ -202,7 +207,8 @@ func (r AwsDynamicConfig) TerminateInstance(kubeClient client.Client, log *logr.
 	return err
 }
 
-func (r AwsDynamicConfig) ListInstances(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
+func (r AwsDynamicConfig) ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
+	log := logr.FromContextOrDiscard(ctx)
 	log.Info("attempting to list AWS instances")
 	cfg, err := config.LoadDefaultConfig(ctx,
 		config.WithCredentialsProvider(SecretCredentialsProvider{Name: r.Secret, Namespace: r.SystemNamespace, Client: kubeClient}),
@@ -223,7 +229,7 @@ func (r AwsDynamicConfig) ListInstances(kubeClient client.Client, log *logr.Logg
 		for i := range res.Instances {
 			inst := res.Instances[i]
 			if inst.State.Name != types.InstanceStateNameTerminated && string(inst.InstanceType) == r.InstanceType {
-				address, err := r.checkInstanceConnectivity(&inst, log)
+				address, err := r.checkInstanceConnectivity(ctx, &inst)
 				if err == nil {
 					ret = append(ret, cloud.CloudVMInstance{InstanceId: cloud.InstanceIdentifier(*inst.InstanceId), StartTime: *inst.LaunchTime, Address: address})
 					log.Info(fmt.Sprintf("counting instance %s towards running count", *inst.InstanceId))

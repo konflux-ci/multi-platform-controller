@@ -42,7 +42,7 @@ func IBMPowerProvider(platform string, config map[string]string, systemNamespace
 	}
 }
 
-func (r IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, taskRunName string, instanceTag string) (cloud.InstanceIdentifier, error) {
+func (r IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunName string, instanceTag string) (cloud.InstanceIdentifier, error) {
 	service, err := r.authenticate(kubeClient, ctx)
 	if err != nil {
 		return "", err
@@ -53,7 +53,7 @@ func (r IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, log *log
 		return "", err
 	}
 	name := instanceTag + strings.Replace(strings.ToLower(base64.URLEncoding.EncodeToString(md5.New().Sum(binary))[0:20]), "_", "-", -1) + "x" //#nosec
-	instance, err := r.createServerInstance(ctx, log, service, name)
+	instance, err := r.createServerInstance(ctx, service, name)
 	if err != nil {
 		return "", err
 	}
@@ -61,7 +61,7 @@ func (r IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, log *log
 
 }
 
-func (r IBMPowerDynamicConfig) CountInstances(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceTag string) (int, error) {
+func (r IBMPowerDynamicConfig) CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error) {
 	service, err := r.authenticate(kubeClient, ctx)
 	if err != nil {
 		return 0, err
@@ -126,7 +126,7 @@ func (r IBMPowerDynamicConfig) authenticate(kubeClient client.Client, ctx contex
 	return baseService, nil
 }
 
-func (r IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
+func (r IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
 	service, err := r.authenticate(kubeClient, ctx)
 	if err != nil {
 		return "", err
@@ -135,13 +135,14 @@ func (r IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, log 
 	if err != nil {
 		return "", nil //todo: check for permanent errors
 	}
-	return checkAddressLive(ip, log)
+	return checkAddressLive(ctx, ip)
 }
 
-func (r IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
+func (r IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
 	return nil, fmt.Errorf("not impelemented")
 }
-func (r IBMPowerDynamicConfig) TerminateInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
+func (r IBMPowerDynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
+	log := logr.FromContextOrDiscard(ctx)
 	log.Info("attempting to terminate power server %s", "instance", instanceId)
 	service, err := r.authenticate(kubeClient, ctx)
 	if err != nil {
@@ -196,8 +197,9 @@ func (r IBMPowerDynamicConfig) SshUser() string {
 	return "root"
 }
 
-func (r IBMPowerDynamicConfig) createServerInstance(ctx context.Context, log *logr.Logger, service *core.BaseService, name string) (cloud.InstanceIdentifier, error) {
+func (r IBMPowerDynamicConfig) createServerInstance(ctx context.Context, service *core.BaseService, name string) (cloud.InstanceIdentifier, error) {
 
+	log := logr.FromContextOrDiscard(ctx)
 	builder := core.NewRequestBuilder(core.POST)
 	builder = builder.WithContext(ctx)
 	builder.EnableGzipCompression = service.GetEnableGzipCompression()
