@@ -27,6 +27,8 @@ var (
 	controllerLog = ctrl.Log.WithName("controller")
 )
 
+const TaskRunLabel = "tekton.dev/taskRun"
+
 func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 	// do not check tekton in kcp
 	// we have seen in e2e testing that this path can get invoked prior to the TaskRun CRD getting generated,
@@ -72,11 +74,18 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 	}
 	secretSelector = secretSelector.Add(*secretLabels)
 
+	podSelector := labels.NewSelector()
+	podLabels, lerr := labels.NewRequirement(TaskRunLabel, selection.Exists, []string{})
+	if lerr != nil {
+		return nil, lerr
+	}
+	podSelector = podSelector.Add(*podLabels)
 	options.Cache = cache.Options{
 		ByObject: map[client.Object]cache.ByObject{
 			&pipelinev1.TaskRun{}: {},
 			&v1.Secret{}:          {Label: secretSelector},
 			&v1.ConfigMap{}:       {Label: configMapSelector},
+			&v1.Pod{}:             {Label: podSelector},
 		},
 	}
 	operatorNamespace := os.Getenv("POD_NAMESPACE")
