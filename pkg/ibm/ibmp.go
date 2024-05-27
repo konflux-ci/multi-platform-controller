@@ -6,17 +6,18 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/IBM/go-sdk-core/v5/core"
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 	"github.com/redhat-appstudio/multi-platform-controller/pkg/cloud"
 	v1 "k8s.io/api/core/v1"
 	types2 "k8s.io/apimachinery/pkg/types"
-	"os"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strconv"
-	"strings"
-	"time"
 )
 
 func IBMPowerProvider(platform string, config map[string]string, systemNamespace string) cloud.CloudProvider {
@@ -274,11 +275,24 @@ func (r IBMPowerDynamicConfig) lookupIp(ctx context.Context, service *core.BaseS
 	if len(nwList) == 0 {
 		return "", err
 	}
+
+	internal := string(nwList[0]["ipAddress"])
 	external := string(nwList[0]["externalIP"])
-	if external[0] == '"' {
-		return external[1 : len(external)-1], nil
+
+	var ip string
+
+	if external != "" {
+		ip = external
+	} else if internal != "" {
+		ip = internal
+	} else {
+		return "", err
 	}
-	return external, nil
+
+	if ip[0] == '"' {
+		return ip[1 : len(ip)-1], nil
+	}
+	return ip, nil
 }
 
 func (r IBMPowerDynamicConfig) lookupInstance(ctx context.Context, service *core.BaseService, pvmId string) (map[string]json.RawMessage, error) {
