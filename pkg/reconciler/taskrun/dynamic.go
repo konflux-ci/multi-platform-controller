@@ -107,6 +107,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 			if err != nil {
 				return reconcile.Result{}, err
 			}
+			log.Info("launching provisioning task")
 			err = launchProvisioningTask(taskRun, ctx, tr, secretName, r.sshSecret, address, r.CloudProvider.SshUser(), r.platform, r.sudoCommands)
 			if err != nil {
 				//ugh, try and unassign

@@ -12,8 +12,8 @@ import (
 	"regexp"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
-	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
-	v12 "k8s.io/api/core/v1"
+	tektonapi "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	kubecore "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -123,7 +123,7 @@ func (r *ReconcileTaskRun) Reconcile(ctx context.Context, request reconcile.Requ
 	defer cancel()
 	log := ctrl.Log.WithName("taskrun").WithValues("request", request.NamespacedName)
 
-	pr := v1.TaskRun{}
+	pr := tektonapi.TaskRun{}
 	prerr := r.client.Get(ctx, request.NamespacedName, &pr)
 	if prerr != nil {
 		if !errors.IsNotFound(prerr) {
@@ -153,7 +153,7 @@ func (r *ReconcileTaskRun) Reconcile(ctx context.Context, request reconcile.Requ
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, tr *v1.TaskRun) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, tr *tektonapi.TaskRun) (reconcile.Result, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	if tr.Labels != nil {
 		taskType := tr.Labels[TaskTypeLabel]
@@ -213,13 +213,13 @@ func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, tr *v1.Tas
 func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, platform string) (reconcile.Result, error) {
 
 	//try and requeue a waiting task if one exists
-	taskList := v1.TaskRunList{}
+	taskList := tektonapi.TaskRunList{}
 
 	err := r.client.List(ctx, &taskList, client.MatchingLabels{WaitingForPlatformLabel: platformLabel(platform)})
 	if err != nil {
 		return reconcile.Result{}, err
 	}
-	var oldest *v1.TaskRun
+	var oldest *tektonapi.TaskRun
 	var oldestTs time.Time
 	for i := range taskList.Items {
 		tr := taskList.Items[i]
@@ -237,7 +237,7 @@ func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, platform stri
 
 }
 
-func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, tr *v1.TaskRun) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, tr *tektonapi.TaskRun) (reconcile.Result, error) {
 	if tr.Status.CompletionTime == nil {
 		return reconcile.Result{}, nil
 	}
@@ -256,7 +256,7 @@ func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, tr *v1.TaskRun) 
 	return reconcile.Result{RequeueAfter: time.Hour}, nil
 }
 
-func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *v1.TaskRun) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonapi.TaskRun) (reconcile.Result, error) {
 
 	if tr.Status.CompletionTime == nil {
 		return reconcile.Result{}, nil
@@ -283,15 +283,15 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *v1.TaskR
 	}
 	userNamespace := tr.Labels[UserTaskNamespace]
 	userTaskName := tr.Labels[UserTaskName]
+	assigned := tr.Labels[AssignedHost]
 	log := logr.FromContextOrDiscard(ctx)
 	if !success {
 		r.handleMetrics(tr.Annotations[TaskTargetPlatformAnnotation], func(metrics *PlatformMetrics) {
 			metrics.provisionFailures.Inc()
 		})
-		assigned := tr.Labels[AssignedHost]
 		log.Info(fmt.Sprintf("provision task for host %s for user task %s/%sfailed", assigned, userNamespace, userTaskName))
 		if assigned != "" {
-			userTr := v1.TaskRun{}
+			userTr := tektonapi.TaskRun{}
 			err := r.client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: userTaskName}, &userTr)
 			if err == nil {
 				if userTr.Annotations == nil {
@@ -320,11 +320,11 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *v1.TaskR
 	} else {
 		log.Info("provision task succeeded")
 		//verify we ended up with a secret
-		secret := v12.Secret{}
+		secret := kubecore.Secret{}
 		err := r.client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: secretName}, &secret)
 		if err != nil {
 			if errors.IsNotFound(err) {
-				userTr := v1.TaskRun{}
+				userTr := tektonapi.TaskRun{}
 				err = r.client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: userTaskName}, &userTr)
 				if err != nil {
 					if !errors.IsNotFound(err) {
@@ -342,13 +342,29 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *v1.TaskR
 				return reconcile.Result{}, err
 			}
 		}
+		// Now we 'bump' the pod, by giving it a label
+		// This forces a reconcile
+		pod := kubecore.Pod{}
+		err = r.client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: userTaskName + "-pod"}, &pod)
+		if err != nil {
+			log.Error(err, "unable to annotate task pod")
+		} else {
+			if pod.Annotations == nil {
+				pod.Annotations = map[string]string{}
+			}
+			pod.Annotations[AssignedHost] = assigned
+			err = r.client.Update(ctx, &pod)
+			if err != nil {
+				log.Error(err, "unable to annotate task pod")
+			}
+		}
 	}
 	return reconcile.Result{}, r.client.Update(ctx, tr)
 }
 
 // This creates an secret with the 'error' field set
 // This will result in the pipeline run immediately failing with the message printed in the logs
-func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, tr *v1.TaskRun, secretName string, msg string) error {
+func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, tr *tektonapi.TaskRun, secretName string, msg string) error {
 	if controllerutil.AddFinalizer(tr, PipelineFinalizer) {
 		err := r.client.Update(ctx, tr)
 		if err != nil {
@@ -358,7 +374,7 @@ func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, tr *v1.TaskRun
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info("creating error secret " + msg)
 
-	secret := v12.Secret{}
+	secret := kubecore.Secret{}
 	secret.Labels = map[string]string{MultiPlatformSecretLabel: "true"}
 	secret.Namespace = tr.Namespace
 	secret.Name = secretName
@@ -381,7 +397,7 @@ func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, tr *v1.TaskRun
 	return nil
 }
 
-func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *v1.TaskRun) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *tektonapi.TaskRun) (reconcile.Result, error) {
 
 	log := logr.FromContextOrDiscard(ctx)
 	secretName := SecretPrefix + tr.Name
@@ -419,7 +435,7 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *v1.TaskRun) (
 	}
 }
 
-func extracPlatform(tr *v1.TaskRun) (string, error) {
+func extracPlatform(tr *tektonapi.TaskRun) (string, error) {
 	for _, p := range tr.Spec.Params {
 		if p.Name == PlatformParam {
 			return p.Value.StringVal, nil
@@ -428,8 +444,9 @@ func extracPlatform(tr *v1.TaskRun) (string, error) {
 	return "", errors2.New("failed to determine platform")
 }
 
-func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *v1.TaskRun, secretName string, targetPlatform string) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektonapi.TaskRun, secretName string, targetPlatform string) (reconcile.Result, error) {
 	log := logr.FromContextOrDiscard(ctx)
+
 	log.Info("attempting to allocate host")
 
 	if tr.Labels == nil {
@@ -442,7 +459,7 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *v1.Task
 		}
 	}
 	//check the secret does not already exist
-	secret := v12.Secret{}
+	secret := kubecore.Secret{}
 	err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: secretName}, &secret)
 	if err != nil {
 		if !errors.IsNotFound(err) {
@@ -501,7 +518,7 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *v1.Task
 	return ret, err
 }
 
-func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi.TaskRun, secretName string) (reconcile.Result, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	//already exists
 	if tr.Status.CompletionTime != nil || tr.GetDeletionTimestamp() != nil {
@@ -535,7 +552,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *v1.TaskRu
 			return reconcile.Result{}, err
 		}
 
-		secret := v12.Secret{}
+		secret := kubecore.Secret{}
 		//delete the secret
 		err = r.client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: secretName}, &secret)
 		if err == nil {
@@ -557,7 +574,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *v1.TaskRu
 }
 
 func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform string, targetNamespace string) (PlatformConfig, error) {
-	cm := v12.ConfigMap{}
+	cm := kubecore.ConfigMap{}
 	err := r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: HostConfig}, &cm)
 	if err != nil {
 		return nil, err
@@ -729,16 +746,16 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 }
 
 type PlatformConfig interface {
-	Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string) (reconcile.Result, error)
-	Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string, selectedHost string) error
+	Allocate(r *ReconcileTaskRun, ctx context.Context, tr *tektonapi.TaskRun, secretName string) (reconcile.Result, error)
+	Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *tektonapi.TaskRun, secretName string, selectedHost string) error
 }
 
-func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string, sshSecret string, address string, user string, platform string, sudoCommands string) error {
+func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tektonapi.TaskRun, secretName string, sshSecret string, address string, user string, platform string, sudoCommands string) error {
 	//kick off the provisioning task
 	//note that we can't use owner refs here because this task runs in a different namespace
 
 	//first verify the secret exists, so we don't hang if it is missing
-	secret := v12.Secret{}
+	secret := kubecore.Secret{}
 	err := r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: sshSecret}, &secret)
 	if err != nil {
 		log := logr.FromContextOrDiscard(ctx)
@@ -746,42 +763,42 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 		return r.createErrorSecret(ctx, tr, secretName, "failed to get SSH secret, system may not be configured correctly")
 	}
 
-	provision := v1.TaskRun{}
+	provision := tektonapi.TaskRun{}
 	provision.GenerateName = "provision-task"
 	provision.Namespace = r.operatorNamespace
 	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name, AssignedHost: tr.Labels[AssignedHost]}
 	provision.Annotations = map[string]string{TaskTargetPlatformAnnotation: platformLabel(platform)}
-	provision.Spec.TaskRef = &v1.TaskRef{Name: "provision-shared-host"}
-	provision.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: sshSecret}}}
-	computeRequests := map[v12.ResourceName]resource.Quantity{v12.ResourceCPU: resource.MustParse("100m"), v12.ResourceMemory: resource.MustParse("256Mi")}
-	computeLimits := map[v12.ResourceName]resource.Quantity{v12.ResourceCPU: resource.MustParse("100m"), v12.ResourceMemory: resource.MustParse("512Mi")}
-	provision.Spec.ComputeResources = &v12.ResourceRequirements{Requests: computeRequests, Limits: computeLimits}
+	provision.Spec.TaskRef = &tektonapi.TaskRef{Name: "provision-shared-host"}
+	provision.Spec.Workspaces = []tektonapi.WorkspaceBinding{{Name: "ssh", Secret: &kubecore.SecretVolumeSource{SecretName: sshSecret}}}
+	computeRequests := map[kubecore.ResourceName]resource.Quantity{kubecore.ResourceCPU: resource.MustParse("100m"), kubecore.ResourceMemory: resource.MustParse("256Mi")}
+	computeLimits := map[kubecore.ResourceName]resource.Quantity{kubecore.ResourceCPU: resource.MustParse("100m"), kubecore.ResourceMemory: resource.MustParse("512Mi")}
+	provision.Spec.ComputeResources = &kubecore.ResourceRequirements{Requests: computeRequests, Limits: computeLimits}
 	provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
 
-	provision.Spec.Params = []v1.Param{
+	provision.Spec.Params = []tektonapi.Param{
 		{
 			Name:  ParamSecretName,
-			Value: *v1.NewStructuredValues(secretName),
+			Value: *tektonapi.NewStructuredValues(secretName),
 		},
 		{
 			Name:  ParamTaskrunName,
-			Value: *v1.NewStructuredValues(tr.Name),
+			Value: *tektonapi.NewStructuredValues(tr.Name),
 		},
 		{
 			Name:  ParamNamespace,
-			Value: *v1.NewStructuredValues(tr.Namespace),
+			Value: *tektonapi.NewStructuredValues(tr.Namespace),
 		},
 		{
 			Name:  ParamHost,
-			Value: *v1.NewStructuredValues(address),
+			Value: *tektonapi.NewStructuredValues(address),
 		},
 		{
 			Name:  ParamUser,
-			Value: *v1.NewStructuredValues(user),
+			Value: *tektonapi.NewStructuredValues(user),
 		},
 		{
 			Name:  ParamSudoCommands,
-			Value: *v1.NewStructuredValues(sudoCommands),
+			Value: *tektonapi.NewStructuredValues(sudoCommands),
 		},
 	}
 
