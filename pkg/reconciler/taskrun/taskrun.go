@@ -344,18 +344,34 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 		}
 		// Now we 'bump' the pod, by giving it a label
 		// This forces a reconcile
-		pod := kubecore.Pod{}
-		err = r.client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: userTaskName + "-pod"}, &pod)
+		pods := kubecore.PodList{}
+
+		err = r.client.List(ctx, &pods, client.InNamespace(userNamespace))
 		if err != nil {
 			log.Error(err, "unable to annotate task pod")
 		} else {
-			if pod.Annotations == nil {
-				pod.Annotations = map[string]string{}
-			}
-			pod.Annotations[AssignedHost] = assigned
-			err = r.client.Update(ctx, &pod)
-			if err != nil {
-				log.Error(err, "unable to annotate task pod")
+			for i := range pods.Items {
+				pod := pods.Items[i]
+				//look for pods owned by the user taskrun
+				owned := false
+				for _, ref := range pod.OwnerReferences {
+					if ref.Name == userTaskName {
+						owned = true
+						break
+					}
+				}
+				if !owned {
+					continue
+				}
+
+				if pod.Annotations == nil {
+					pod.Annotations = map[string]string{}
+				}
+				pod.Annotations[AssignedHost] = assigned
+				err = r.client.Update(ctx, &pod)
+				if err != nil {
+					log.Error(err, "unable to annotate task pod")
+				}
 			}
 		}
 	}
