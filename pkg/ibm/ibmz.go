@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 )
 
 func IBMZProvider(arch string, config map[string]string, systemNamespace string) cloud.CloudProvider {
+	privateIp, _ := strconv.ParseBool(config["dynamic."+arch+".private-ip"])
 	return IBMZDynamicConfig{
 		Region:          config["dynamic."+arch+".region"],
 		Key:             config["dynamic."+arch+".key"],
@@ -31,6 +33,7 @@ func IBMZProvider(arch string, config map[string]string, systemNamespace string)
 		Secret:          config["dynamic."+arch+".secret"],
 		Url:             config["dynamic."+arch+".url"],
 		Profile:         config["dynamic."+arch+".profile"],
+		PrivateIP:       privateIp,
 		SystemNamespace: systemNamespace,
 	}
 }
@@ -245,6 +248,14 @@ func (r IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx cont
 	if err != nil {
 		return "", nil //not permanent, this can take a while to appear
 	}
+	if r.PrivateIP {
+		for _, i := range instance.NetworkInterfaces {
+			if i.PrimaryIP != nil && i.PrimaryIP.Address != nil {
+				return *i.PrimaryIP.Address, nil
+			}
+		}
+		return "", nil
+	}
 	ips, _, err := vpcService.ListInstanceNetworkInterfaceFloatingIps(&vpcv1.ListInstanceNetworkInterfaceFloatingIpsOptions{InstanceID: instance.ID, NetworkInterfaceID: instance.PrimaryNetworkInterface.ID})
 
 	if err != nil {
@@ -372,6 +383,7 @@ type IBMZDynamicConfig struct {
 	ImageId         string
 	Url             string
 	Profile         string
+	PrivateIP       bool
 }
 
 func (r IBMZDynamicConfig) SshUser() string {
