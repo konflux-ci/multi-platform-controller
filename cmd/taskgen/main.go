@@ -110,7 +110,7 @@ export BUILD_DIR=$(cat /ssh/user-dir)
 export SSH_ARGS="-o StrictHostKeyChecking=no"
 mkdir -p scripts
 echo "$BUILD_DIR"
-ssh $SSH_ARGS "$SSH_HOST"  mkdir -p "$BUILD_DIR/workspaces" "$BUILD_DIR/scripts"
+ssh $SSH_ARGS "$SSH_HOST"  mkdir -p "$BUILD_DIR/workspaces" "$BUILD_DIR/scripts" "$BUILD_DIR/volumes"
 
 PORT_FORWARD=""
 PODMAN_PORT_FORWARD=""
@@ -126,6 +126,15 @@ fi
 			ret += "\nrsync -ra $(workspaces." + workspace.Name + ".path)/ \"$SSH_HOST:$BUILD_DIR/workspaces/" + workspace.Name + "/\""
 			podmanArgs += " -v \"$BUILD_DIR/workspaces/" + workspace.Name + ":$(workspaces." + workspace.Name + ".path):Z\" \\\n"
 		}
+		// Also sync the volume mounts
+		for _, volume := range task.Spec.StepTemplate.VolumeMounts {
+			ret += "\nrsync -ra " + volume.MountPath + "/ \"$SSH_HOST:$BUILD_DIR/volumes/" + volume.Name + "/\""
+			podmanArgs += " -v \"$BUILD_DIR/volumes/" + volume.Name + ":" + volume.MountPath + ":Z\" \\\n"
+		}
+		//for _, volume := range step.VolumeMounts {
+		//	ret += "\nrsync -ra " + volume.MountPath + "/ \"$SSH_HOST:$BUILD_DIR/volumes/" + volume.Name + "/\""
+		//	podmanArgs += " -v \"$BUILD_DIR/volumes/" + volume.Name + ":" + volume.MountPath + ":Z\" \\\n"
+		//}
 		ret += "\nrsync -ra \"$HOME/.docker/\" \"$SSH_HOST:$BUILD_DIR/.docker/\""
 		podmanArgs += " -v \"$BUILD_DIR/.docker/:/root/.docker:Z\" \\\n"
 		ret += "\nrsync -ra \"/tekton/results/\" \"$SSH_HOST:$BUILD_DIR/tekton-results/\""
@@ -162,13 +171,17 @@ fi
 		for _, workspace := range task.Spec.Workspaces {
 			ret += "\nrsync -ra \"$SSH_HOST:$BUILD_DIR/workspaces/" + workspace.Name + "/\" \"$(workspaces." + workspace.Name + ".path)/\""
 		}
+
+		for _, volume := range task.Spec.StepTemplate.VolumeMounts {
+			ret += "\nrsync -ra \"$SSH_HOST:$BUILD_DIR/volumes/" + volume.Name + "/\" " + volume.MountPath + "/"
+		}
 		//sync back results
 		ret += "\nrsync -ra \"$SSH_HOST:$BUILD_DIR/tekton-results/\" \"/tekton/results/\""
 
 		ret += "\nbuildah pull oci:rhtap-final-image"
 		ret += "\nbuildah images"
 		ret += "\nbuildah tag localhost/rhtap-final-image \"$IMAGE\""
-		ret += "\ncontainer=$(buildah from --pull-never \"$IMAGE\")\nbuildah mount \"$container\" | tee /workspace/container_path\necho $container > /workspace/container_name"
+		ret += "\ncontainer=$(buildah from --pull-never \"$IMAGE\")\nbuildah mount \"$container\" | tee " + step.WorkingDir + "/container_path\necho $container > " + step.WorkingDir + "/container_name"
 
 		for _, i := range strings.Split(ret, "\n") {
 			if strings.HasSuffix(i, " ") {
@@ -185,7 +198,7 @@ fi
 		})
 	}
 
-	task.Name = "buildah-remote"
+	task.Name = strings.ReplaceAll(task.Name, "buildah", "buildah-remote")
 	task.Spec.Params = append(task.Spec.Params, tektonapi.ParamSpec{Name: "PLATFORM", Type: tektonapi.ParamTypeString, Description: "The platform to build on"})
 
 	faleVar := false
