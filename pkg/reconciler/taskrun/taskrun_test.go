@@ -110,6 +110,81 @@ func TestAllocateCloudHost(t *testing.T) {
 
 }
 
+func TestChangeHostConfig(t *testing.T) {
+	g := NewGomegaWithT(t)
+	client, reconciler := setupClientAndReconciler(createDynamicHostConfig())
+
+	tr := runUserPipeline(g, client, reconciler, "test")
+	provision := getProvisionTaskRun(g, client, tr)
+	params := map[string]string{}
+	for _, i := range provision.Spec.Params {
+		params[i.Name] = i.Value.StringVal
+	}
+	g.Expect(params["SECRET_NAME"]).To(Equal("multi-platform-ssh-test"))
+	g.Expect(params["TASKRUN_NAME"]).To(Equal("test"))
+	g.Expect(params["NAMESPACE"]).To(Equal(userNamespace))
+	g.Expect(params["USER"]).To(Equal("root"))
+	g.Expect(params["HOST"]).Should(Equal("test.host.com"))
+	g.Expect(cloudImpl.Addressses[("test")]).Should(Equal("test.host.com"))
+
+	runSuccessfulProvision(provision, g, client, tr, reconciler)
+
+	g.Expect(client.Get(context.Background(), types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)).ShouldNot(HaveOccurred())
+	tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+	tr.Status.SetCondition(&apis.Condition{
+		Type:               apis.ConditionSucceeded,
+		Status:             "True",
+		LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now().Add(time.Hour * -2)}},
+	})
+	g.Expect(client.Update(context.Background(), tr)).ShouldNot(HaveOccurred())
+
+	_, err := reconciler.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
+	g.Expect(err).ShouldNot(HaveOccurred())
+
+	g.Expect(cloudImpl.Addressses["multi-platform-builder-test"]).Should(BeEmpty())
+
+	// Now change the config map
+	trl := pipelinev1.TaskRunList{}
+	g.Expect(client.List(context.Background(), &trl)).Should(Succeed())
+	for _, t := range trl.Items {
+		g.Expect(client.Delete(context.Background(), &t)).Should(Succeed())
+	}
+
+	vm := createHostConfigMap()
+
+	cm := v1.ConfigMap{}
+	g.Expect(client.Get(context.Background(), types.NamespacedName{Namespace: systemNamespace, Name: HostConfig}, &cm)).Should(Succeed())
+	cm.Data = vm.Data
+	g.Expect(client.Update(context.Background(), &cm)).Should(Succeed())
+
+	tr = runUserPipeline(g, client, reconciler, "test")
+	provision = getProvisionTaskRun(g, client, tr)
+	params = map[string]string{}
+	for _, i := range provision.Spec.Params {
+		params[i.Name] = i.Value.StringVal
+	}
+	g.Expect(params["SECRET_NAME"]).To(Equal("multi-platform-ssh-test"))
+	g.Expect(params["TASKRUN_NAME"]).To(Equal("test"))
+	g.Expect(params["NAMESPACE"]).To(Equal(userNamespace))
+	g.Expect(params["USER"]).To(Equal("ec2-user"))
+	g.Expect(params["HOST"]).Should(BeElementOf("ec2-34-227-115-211.compute-1.amazonaws.com", "ec2-54-165-44-192.compute-1.amazonaws.com"))
+
+	runSuccessfulProvision(provision, g, client, tr, reconciler)
+
+	g.Expect(client.Get(context.Background(), types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)).ShouldNot(HaveOccurred())
+	tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+	tr.Status.SetCondition(&apis.Condition{
+		Type:               apis.ConditionSucceeded,
+		Status:             "True",
+		LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now().Add(time.Hour * -2)}},
+	})
+	g.Expect(client.Update(context.Background(), tr)).ShouldNot(HaveOccurred())
+
+	_, err = reconciler.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
+	g.Expect(err).ShouldNot(HaveOccurred())
+
+}
+
 func TestAllocateCloudHostInstanceFailure(t *testing.T) {
 	g := NewGomegaWithT(t)
 	client, reconciler := setupClientAndReconciler(createDynamicHostConfig())
@@ -498,6 +573,15 @@ func createUserTaskRun(g *WithT, client runtimeclient.Client, name string, platf
 }
 
 func createHostConfig() []runtimeclient.Object {
+	cm := createHostConfigMap()
+	sec := v1.Secret{}
+	sec.Name = "awskeys"
+	sec.Namespace = systemNamespace
+	sec.Labels = map[string]string{MultiPlatformSecretLabel: "true"}
+	return []runtimeclient.Object{&cm, &sec}
+}
+
+func createHostConfigMap() v1.ConfigMap {
 	cm := v1.ConfigMap{}
 	cm.Name = HostConfig
 	cm.Namespace = systemNamespace
@@ -515,11 +599,7 @@ func createHostConfig() []runtimeclient.Object {
 		"host.host2.user":        "ec2-user",
 		"host.host2.platform":    "linux/arm64",
 	}
-	sec := v1.Secret{}
-	sec.Name = "awskeys"
-	sec.Namespace = systemNamespace
-	sec.Labels = map[string]string{MultiPlatformSecretLabel: "true"}
-	return []runtimeclient.Object{&cm, &sec}
+	return cm
 }
 
 func createDynamicHostConfig() []runtimeclient.Object {

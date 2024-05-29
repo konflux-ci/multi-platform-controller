@@ -82,14 +82,15 @@ const (
 )
 
 type ReconcileTaskRun struct {
-	apiReader         client.Reader
-	client            client.Client
-	scheme            *runtime.Scheme
-	eventRecorder     record.EventRecorder
-	operatorNamespace string
-	platformConfig    map[string]PlatformConfig
-	platformMetrics   map[string]*PlatformMetrics
-	cloudProviders    map[string]func(platform string, config map[string]string, systemNamespace string) cloud.CloudProvider
+	apiReader                client.Reader
+	client                   client.Client
+	scheme                   *runtime.Scheme
+	eventRecorder            record.EventRecorder
+	operatorNamespace        string
+	configMapResourceVersion string
+	platformConfig           map[string]PlatformConfig
+	platformMetrics          map[string]*PlatformMetrics
+	cloudProviders           map[string]func(platform string, config map[string]string, systemNamespace string) cloud.CloudProvider
 }
 
 type PlatformMetrics struct {
@@ -590,12 +591,19 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 }
 
 func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform string, targetNamespace string) (PlatformConfig, error) {
+
 	cm := kubecore.ConfigMap{}
 	err := r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: HostConfig}, &cm)
 	if err != nil {
 		return nil, err
 	}
 	log := logr.FromContextOrDiscard(ctx)
+	if r.configMapResourceVersion != cm.ResourceVersion {
+		//if the config map has changes then dump the cached config
+		//metrics are fine, as they don't depend on the config anyway
+		r.configMapResourceVersion = cm.ResourceVersion
+		r.platformConfig = map[string]PlatformConfig{}
+	}
 
 	namespaces := cm.Data[AllowedNamespaces]
 	if namespaces != "" {
@@ -837,6 +845,7 @@ func platformLabel(platform string) string {
 }
 
 func (r *ReconcileTaskRun) registerMetrics(platform string) (*PlatformMetrics, error) {
+
 	if r.platformMetrics[platform] != nil {
 		return r.platformMetrics[platform], nil
 	}
