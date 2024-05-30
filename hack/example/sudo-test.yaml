@@ -49,6 +49,7 @@ spec:
           cat >scripts/script-build.sh <<'REMOTESSHEOF'
           #!/bin/sh
           sudo podman pull quay.io/centos-bootc/centos-bootc:stream9
+          
           REMOTESSHEOF
           chmod +x scripts/script-build.sh
           ssh $SSH_ARGS "$SSH_HOST" "bash -s" <scripts/script-build.sh

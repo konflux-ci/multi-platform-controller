@@ -25,6 +25,22 @@ func Ec2Provider(platformName string, config map[string]string, systemNamespace 
 	if err != nil {
 		disk = 40
 	}
+	var iops *int32
+	iopsString := config["dynamic."+platformName+".iops"]
+	if iopsString != "" {
+		iopsTmp, err := strconv.Atoi(iopsString)
+		if err == nil {
+			iops = aws.Int32(int32(iopsTmp))
+		}
+	}
+	var throughput *int32
+	throughputString := config["dynamic."+platformName+".throughput"]
+	if throughputString != "" {
+		throughputTmp, err := strconv.Atoi(throughputString)
+		if err == nil {
+			throughput = aws.Int32(int32(throughputTmp))
+		}
+	}
 	return AwsDynamicConfig{Region: config["dynamic."+platformName+".region"],
 		Ami:                 config["dynamic."+platformName+".ami"],
 		InstanceType:        config["dynamic."+platformName+".instance-type"],
@@ -38,6 +54,8 @@ func Ec2Provider(platformName string, config map[string]string, systemNamespace 
 		InstanceProfileArn:  config["dynamic."+platformName+".instance-profile-arn"],
 		SystemNamespace:     systemNamespace,
 		Disk:                int32(disk),
+		Iops:                iops,
+		Throughput:          throughput,
 	}
 }
 
@@ -94,7 +112,7 @@ func (r AwsDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.C
 		BlockDeviceMappings: []types.BlockDeviceMapping{{
 			DeviceName:  aws.String("/dev/sda1"),
 			VirtualName: aws.String("ephemeral0"),
-			Ebs:         &types.EbsBlockDevice{VolumeSize: aws.Int32(r.Disk)},
+			Ebs:         &types.EbsBlockDevice{DeleteOnTermination: aws.Bool(true), VolumeSize: aws.Int32(r.Disk), VolumeType: types.VolumeTypeGp3, Iops: r.Iops, Throughput: r.Throughput},
 		}},
 		InstanceInitiatedShutdownBehavior: types.ShutdownBehaviorTerminate,
 		TagSpecifications:                 []types.TagSpecification{{ResourceType: types.ResourceTypeInstance, Tags: []types.Tag{{Key: aws.String(MultiPlatformManaged), Value: aws.String("true")}, {Key: aws.String(cloud.InstanceTag), Value: aws.String(instanceTag)}, {Key: aws.String("Name"), Value: aws.String("multi-platform-builder-" + name)}}}},
@@ -289,6 +307,8 @@ type AwsDynamicConfig struct {
 	SpotInstancePrice   string
 	InstanceProfileName string
 	InstanceProfileArn  string
+	Throughput          *int32
+	Iops                *int32
 }
 
 func (r AwsDynamicConfig) SshUser() string {
