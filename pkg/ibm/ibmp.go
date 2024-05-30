@@ -208,6 +208,7 @@ func (r IBMPowerDynamicConfig) createServerInstance(ctx context.Context, service
 	pathParamsMap := map[string]string{
 		"cloud": r.pCloudId(),
 	}
+	network := strings.Split(r.Network, ",")
 	body := struct {
 		ServerName  string   `json:"serverName"`
 		ImageId     string   `json:"imageId"`
@@ -223,7 +224,7 @@ func (r IBMPowerDynamicConfig) createServerInstance(ctx context.Context, service
 		Processors:  r.Cores,
 		ProcType:    "shared",
 		Memory:      r.Memory,
-		NetworkIDs:  []string{r.Network},
+		NetworkIDs:  network,
 		KeyPairName: r.Key,
 		SysType:     r.System,
 	}
