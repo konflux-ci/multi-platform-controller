@@ -85,6 +85,12 @@ func streamFileYamlToTektonObj(path string, obj runtime.Object) runtime.Object {
 func convertToSsh(task *tektonapi.Task) {
 
 	builderImage := ""
+	secretVolumes := map[string]bool{}
+	for _, i := range task.Spec.Volumes {
+		if i.Secret != nil {
+			secretVolumes[i.Name] = true
+		}
+	}
 	for stepPod := range task.Spec.Steps {
 		step := &task.Spec.Steps[stepPod]
 		if step.Name != "build" {
@@ -126,15 +132,17 @@ fi
 			ret += "\nrsync -ra $(workspaces." + workspace.Name + ".path)/ \"$SSH_HOST:$BUILD_DIR/workspaces/" + workspace.Name + "/\""
 			podmanArgs += " -v \"$BUILD_DIR/workspaces/" + workspace.Name + ":$(workspaces." + workspace.Name + ".path):Z\" \\\n"
 		}
-		// Also sync the volume mounts
+		// Also sync the volume mounts from the template
 		for _, volume := range task.Spec.StepTemplate.VolumeMounts {
 			ret += "\nrsync -ra " + volume.MountPath + "/ \"$SSH_HOST:$BUILD_DIR/volumes/" + volume.Name + "/\""
 			podmanArgs += " -v \"$BUILD_DIR/volumes/" + volume.Name + ":" + volume.MountPath + ":Z\" \\\n"
 		}
-		//for _, volume := range step.VolumeMounts {
-		//	ret += "\nrsync -ra " + volume.MountPath + "/ \"$SSH_HOST:$BUILD_DIR/volumes/" + volume.Name + "/\""
-		//	podmanArgs += " -v \"$BUILD_DIR/volumes/" + volume.Name + ":" + volume.MountPath + ":Z\" \\\n"
-		//}
+		for _, volume := range step.VolumeMounts {
+			if secretVolumes[volume.Name] {
+				ret += "\nrsync -ra " + volume.MountPath + "/ \"$SSH_HOST:$BUILD_DIR/volumes/" + volume.Name + "/\""
+				podmanArgs += " -v \"$BUILD_DIR/volumes/" + volume.Name + ":" + volume.MountPath + ":Z\" \\\n"
+			}
+		}
 		ret += "\nrsync -ra \"$HOME/.docker/\" \"$SSH_HOST:$BUILD_DIR/.docker/\""
 		podmanArgs += " -v \"$BUILD_DIR/.docker/:/root/.docker:Z\" \\\n"
 		ret += "\nrsync -ra \"/tekton/results/\" \"$SSH_HOST:$BUILD_DIR/tekton-results/\""
