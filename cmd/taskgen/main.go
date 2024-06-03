@@ -85,10 +85,10 @@ func streamFileYamlToTektonObj(path string, obj runtime.Object) runtime.Object {
 func convertToSsh(task *tektonapi.Task) {
 
 	builderImage := ""
-	secretVolumes := map[string]bool{}
+	syncVolumes := map[string]bool{}
 	for _, i := range task.Spec.Volumes {
-		if i.Secret != nil {
-			secretVolumes[i.Name] = true
+		if i.Secret != nil || i.ConfigMap != nil {
+			syncVolumes[i.Name] = true
 		}
 	}
 	for stepPod := range task.Spec.Steps {
@@ -138,7 +138,7 @@ fi
 			podmanArgs += " -v \"$BUILD_DIR/volumes/" + volume.Name + ":" + volume.MountPath + ":Z\" \\\n"
 		}
 		for _, volume := range step.VolumeMounts {
-			if secretVolumes[volume.Name] {
+			if syncVolumes[volume.Name] {
 				ret += "\nrsync -ra " + volume.MountPath + "/ \"$SSH_HOST:$BUILD_DIR/volumes/" + volume.Name + "/\""
 				podmanArgs += " -v \"$BUILD_DIR/volumes/" + volume.Name + ":" + volume.MountPath + ":Z\" \\\n"
 			}
