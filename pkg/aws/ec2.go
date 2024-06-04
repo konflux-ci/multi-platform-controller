@@ -2,6 +2,7 @@ package aws
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"os"
@@ -41,6 +42,12 @@ func Ec2Provider(platformName string, config map[string]string, systemNamespace 
 			throughput = aws.Int32(int32(throughputTmp))
 		}
 	}
+	userDataString := config["dynamic."+platformName+".user-data"]
+	var userDataPtr *string
+	if userDataString != "" {
+		base54val := base64.StdEncoding.EncodeToString([]byte(userDataString))
+		userDataPtr = &base54val
+	}
 	return AwsDynamicConfig{Region: config["dynamic."+platformName+".region"],
 		Ami:                 config["dynamic."+platformName+".ami"],
 		InstanceType:        config["dynamic."+platformName+".instance-type"],
@@ -56,6 +63,7 @@ func Ec2Provider(platformName string, config map[string]string, systemNamespace 
 		Disk:                int32(disk),
 		Iops:                iops,
 		Throughput:          throughput,
+		UserData:            userDataPtr,
 	}
 }
 
@@ -109,6 +117,7 @@ func (r AwsDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.C
 		SecurityGroupIds:   securityGroupIds,
 		IamInstanceProfile: instanceProfile,
 		SubnetId:           subnet,
+		UserData:           r.UserData,
 		BlockDeviceMappings: []types.BlockDeviceMapping{{
 			DeviceName:  aws.String("/dev/sda1"),
 			VirtualName: aws.String("ephemeral0"),
@@ -309,6 +318,7 @@ type AwsDynamicConfig struct {
 	InstanceProfileArn  string
 	Throughput          *int32
 	Iops                *int32
+	UserData            *string
 }
 
 func (r AwsDynamicConfig) SshUser() string {
