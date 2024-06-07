@@ -136,7 +136,7 @@ func (r IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx 
 	if err != nil {
 		return "", nil //todo: check for permanent errors
 	}
-	return checkAddressLive(ctx, ip)
+	return checkAddressLive(ctx, ip), err
 }
 
 func (r IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {

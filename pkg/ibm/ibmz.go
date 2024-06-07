@@ -250,8 +250,12 @@ func (r IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx cont
 	}
 	if r.PrivateIP {
 		for _, i := range instance.NetworkInterfaces {
-			if i.PrimaryIP != nil && i.PrimaryIP.Address != nil {
-				return *i.PrimaryIP.Address, nil
+			if i.PrimaryIP != nil && i.PrimaryIP.Address != nil && *i.PrimaryIP.Address != "0.0.0.0" {
+				addr := checkAddressLive(ctx, *i.PrimaryIP.Address)
+				if addr != "" {
+					return addr, nil
+				}
+
 			}
 		}
 		return "", nil
@@ -262,7 +266,7 @@ func (r IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx cont
 		return "", nil //not permanent, this can take a while to appear
 	}
 	if len(ips.FloatingIps) > 0 {
-		return checkAddressLive(ctx, *ips.FloatingIps[0].Address)
+		return checkAddressLive(ctx, *ips.FloatingIps[0].Address), nil
 	}
 	switch *instance.Status {
 	case vpcv1.InstanceStatusDeletingConst:
@@ -294,7 +298,7 @@ func (r IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx cont
 			if err != nil {
 				return "", err
 			}
-			return checkAddressLive(ctx, *ip.Address)
+			return checkAddressLive(ctx, *ip.Address), nil
 		}
 
 	}
@@ -312,19 +316,20 @@ func (r IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx cont
 	if err != nil {
 		return "", err
 	}
-	return checkAddressLive(ctx, *ip.Address)
+	return checkAddressLive(ctx, *ip.Address), nil
 }
 
-func checkAddressLive(ctx context.Context, addr string) (string, error) {
+func checkAddressLive(ctx context.Context, addr string) string {
+	log := logr.FromContextOrDiscard(ctx)
+	log.Info(fmt.Sprintf("checking if address %s is live", addr))
 	server, _ := net.ResolveTCPAddr("tcp", addr+":22")
 	conn, err := net.DialTCP("tcp", nil, server)
 	if err != nil {
-		log := logr.FromContextOrDiscard(ctx)
 		log.Info("failed to connect to IBM host " + addr)
-		return "", nil
+		return ""
 	}
-	defer conn.Close()
-	return addr, nil
+	_ = conn.Close()
+	return addr
 
 }
 
