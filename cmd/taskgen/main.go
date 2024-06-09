@@ -189,7 +189,7 @@ fi
 		ret += "\nbuildah pull oci:rhtap-final-image"
 		ret += "\nbuildah images"
 		ret += "\nbuildah tag localhost/rhtap-final-image \"$IMAGE\""
-		ret += "\ncontainer=$(buildah from --pull-never \"$IMAGE\")\nbuildah mount \"$container\" | tee /workspace/container_path\necho $container > /workspace/container_name"
+		ret += "\ncontainer=$(buildah from --pull-never \"$IMAGE\")\nbuildah mount \"$container\" | tee /shared/container_path\necho $container > /shared/container_name"
 
 		for _, i := range strings.Split(ret, "\n") {
 			if strings.HasSuffix(i, " ") {
