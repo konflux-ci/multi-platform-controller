@@ -126,3 +126,16 @@ data:
   # Setting this flag to "true" will enable the use of StepActions in Steps
   # This feature is in preview mode and not implemented yet. Please check #7259 for updates.
   enable-step-actions: "false"
+  # Setting this flag to "true" will enable the use of Artifacts in Steps
+  # This feature is in preview mode and not implemented yet. Please check #7693 for updates.
+  enable-artifacts: "false"
+  # Setting this flag to "true" will enable the built-in param input validation via param enum.
+  enable-param-enum: "false"
+  # Setting this flag to "pipeline,pipelinerun,taskrun" will prevent users from creating
+  # embedded spec Taskruns or Pipelineruns for Pipeline, Pipelinerun and taskrun
+  # respectively. We can specify "pipeline" to disable for Pipeline resource only.
+  # "pipelinerun" for Pipelinerun and "taskrun" for Taskrun. Or a combination of
+  # these.
+  disable-inline-spec: ""
+  # Setting this flag to "true" will enable the use of concise resolver syntax
+  enable-concise-resolver-syntax: "false"
