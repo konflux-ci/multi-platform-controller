@@ -126,14 +126,25 @@ func (r AwsDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.C
 		InstanceInitiatedShutdownBehavior: types.ShutdownBehaviorTerminate,
 		TagSpecifications:                 []types.TagSpecification{{ResourceType: types.ResourceTypeInstance, Tags: []types.Tag{{Key: aws.String(MultiPlatformManaged), Value: aws.String("true")}, {Key: aws.String(cloud.InstanceTag), Value: aws.String(instanceTag)}, {Key: aws.String("Name"), Value: aws.String("multi-platform-builder-" + name)}}}},
 	}
-	if r.SpotInstancePrice != "" {
+	spotInstanceRequested := r.SpotInstancePrice != ""
+	if spotInstanceRequested {
 		launchInput.InstanceMarketOptions = &types.InstanceMarketOptionsRequest{MarketType: types.MarketTypeSpot, SpotOptions: &types.SpotMarketOptions{MaxPrice: aws.String(r.SpotInstancePrice), InstanceInterruptionBehavior: types.InstanceInterruptionBehaviorTerminate, SpotInstanceType: types.SpotInstanceTypeOneTime}}
 	}
 
 	// Launch the new EC2 instance
-	result, err := ec2Client.RunInstances(context.TODO(), launchInput)
+	result, err := ec2Client.RunInstances(ctx, launchInput)
 	if err != nil {
-		return "", err
+		// If often we can fail if there are no spot instances available
+		// Try again with non spot instances
+		if !spotInstanceRequested {
+			return "", err
+		}
+		log.Error(err, fmt.Sprintf("failed to launch spot instance, attempting to launch normal instance for %s", name))
+		launchInput.InstanceMarketOptions = nil
+		result, err = ec2Client.RunInstances(ctx, launchInput)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	// The result will contain information about the newly created instance(s)
