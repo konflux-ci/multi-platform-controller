@@ -1,4 +1,4 @@
-module github.com/redhat-appstudio/multi-platform-controller
+module github.com/konflux-ci/multi-platform-controller
 
 go 1.20
 

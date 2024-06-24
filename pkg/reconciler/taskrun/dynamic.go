@@ -3,15 +3,16 @@ package taskrun
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"time"
+
 	"github.com/go-logr/logr"
-	"github.com/redhat-appstudio/multi-platform-controller/pkg/cloud"
-	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
+	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"strconv"
-	"time"
 )
 
 type DynamicResolver struct {

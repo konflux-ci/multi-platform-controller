@@ -18,7 +18,7 @@ echo "To modify the current version, please modify this in the go.mod"
 echo ""
 
 GOFLAGS="" GOPATH=${GOPATH} /bin/bash ${CODEGEN_PKG}/generate-groups.sh "deepcopy,client,informer,lister" \
-  github.com/redhat-appstudio/multi-platform-controller/pkg/client \
-  github.com/redhat-appstudio/multi-platform-controller/pkg/apis \
+  github.com/konflux-ci/multi-platform-controller/pkg/client \
+  github.com/konflux-ci/multi-platform-controller/pkg/apis \
   "hostpool:v1alpha1" \
   --go-header-file "${SCRIPT_ROOT}/hack/boilerplate.go.txt"

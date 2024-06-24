@@ -3,13 +3,14 @@ package controller
 import (
 	"context"
 	"fmt"
-	"github.com/redhat-appstudio/multi-platform-controller/pkg/reconciler/taskrun"
+	"os"
+	"time"
+
+	"github.com/konflux-ci/multi-platform-controller/pkg/reconciler/taskrun"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
-	"os"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"time"
 
 	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 
