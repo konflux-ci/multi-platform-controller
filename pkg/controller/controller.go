@@ -3,15 +3,15 @@ package controller
 import (
 	"context"
 	"fmt"
-	"github.com/redhat-appstudio/multi-platform-controller/pkg/reconciler/taskrun"
+	"os"
+	"time"
+
+	"github.com/konflux-ci/multi-platform-controller/pkg/reconciler/taskrun"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
-	"os"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"time"
 
-	jvmbs "github.com/redhat-appstudio/jvm-build-service/pkg/apis/jvmbuildservice/v1alpha1"
 	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
@@ -27,6 +27,8 @@ import (
 var (
 	controllerLog = ctrl.Log.WithName("controller")
 )
+
+const TaskRunLabel = "tekton.dev/taskRun"
 
 func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 	// do not check tekton in kcp
@@ -53,23 +55,11 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 		return nil, err
 	}
 
-	if err := jvmbs.AddToScheme(options.Scheme); err != nil {
-		return nil, err
-	}
-
 	if err := pipelinev1.AddToScheme(options.Scheme); err != nil {
 		return nil, err
 	}
 	var mgr ctrl.Manager
 	var err error
-
-	//if we are running this locally on the same cluster as the ckcp we want to ignore any synced pipeline runs
-	multiArchPipelines := labels.NewSelector()
-	requirement, lerr := labels.NewRequirement(taskrun.MultiPlatformLabel, selection.Exists, nil)
-	if lerr != nil {
-		return nil, lerr
-	}
-	multiArchPipelines = multiArchPipelines.Add(*requirement)
 
 	configMapSelector := labels.NewSelector()
 	configMapLabels, lerr := labels.NewRequirement(taskrun.ConfigMapLabel, selection.Exists, []string{})
@@ -85,11 +75,18 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 	}
 	secretSelector = secretSelector.Add(*secretLabels)
 
+	podSelector := labels.NewSelector()
+	podLabels, lerr := labels.NewRequirement(TaskRunLabel, selection.Exists, []string{})
+	if lerr != nil {
+		return nil, lerr
+	}
+	podSelector = podSelector.Add(*podLabels)
 	options.Cache = cache.Options{
 		ByObject: map[client.Object]cache.ByObject{
-			&pipelinev1.TaskRun{}: {Label: multiArchPipelines},
+			&pipelinev1.TaskRun{}: {},
 			&v1.Secret{}:          {Label: secretSelector},
 			&v1.ConfigMap{}:       {Label: configMapSelector},
+			&v1.Pod{}:             {Label: podSelector},
 		},
 	}
 	operatorNamespace := os.Getenv("POD_NAMESPACE")
@@ -102,6 +99,19 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 	if err := taskrun.SetupNewReconcilerWithManager(mgr, operatorNamespace); err != nil {
 		return nil, err
 	}
+
+	ticker := time.NewTicker(time.Hour * 24)
+	go func() {
+		for range ticker.C {
+			taskrun.UpdateHostPools(operatorNamespace, mgr.GetClient(), &controllerLog)
+		}
+	}()
+	timer := time.NewTimer(time.Minute)
+	go func() {
+		<-timer.C
+		//update the nodes on startup
+		taskrun.UpdateHostPools(operatorNamespace, mgr.GetClient(), &controllerLog)
+	}()
 
 	return mgr, nil
 }

@@ -5,17 +5,19 @@ import (
 	"crypto/md5" //#nosec
 	"encoding/base64"
 	"encoding/json"
-	"github.com/IBM/go-sdk-core/v4/core"
-	"github.com/go-logr/logr"
-	"github.com/google/uuid"
-	"github.com/redhat-appstudio/multi-platform-controller/pkg/cloud"
-	v1 "k8s.io/api/core/v1"
-	types2 "k8s.io/apimachinery/pkg/types"
+	"fmt"
 	"os"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/IBM/go-sdk-core/v5/core"
+	"github.com/go-logr/logr"
+	"github.com/google/uuid"
+	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
+	v1 "k8s.io/api/core/v1"
+	types2 "k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func IBMPowerProvider(platform string, config map[string]string, systemNamespace string) cloud.CloudProvider {
@@ -41,7 +43,7 @@ func IBMPowerProvider(platform string, config map[string]string, systemNamespace
 	}
 }
 
-func (r IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, taskRunName string, instanceTag string) (cloud.InstanceIdentifier, error) {
+func (r IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunName string, instanceTag string) (cloud.InstanceIdentifier, error) {
 	service, err := r.authenticate(kubeClient, ctx)
 	if err != nil {
 		return "", err
@@ -52,7 +54,7 @@ func (r IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, log *log
 		return "", err
 	}
 	name := instanceTag + strings.Replace(strings.ToLower(base64.URLEncoding.EncodeToString(md5.New().Sum(binary))[0:20]), "_", "-", -1) + "x" //#nosec
-	instance, err := r.createServerInstance(ctx, log, service, name)
+	instance, err := r.createServerInstance(ctx, service, name)
 	if err != nil {
 		return "", err
 	}
@@ -60,7 +62,7 @@ func (r IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, log *log
 
 }
 
-func (r IBMPowerDynamicConfig) CountInstances(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceTag string) (int, error) {
+func (r IBMPowerDynamicConfig) CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error) {
 	service, err := r.authenticate(kubeClient, ctx)
 	if err != nil {
 		return 0, err
@@ -125,19 +127,23 @@ func (r IBMPowerDynamicConfig) authenticate(kubeClient client.Client, ctx contex
 	return baseService, nil
 }
 
-func (r IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
+func (r IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
 	service, err := r.authenticate(kubeClient, ctx)
 	if err != nil {
 		return "", err
 	}
 	ip, err := r.lookupIp(ctx, service, string(instanceId))
 	if err != nil {
-		return "", err
+		return "", nil //todo: check for permanent errors
 	}
-	return checkAddressLive(ip, log)
+	return checkAddressLive(ctx, ip), err
 }
 
-func (r IBMPowerDynamicConfig) TerminateInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
+func (r IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
+	return nil, fmt.Errorf("not impelemented")
+}
+func (r IBMPowerDynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
+	log := logr.FromContextOrDiscard(ctx)
 	log.Info("attempting to terminate power server %s", "instance", instanceId)
 	service, err := r.authenticate(kubeClient, ctx)
 	if err != nil {
@@ -192,8 +198,9 @@ func (r IBMPowerDynamicConfig) SshUser() string {
 	return "root"
 }
 
-func (r IBMPowerDynamicConfig) createServerInstance(ctx context.Context, log *logr.Logger, service *core.BaseService, name string) (cloud.InstanceIdentifier, error) {
+func (r IBMPowerDynamicConfig) createServerInstance(ctx context.Context, service *core.BaseService, name string) (cloud.InstanceIdentifier, error) {
 
+	log := logr.FromContextOrDiscard(ctx)
 	builder := core.NewRequestBuilder(core.POST)
 	builder = builder.WithContext(ctx)
 	builder.EnableGzipCompression = service.GetEnableGzipCompression()
@@ -201,6 +208,7 @@ func (r IBMPowerDynamicConfig) createServerInstance(ctx context.Context, log *lo
 	pathParamsMap := map[string]string{
 		"cloud": r.pCloudId(),
 	}
+	network := strings.Split(r.Network, ",")
 	body := struct {
 		ServerName  string   `json:"serverName"`
 		ImageId     string   `json:"imageId"`
@@ -216,7 +224,7 @@ func (r IBMPowerDynamicConfig) createServerInstance(ctx context.Context, log *lo
 		Processors:  r.Cores,
 		ProcType:    "shared",
 		Memory:      r.Memory,
-		NetworkIDs:  []string{r.Network},
+		NetworkIDs:  network,
 		KeyPairName: r.Key,
 		SysType:     r.System,
 	}
@@ -268,11 +276,24 @@ func (r IBMPowerDynamicConfig) lookupIp(ctx context.Context, service *core.BaseS
 	if len(nwList) == 0 {
 		return "", err
 	}
+
+	internal := string(nwList[0]["ipAddress"])
 	external := string(nwList[0]["externalIP"])
-	if external[0] == '"' {
-		return external[1 : len(external)-1], nil
+
+	var ip string
+
+	if external != "" {
+		ip = external
+	} else if internal != "" {
+		ip = internal
+	} else {
+		return "", err
 	}
-	return external, nil
+
+	if ip[0] == '"' {
+		return ip[1 : len(ip)-1], nil
+	}
+	return ip, nil
 }
 
 func (r IBMPowerDynamicConfig) lookupInstance(ctx context.Context, service *core.BaseService, pvmId string) (map[string]json.RawMessage, error) {

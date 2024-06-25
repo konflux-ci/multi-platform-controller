@@ -4,53 +4,46 @@ package ec2
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/aws"
 	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
-	internalauth "github.com/aws/aws-sdk-go-v2/internal/auth"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	smithyendpoints "github.com/aws/smithy-go/endpoints"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// Creates a set of DHCP options for your VPC. After creating the set, you must
-// associate it with the VPC, causing all existing and new instances that you
-// launch in the VPC to use this set of DHCP options. The following are the
-// individual DHCP options you can specify. For more information about the options,
-// see RFC 2132 (http://www.ietf.org/rfc/rfc2132.txt) .
-//   - domain-name-servers - The IP addresses of up to four domain name servers, or
-//     AmazonProvidedDNS. The default DHCP option set specifies AmazonProvidedDNS. If
-//     specifying more than one domain name server, specify the IP addresses in a
-//     single parameter, separated by commas. To have your instance receive a custom
-//     DNS hostname as specified in domain-name , you must set domain-name-servers to
-//     a custom DNS server.
+// Creates a custom set of DHCP options. After you create a DHCP option set, you
+// associate it with a VPC. After you associate a DHCP option set with a VPC, all
+// existing and newly launched instances in the VPC use this set of DHCP options.
+// The following are the individual DHCP options you can specify. For more
+// information, see DHCP options sets (https://docs.aws.amazon.com/vpc/latest/userguide/VPC_DHCP_Options.html)
+// in the Amazon VPC User Guide.
 //   - domain-name - If you're using AmazonProvidedDNS in us-east-1 , specify
-//     ec2.internal . If you're using AmazonProvidedDNS in another Region, specify
-//     region.compute.internal (for example, ap-northeast-1.compute.internal ).
-//     Otherwise, specify a domain name (for example, ExampleCompany.com ). This
-//     value is used to complete unqualified DNS hostnames. Important: Some Linux
-//     operating systems accept multiple domain names separated by spaces. However,
-//     Windows and other Linux operating systems treat the value as a single domain,
-//     which results in unexpected behavior. If your DHCP options set is associated
-//     with a VPC that has instances with multiple operating systems, specify only one
-//     domain name.
-//   - ntp-servers - The IP addresses of up to four Network Time Protocol (NTP)
-//     servers.
+//     ec2.internal . If you're using AmazonProvidedDNS in any other Region, specify
+//     region.compute.internal . Otherwise, specify a custom domain name. This value
+//     is used to complete unqualified DNS hostnames. Some Linux operating systems
+//     accept multiple domain names separated by spaces. However, Windows and other
+//     Linux operating systems treat the value as a single domain, which results in
+//     unexpected behavior. If your DHCP option set is associated with a VPC that has
+//     instances running operating systems that treat the value as a single domain,
+//     specify only one domain name.
+//   - domain-name-servers - The IP addresses of up to four DNS servers, or
+//     AmazonProvidedDNS. To specify multiple domain name servers in a single
+//     parameter, separate the IP addresses using commas. To have your instances
+//     receive custom DNS hostnames as specified in domain-name , you must specify a
+//     custom DNS server.
+//   - ntp-servers - The IP addresses of up to eight Network Time Protocol (NTP)
+//     servers (four IPv4 addresses and four IPv6 addresses).
 //   - netbios-name-servers - The IP addresses of up to four NetBIOS name servers.
 //   - netbios-node-type - The NetBIOS node type (1, 2, 4, or 8). We recommend that
-//     you specify 2 (broadcast and multicast are not currently supported). For more
-//     information about these node types, see RFC 2132 (http://www.ietf.org/rfc/rfc2132.txt)
-//     .
-//
-// Your VPC automatically starts out with a set of DHCP options that includes only
-// a DNS server that we provide (AmazonProvidedDNS). If you create a set of
-// options, and if your VPC has an internet gateway, make sure to set the
-// domain-name-servers option either to AmazonProvidedDNS or to a domain name
-// server of your choice. For more information, see DHCP options sets (https://docs.aws.amazon.com/vpc/latest/userguide/VPC_DHCP_Options.html)
-// in the Amazon VPC User Guide.
+//     you specify 2. Broadcast and multicast are not supported. For more information
+//     about NetBIOS node types, see RFC 2132 (http://www.ietf.org/rfc/rfc2132.txt) .
+//   - ipv6-address-preferred-lease-time - A value (in seconds, minutes, hours, or
+//     years) for how frequently a running instance with an IPv6 assigned to it goes
+//     through DHCPv6 lease renewal. Acceptable values are between 140 and 2147483647
+//     seconds (approximately 68 years). If no value is entered, the default lease time
+//     is 140 seconds. If you use long-term addressing for EC2 instances, you can
+//     increase the lease time and avoid frequent lease renewal requests. Lease renewal
+//     typically occurs when half of the lease time has elapsed.
 func (c *Client) CreateDhcpOptions(ctx context.Context, params *CreateDhcpOptionsInput, optFns ...func(*Options)) (*CreateDhcpOptionsOutput, error) {
 	if params == nil {
 		params = &CreateDhcpOptionsInput{}
@@ -97,6 +90,9 @@ type CreateDhcpOptionsOutput struct {
 }
 
 func (c *Client) addOperationCreateDhcpOptionsMiddlewares(stack *middleware.Stack, options Options) (err error) {
+	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+		return err
+	}
 	err = stack.Serialize.Add(&awsEc2query_serializeOpCreateDhcpOptions{}, middleware.After)
 	if err != nil {
 		return err
@@ -105,34 +101,35 @@ func (c *Client) addOperationCreateDhcpOptionsMiddlewares(stack *middleware.Stac
 	if err != nil {
 		return err
 	}
+	if err := addProtocolFinalizerMiddlewares(stack, options, "CreateDhcpOptions"); err != nil {
+		return fmt.Errorf("add protocol finalizers: %v", err)
+	}
+
 	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
 		return err
 	}
 	if err = addSetLoggerMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
+	if err = addClientRequestID(stack); err != nil {
 		return err
 	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
+	if err = addComputeContentLength(stack); err != nil {
 		return err
 	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRetry(stack, options); err != nil {
 		return err
 	}
-	if err = addHTTPSignerV4Middleware(stack, options); err != nil {
+	if err = addRawResponseToMetadata(stack); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
+	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
 	if err = addClientUserAgent(stack, options); err != nil {
@@ -144,7 +141,7 @@ func (c *Client) addOperationCreateDhcpOptionsMiddlewares(stack *middleware.Stac
 	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
-	if err = addCreateDhcpOptionsResolveEndpointMiddleware(stack, options); err != nil {
+	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
 		return err
 	}
 	if err = addOpCreateDhcpOptionsValidationMiddleware(stack); err != nil {
@@ -153,7 +150,7 @@ func (c *Client) addOperationCreateDhcpOptionsMiddlewares(stack *middleware.Stac
 	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opCreateDhcpOptions(options.Region), middleware.Before); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
+	if err = addRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -165,7 +162,7 @@ func (c *Client) addOperationCreateDhcpOptionsMiddlewares(stack *middleware.Stac
 	if err = addRequestResponseLogging(stack, options); err != nil {
 		return err
 	}
-	if err = addendpointDisableHTTPSMiddleware(stack, options); err != nil {
+	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
 	return nil
@@ -175,130 +172,6 @@ func newServiceMetadataMiddleware_opCreateDhcpOptions(region string) *awsmiddlew
 	return &awsmiddleware.RegisterServiceMetadata{
 		Region:        region,
 		ServiceID:     ServiceID,
-		SigningName:   "ec2",
 		OperationName: "CreateDhcpOptions",
 	}
-}
-
-type opCreateDhcpOptionsResolveEndpointMiddleware struct {
-	EndpointResolver EndpointResolverV2
-	BuiltInResolver  builtInParameterResolver
-}
-
-func (*opCreateDhcpOptionsResolveEndpointMiddleware) ID() string {
-	return "ResolveEndpointV2"
-}
-
-func (m *opCreateDhcpOptionsResolveEndpointMiddleware) HandleSerialize(ctx context.Context, in middleware.SerializeInput, next middleware.SerializeHandler) (
-	out middleware.SerializeOutput, metadata middleware.Metadata, err error,
-) {
-	if awsmiddleware.GetRequiresLegacyEndpoints(ctx) {
-		return next.HandleSerialize(ctx, in)
-	}
-
-	req, ok := in.Request.(*smithyhttp.Request)
-	if !ok {
-		return out, metadata, fmt.Errorf("unknown transport type %T", in.Request)
-	}
-
-	if m.EndpointResolver == nil {
-		return out, metadata, fmt.Errorf("expected endpoint resolver to not be nil")
-	}
-
-	params := EndpointParameters{}
-
-	m.BuiltInResolver.ResolveBuiltIns(&params)
-
-	var resolvedEndpoint smithyendpoints.Endpoint
-	resolvedEndpoint, err = m.EndpointResolver.ResolveEndpoint(ctx, params)
-	if err != nil {
-		return out, metadata, fmt.Errorf("failed to resolve service endpoint, %w", err)
-	}
-
-	req.URL = &resolvedEndpoint.URI
-
-	for k := range resolvedEndpoint.Headers {
-		req.Header.Set(
-			k,
-			resolvedEndpoint.Headers.Get(k),
-		)
-	}
-
-	authSchemes, err := internalauth.GetAuthenticationSchemes(&resolvedEndpoint.Properties)
-	if err != nil {
-		var nfe *internalauth.NoAuthenticationSchemesFoundError
-		if errors.As(err, &nfe) {
-			// if no auth scheme is found, default to sigv4
-			signingName := "ec2"
-			signingRegion := m.BuiltInResolver.(*builtInResolver).Region
-			ctx = awsmiddleware.SetSigningName(ctx, signingName)
-			ctx = awsmiddleware.SetSigningRegion(ctx, signingRegion)
-
-		}
-		var ue *internalauth.UnSupportedAuthenticationSchemeSpecifiedError
-		if errors.As(err, &ue) {
-			return out, metadata, fmt.Errorf(
-				"This operation requests signer version(s) %v but the client only supports %v",
-				ue.UnsupportedSchemes,
-				internalauth.SupportedSchemes,
-			)
-		}
-	}
-
-	for _, authScheme := range authSchemes {
-		switch authScheme.(type) {
-		case *internalauth.AuthenticationSchemeV4:
-			v4Scheme, _ := authScheme.(*internalauth.AuthenticationSchemeV4)
-			var signingName, signingRegion string
-			if v4Scheme.SigningName == nil {
-				signingName = "ec2"
-			} else {
-				signingName = *v4Scheme.SigningName
-			}
-			if v4Scheme.SigningRegion == nil {
-				signingRegion = m.BuiltInResolver.(*builtInResolver).Region
-			} else {
-				signingRegion = *v4Scheme.SigningRegion
-			}
-			if v4Scheme.DisableDoubleEncoding != nil {
-				// The signer sets an equivalent value at client initialization time.
-				// Setting this context value will cause the signer to extract it
-				// and override the value set at client initialization time.
-				ctx = internalauth.SetDisableDoubleEncoding(ctx, *v4Scheme.DisableDoubleEncoding)
-			}
-			ctx = awsmiddleware.SetSigningName(ctx, signingName)
-			ctx = awsmiddleware.SetSigningRegion(ctx, signingRegion)
-			break
-		case *internalauth.AuthenticationSchemeV4A:
-			v4aScheme, _ := authScheme.(*internalauth.AuthenticationSchemeV4A)
-			if v4aScheme.SigningName == nil {
-				v4aScheme.SigningName = aws.String("ec2")
-			}
-			if v4aScheme.DisableDoubleEncoding != nil {
-				// The signer sets an equivalent value at client initialization time.
-				// Setting this context value will cause the signer to extract it
-				// and override the value set at client initialization time.
-				ctx = internalauth.SetDisableDoubleEncoding(ctx, *v4aScheme.DisableDoubleEncoding)
-			}
-			ctx = awsmiddleware.SetSigningName(ctx, *v4aScheme.SigningName)
-			ctx = awsmiddleware.SetSigningRegion(ctx, v4aScheme.SigningRegionSet[0])
-			break
-		case *internalauth.AuthenticationSchemeNone:
-			break
-		}
-	}
-
-	return next.HandleSerialize(ctx, in)
-}
-
-func addCreateDhcpOptionsResolveEndpointMiddleware(stack *middleware.Stack, options Options) error {
-	return stack.Serialize.Insert(&opCreateDhcpOptionsResolveEndpointMiddleware{
-		EndpointResolver: options.EndpointResolverV2,
-		BuiltInResolver: &builtInResolver{
-			Region:       options.Region,
-			UseDualStack: options.EndpointOptions.UseDualStackEndpoint,
-			UseFIPS:      options.EndpointOptions.UseFIPSEndpoint,
-			Endpoint:     options.BaseEndpoint,
-		},
-	}, "ResolveEndpoint", middleware.After)
 }

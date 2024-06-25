@@ -2,9 +2,11 @@ package taskrun
 
 import (
 	"context"
+	"fmt"
 	"github.com/go-logr/logr"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v12 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/utils/strings/slices"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -18,10 +20,11 @@ type HostPool struct {
 	targetPlatform string
 }
 
-func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, instanceTag string) (reconcile.Result, error) {
+func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
+	log := logr.FromContextOrDiscard(ctx)
 	if len(hp.hosts) == 0 {
 		//no hosts configured
-		return reconcile.Result{}, r.createErrorSecret(ctx, tr, secretName, "no hosts configured")
+		return reconcile.Result{}, fmt.Errorf("no hosts configured")
 	}
 	failedString := tr.Annotations[FailedHosts]
 	failed := strings.Split(failedString, ",")
@@ -69,7 +72,7 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.
 	}
 	if !hostWithOurPlatform {
 		log.Info("no hosts with requested platform", "platform", hp.targetPlatform, "failed", failedString)
-		return reconcile.Result{}, r.createErrorSecret(ctx, tr, secretName, "no hosts configured for platform "+hp.targetPlatform+", attempted hosts: "+failedString)
+		return reconcile.Result{}, fmt.Errorf("no hosts configured for platform %s attempted hosts: %s", hp.targetPlatform, failedString)
 	}
 	if selected == nil {
 		if tr.Labels[WaitingForPlatformLabel] == platformLabel(hp.targetPlatform) {
@@ -95,7 +98,7 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.
 		return reconcile.Result{}, err
 	}
 
-	err = launchProvisioningTask(r, ctx, log, tr, secretName, selected.Secret, selected.Address, selected.User)
+	err = launchProvisioningTask(r, ctx, tr, secretName, selected.Secret, selected.Address, selected.User, hp.targetPlatform, "")
 
 	if err != nil {
 		//ugh, try and unassign
@@ -103,27 +106,43 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.
 		updateErr := r.client.Update(ctx, tr)
 		if updateErr != nil {
 			log.Error(updateErr, "Could not unassign task after provisioning failure")
-			_ = r.createErrorSecret(ctx, tr, secretName, "Could not unassign task after provisioning failure")
+			return reconcile.Result{}, err
 		} else {
 			log.Error(err, "Failed to provision host from pool")
-			_ = r.createErrorSecret(ctx, tr, secretName, "Failed to provision host from pool "+err.Error())
+			return reconcile.Result{}, err
 		}
-		return reconcile.Result{}, err
 	}
 	return reconcile.Result{}, nil
 }
 
-func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, selectedHost string) error {
+func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string, selectedHost string) error {
+	log := logr.FromContextOrDiscard(ctx)
 	selected := hp.hosts[selectedHost]
 	if selected != nil {
+		labelMap := map[string]string{TaskTypeLabel: TaskTypeClean, UserTaskName: tr.Name, UserTaskNamespace: tr.Namespace}
+		list := v1.TaskRunList{}
+		err := r.client.List(ctx, &list, client.MatchingLabels(labelMap))
+		if err != nil {
+			log.Error(err, "failed to check for existing cleanup task")
+		} else {
+			if len(list.Items) > 0 {
+				log.Info("cleanup task already exists")
+				return nil
+			}
+		}
+
 		log.Info("starting cleanup task")
 		//kick off the clean task
 		//kick off the provisioning task
 		provision := v1.TaskRun{}
 		provision.GenerateName = "cleanup-task"
 		provision.Namespace = r.operatorNamespace
-		provision.Labels = map[string]string{TaskTypeLabel: TaskTypeClean, UserTaskName: tr.Name, UserTaskNamespace: tr.Namespace, MultiPlatformLabel: "true"}
+		provision.Labels = labelMap
+		provision.Annotations = map[string]string{TaskTargetPlatformAnnotation: hp.targetPlatform}
 		provision.Spec.TaskRef = &v1.TaskRef{Name: "clean-shared-host"}
+		provision.Spec.Retries = 3
+		compute := map[v12.ResourceName]resource.Quantity{v12.ResourceCPU: resource.MustParse("100m"), v12.ResourceMemory: resource.MustParse("128Mi")}
+		provision.Spec.ComputeResources = &v12.ResourceRequirements{Requests: compute}
 		provision.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: selected.Secret}}}
 		provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
 		provision.Spec.Params = []v1.Param{
@@ -148,7 +167,7 @@ func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, log *log
 				Value: *v1.NewStructuredValues(selected.User),
 			},
 		}
-		err := r.client.Create(ctx, &provision)
+		err = r.client.Create(ctx, &provision)
 		return err
 	}
 	return nil

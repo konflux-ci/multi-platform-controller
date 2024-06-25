@@ -27,12 +27,18 @@ import (
 )
 
 const (
-	// StableAPIFields is the value used for "enable-api-fields" when only stable APIs should be usable.
+	// StableAPIFields is the value used for API-driven features of stable stability level.
 	StableAPIFields = "stable"
-	// AlphaAPIFields is the value used for "enable-api-fields" when alpha APIs should be usable as well.
+	// AlphaAPIFields is the value used for API-driven features of alpha stability level.
 	AlphaAPIFields = "alpha"
-	// BetaAPIFields is the value used for "enable-api-fields" when beta APIs should be usable as well.
+	// BetaAPIFields is the value used for API-driven features of beta stability level.
 	BetaAPIFields = "beta"
+	// Features of "alpha" stability level are disabled by default
+	DefaultAlphaFeatureEnabled = false
+	// Features of "beta" stability level are disabled by default
+	DefaultBetaFeatureEnabled = false
+	// Features of "stable" stability level are enabled by default
+	DefaultStableFeatureEnabled = true
 	// FailNoMatchPolicy is the value used for "trusted-resources-verification-no-match-policy" to fail TaskRun or PipelineRun
 	// when no matching policies are found
 	FailNoMatchPolicy = "fail"
@@ -42,6 +48,14 @@ const (
 	// IgnoreNoMatchPolicy is the value used for "trusted-resources-verification-no-match-policy" to skip verification
 	// when no matching policies are found
 	IgnoreNoMatchPolicy = "ignore"
+	// CoscheduleWorkspaces is the value used for "coschedule" to coschedule PipelineRun Pods sharing the same PVC workspaces to the same node
+	CoscheduleWorkspaces = "workspaces"
+	// CoschedulePipelineRuns is the value used for "coschedule" to coschedule all PipelineRun Pods to the same node
+	CoschedulePipelineRuns = "pipelineruns"
+	// CoscheduleIsolatePipelineRun is the value used for "coschedule" to coschedule all PipelineRun Pods to the same node, and only allows one PipelineRun to run on a node at a time
+	CoscheduleIsolatePipelineRun = "isolate-pipelinerun"
+	// CoscheduleDisabled is the value used for "coschedule" to disabled PipelineRun Pods coschedule
+	CoscheduleDisabled = "disabled"
 	// ResultExtractionMethodTerminationMessage is the value used for "results-from" as a way to extract results from tasks using kubernetes termination message.
 	ResultExtractionMethodTerminationMessage = "termination-message"
 	// ResultExtractionMethodSidecarLogs is the value used for "results-from" as a way to extract results from tasks using sidecar logs.
@@ -59,23 +73,39 @@ const (
 	// DefaultEnableTektonOciBundles is the default value for "enable-tekton-oci-bundles".
 	DefaultEnableTektonOciBundles = false
 	// DefaultEnableAPIFields is the default value for "enable-api-fields".
-	DefaultEnableAPIFields = StableAPIFields
+	DefaultEnableAPIFields = BetaAPIFields
 	// DefaultSendCloudEventsForRuns is the default value for "send-cloudevents-for-runs".
 	DefaultSendCloudEventsForRuns = false
 	// EnforceNonfalsifiabilityWithSpire is the value used for  "enable-nonfalsifiability" when SPIRE is used to enable non-falsifiability.
 	EnforceNonfalsifiabilityWithSpire = "spire"
 	// EnforceNonfalsifiabilityNone is the value used for  "enable-nonfalsifiability" when non-falsifiability is not enabled.
-	EnforceNonfalsifiabilityNone = ""
+	EnforceNonfalsifiabilityNone = "none"
 	// DefaultEnforceNonfalsifiability is the default value for "enforce-nonfalsifiability".
 	DefaultEnforceNonfalsifiability = EnforceNonfalsifiabilityNone
 	// DefaultNoMatchPolicyConfig is the default value for "trusted-resources-verification-no-match-policy".
 	DefaultNoMatchPolicyConfig = IgnoreNoMatchPolicy
 	// DefaultEnableProvenanceInStatus is the default value for "enable-provenance-status".
-	DefaultEnableProvenanceInStatus = false
+	DefaultEnableProvenanceInStatus = true
 	// DefaultResultExtractionMethod is the default value for ResultExtractionMethod
 	DefaultResultExtractionMethod = ResultExtractionMethodTerminationMessage
 	// DefaultMaxResultSize is the default value in bytes for the size of a result
 	DefaultMaxResultSize = 4096
+	// DefaultSetSecurityContext is the default value for "set-security-context"
+	DefaultSetSecurityContext = false
+	// DefaultCoschedule is the default value for coschedule
+	DefaultCoschedule = CoscheduleWorkspaces
+	// KeepPodOnCancel is the flag used to enable cancelling a pod using the entrypoint, and keep pod on cancel
+	KeepPodOnCancel = "keep-pod-on-cancel"
+	// DefaultEnableKeepPodOnCancel is the default value for "keep-pod-on-cancel"
+	DefaultEnableKeepPodOnCancel = false
+	// EnableCELInWhenExpression is the flag to enabled CEL in WhenExpression
+	EnableCELInWhenExpression = "enable-cel-in-whenexpression"
+	// DefaultEnableCELInWhenExpression is the default value for EnableCELInWhenExpression
+	DefaultEnableCELInWhenExpression = false
+	// EnableStepActions is the flag to enable the use of StepActions in Steps
+	EnableStepActions = "enable-step-actions"
+	// DefaultEnableStepActions is the default value for EnableStepActions
+	DefaultEnableStepActions = false
 
 	disableAffinityAssistantKey         = "disable-affinity-assistant"
 	disableCredsInitKey                 = "disable-creds-init"
@@ -90,7 +120,12 @@ const (
 	enableProvenanceInStatus            = "enable-provenance-in-status"
 	resultExtractionMethod              = "results-from"
 	maxResultSize                       = "max-result-size"
+	setSecurityContextKey               = "set-security-context"
+	coscheduleKey                       = "coschedule"
 )
+
+// DefaultFeatureFlags holds all the default configurations for the feature flags configmap.
+var DefaultFeatureFlags, _ = NewFeatureFlagsFromMap(map[string]string{})
 
 // FeatureFlags holds the features configurations
 // +k8s:deepcopy-gen=true
@@ -107,6 +142,7 @@ type FeatureFlags struct {
 	SendCloudEventsForRuns           bool
 	AwaitSidecarReadiness            bool
 	EnforceNonfalsifiability         string
+	EnableKeepPodOnCancel            bool
 	// VerificationNoMatchPolicy is the feature flag for "trusted-resources-verification-no-match-policy"
 	// VerificationNoMatchPolicy can be set to "ignore", "warn" and "fail" values.
 	// ignore: skip trusted resources verification when no matching verification policies found
@@ -116,6 +152,10 @@ type FeatureFlags struct {
 	EnableProvenanceInStatus  bool
 	ResultExtractionMethod    string
 	MaxResultSize             int
+	SetSecurityContext        bool
+	Coschedule                string
+	EnableCELInWhenExpression bool
+	EnableStepActions         bool
 }
 
 // GetFeatureFlagsConfigName returns the name of the configmap containing all
@@ -176,10 +216,24 @@ func NewFeatureFlagsFromMap(cfgMap map[string]string) (*FeatureFlags, error) {
 	if err := setMaxResultSize(cfgMap, DefaultMaxResultSize, &tc.MaxResultSize); err != nil {
 		return nil, err
 	}
-	if err := setEnforceNonFalsifiability(cfgMap, tc.EnableAPIFields, &tc.EnforceNonfalsifiability); err != nil {
+	if err := setFeature(KeepPodOnCancel, DefaultEnableKeepPodOnCancel, &tc.EnableKeepPodOnCancel); err != nil {
 		return nil, err
 	}
-
+	if err := setEnforceNonFalsifiability(cfgMap, &tc.EnforceNonfalsifiability); err != nil {
+		return nil, err
+	}
+	if err := setFeature(setSecurityContextKey, DefaultSetSecurityContext, &tc.SetSecurityContext); err != nil {
+		return nil, err
+	}
+	if err := setCoschedule(cfgMap, DefaultCoschedule, tc.DisableAffinityAssistant, &tc.Coschedule); err != nil {
+		return nil, err
+	}
+	if err := setFeature(EnableCELInWhenExpression, DefaultEnableCELInWhenExpression, &tc.EnableCELInWhenExpression); err != nil {
+		return nil, err
+	}
+	if err := setFeature(EnableStepActions, DefaultEnableStepActions, &tc.EnableStepActions); err != nil {
+		return nil, err
+	}
 	// Given that they are alpha features, Tekton Bundles and Custom Tasks should be switched on if
 	// enable-api-fields is "alpha". If enable-api-fields is not "alpha" then fall back to the value of
 	// each feature's individual flag.
@@ -212,9 +266,32 @@ func setEnabledAPIFields(cfgMap map[string]string, defaultValue string, feature 
 	return nil
 }
 
+// setCoschedule sets the "coschedule" flag based on the content of a given map.
+// If the feature gate is invalid or incompatible with `disable-affinity-assistant`, then an error is returned.
+func setCoschedule(cfgMap map[string]string, defaultValue string, disabledAffinityAssistant bool, feature *string) error {
+	value := defaultValue
+	if cfg, ok := cfgMap[coscheduleKey]; ok {
+		value = strings.ToLower(cfg)
+	}
+
+	switch value {
+	case CoscheduleDisabled, CoscheduleWorkspaces, CoschedulePipelineRuns, CoscheduleIsolatePipelineRun:
+		// validate that "coschedule" is compatible with "disable-affinity-assistant"
+		// "coschedule" must be set to "workspaces" when "disable-affinity-assistant" is false
+		if !disabledAffinityAssistant && value != CoscheduleWorkspaces {
+			return fmt.Errorf("coschedule value %v is incompatible with %v setting to false", value, disableAffinityAssistantKey)
+		}
+		*feature = value
+	default:
+		return fmt.Errorf("invalid value for feature flag %q: %q", coscheduleKey, value)
+	}
+
+	return nil
+}
+
 // setEnforceNonFalsifiability sets the "enforce-nonfalsifiability" flag based on the content of a given map.
 // If the feature gate is invalid, then an error is returned.
-func setEnforceNonFalsifiability(cfgMap map[string]string, enableAPIFields string, feature *string) error {
+func setEnforceNonFalsifiability(cfgMap map[string]string, feature *string) error {
 	var value = DefaultEnforceNonfalsifiability
 	if cfg, ok := cfgMap[enforceNonfalsifiability]; ok {
 		value = strings.ToLower(cfg)
@@ -223,22 +300,11 @@ func setEnforceNonFalsifiability(cfgMap map[string]string, enableAPIFields strin
 	// validate that "enforce-nonfalsifiability" is set to a valid value
 	switch value {
 	case EnforceNonfalsifiabilityNone, EnforceNonfalsifiabilityWithSpire:
-		break
+		*feature = value
+		return nil
 	default:
 		return fmt.Errorf("invalid value for feature flag %q: %q", enforceNonfalsifiability, value)
 	}
-
-	// validate that "enforce-nonfalsifiability" is set to allowed values for stability level
-	switch enableAPIFields {
-	case AlphaAPIFields:
-		*feature = value
-	default:
-		// Do not consider any form of non-falsifiability enforcement in non-alpha mode
-		if value != DefaultEnforceNonfalsifiability {
-			return fmt.Errorf("%q can be set to non-default values (%q) only in alpha", enforceNonfalsifiability, value)
-		}
-	}
-	return nil
 }
 
 // setResultExtractionMethod sets the "results-from" flag based on the content of a given map.
@@ -297,30 +363,9 @@ func NewFeatureFlagsFromConfigMap(config *corev1.ConfigMap) (*FeatureFlags, erro
 	return NewFeatureFlagsFromMap(config.Data)
 }
 
-// EnableAlphaAPIFields enables alpha features in an existing context (for use in testing)
-func EnableAlphaAPIFields(ctx context.Context) context.Context {
-	return setEnableAPIFields(ctx, AlphaAPIFields)
-}
-
-// EnableBetaAPIFields enables beta features in an existing context (for use in testing)
-func EnableBetaAPIFields(ctx context.Context) context.Context {
-	return setEnableAPIFields(ctx, BetaAPIFields)
-}
-
-// EnableStableAPIFields enables stable features in an existing context (for use in testing)
-func EnableStableAPIFields(ctx context.Context) context.Context {
-	return setEnableAPIFields(ctx, StableAPIFields)
-}
-
 // GetVerificationNoMatchPolicy returns the "trusted-resources-verification-no-match-policy" value
 func GetVerificationNoMatchPolicy(ctx context.Context) string {
 	return FromContextOrDefaults(ctx).FeatureFlags.VerificationNoMatchPolicy
-}
-
-// CheckAlphaOrBetaAPIFields return true if the enable-api-fields is either set to alpha or set to beta
-func CheckAlphaOrBetaAPIFields(ctx context.Context) bool {
-	cfg := FromContextOrDefaults(ctx)
-	return cfg.FeatureFlags.EnableAPIFields == AlphaAPIFields || cfg.FeatureFlags.EnableAPIFields == BetaAPIFields
 }
 
 // IsSpireEnabled checks if non-falsifiable provenance is enforced through SPIRE
@@ -328,15 +373,17 @@ func IsSpireEnabled(ctx context.Context) bool {
 	return FromContextOrDefaults(ctx).FeatureFlags.EnforceNonfalsifiability == EnforceNonfalsifiabilityWithSpire
 }
 
-func setEnableAPIFields(ctx context.Context, want string) context.Context {
-	featureFlags, _ := NewFeatureFlagsFromMap(map[string]string{
-		"enable-api-fields": want,
-	})
-	cfg := &Config{
-		Defaults: &Defaults{
-			DefaultTimeoutMinutes: 60,
-		},
-		FeatureFlags: featureFlags,
-	}
-	return ToContext(ctx, cfg)
+// TODO(#7285): Patch the default values of new features that were added after
+// `enable-api-fields` was no longer used.
+type PerFeatureFlag struct {
+	// Name of the feature flag
+	Name string
+	// Stability level of the feature, one of StableAPIFields, BetaAPIFields or AlphaAPIFields
+	Stability string
+	// Enabled is whether the feature is turned on
+	Enabled bool
+	// Deprecated indicates whether the feature is deprecated
+	// +optional
+	//nolint:gocritic
+	Deprecated bool
 }

@@ -536,6 +536,44 @@ type AnalysisSecurityGroupRule struct {
 	noSmithyDocumentSerde
 }
 
+// An Autonomous System Number (ASN) and BYOIP CIDR association.
+type AsnAssociation struct {
+
+	// The association's ASN.
+	Asn *string
+
+	// The association's CIDR.
+	Cidr *string
+
+	// The association's state.
+	State AsnAssociationState
+
+	// The association's status message.
+	StatusMessage *string
+
+	noSmithyDocumentSerde
+}
+
+// Provides authorization for Amazon to bring an Autonomous System Number (ASN) to
+// a specific Amazon Web Services account using bring your own ASN (BYOASN). For
+// details on the format of the message and signature, see Tutorial: Bring your
+// ASN to IPAM (https://docs.aws.amazon.com/vpc/latest/ipam/tutorials-byoasn.html)
+// in the Amazon VPC IPAM guide.
+type AsnAuthorizationContext struct {
+
+	// The authorization context's message.
+	//
+	// This member is required.
+	Message *string
+
+	// The authorization context's signature.
+	//
+	// This member is required.
+	Signature *string
+
+	noSmithyDocumentSerde
+}
+
 // Describes the private IP addresses assigned to a network interface.
 type AssignedPrivateIpAddress struct {
 
@@ -554,12 +592,12 @@ type AssociatedRole struct {
 	// The name of the Amazon S3 bucket in which the Amazon S3 object is stored.
 	CertificateS3BucketName *string
 
-	// The key of the Amazon S3 object ey where the certificate, certificate chain,
-	// and encrypted private key bundle is stored. The object key is formated as
-	// follows: role_arn / certificate_arn .
+	// The key of the Amazon S3 object where the certificate, certificate chain, and
+	// encrypted private key bundle are stored. The object key is formatted as follows:
+	// role_arn / certificate_arn .
 	CertificateS3ObjectKey *string
 
-	// The ID of the KMS customer master key (CMK) used to encrypt the private key.
+	// The ID of the KMS key used to encrypt the private key.
 	EncryptionKmsKeyId *string
 
 	noSmithyDocumentSerde
@@ -612,22 +650,33 @@ type AthenaIntegration struct {
 	noSmithyDocumentSerde
 }
 
-// Describes the ENA Express configuration for the network interface that's
-// attached to the instance.
+// ENA Express uses Amazon Web Services Scalable Reliable Datagram (SRD)
+// technology to increase the maximum bandwidth used per stream and minimize tail
+// latency of network traffic between EC2 instances. With ENA Express, you can
+// communicate between two EC2 instances in the same subnet within the same
+// account, or in different accounts. Both sending and receiving instances must
+// have ENA Express enabled. To improve the reliability of network packet delivery,
+// ENA Express reorders network packets on the receiving end by default. However,
+// some UDP-based applications are designed to handle network packets that are out
+// of order to reduce the overhead for packet delivery at the network layer. When
+// ENA Express is enabled, you can specify whether UDP network traffic uses it.
 type AttachmentEnaSrdSpecification struct {
 
-	// Indicates whether ENA Express is enabled for the network interface that's
-	// attached to the instance.
+	// Indicates whether ENA Express is enabled for the network interface.
 	EnaSrdEnabled *bool
 
-	// ENA Express configuration for UDP network traffic.
+	// Configures ENA Express for UDP network traffic.
 	EnaSrdUdpSpecification *AttachmentEnaSrdUdpSpecification
 
 	noSmithyDocumentSerde
 }
 
-// Describes the ENA Express configuration for UDP traffic on the network
-// interface that's attached to the instance.
+// ENA Express is compatible with both TCP and UDP transport protocols. When it's
+// enabled, TCP traffic automatically uses it. However, some UDP-based applications
+// are designed to handle network packets that are out of order, without a need for
+// retransmission, such as live video broadcasting or other near-real-time
+// applications. For UDP traffic, you can specify whether to use ENA Express, based
+// on your application environment needs.
 type AttachmentEnaSrdUdpSpecification struct {
 
 	// Indicates whether UDP traffic to and from the instance uses ENA Express. To
@@ -866,15 +915,49 @@ type BundleTaskError struct {
 	noSmithyDocumentSerde
 }
 
+// The Autonomous System Number (ASN) and BYOIP CIDR association.
+type Byoasn struct {
+
+	// A public 2-byte or 4-byte ASN.
+	Asn *string
+
+	// An IPAM ID.
+	IpamId *string
+
+	// The provisioning state of the BYOASN.
+	State AsnState
+
+	// The status message.
+	StatusMessage *string
+
+	noSmithyDocumentSerde
+}
+
 // Information about an address range that is provisioned for use with your Amazon
 // Web Services resources through bring your own IP addresses (BYOIP).
 type ByoipCidr struct {
+
+	// The BYOIP CIDR associations with ASNs.
+	AsnAssociations []AsnAssociation
 
 	// The address range, in CIDR notation.
 	Cidr *string
 
 	// The description of the address range.
 	Description *string
+
+	// If you have Local Zones (https://docs.aws.amazon.com/local-zones/latest/ug/how-local-zones-work.html)
+	// enabled, you can choose a network border group for Local Zones when you
+	// provision and advertise a BYOIPv4 CIDR. Choose the network border group
+	// carefully as the EIP and the Amazon Web Services resource it is associated with
+	// must reside in the same network border group. You can provision BYOIP address
+	// ranges to and advertise them in the following Local Zone network border groups:
+	//   - us-east-1-dfw-2
+	//   - us-west-2-lax-1
+	//   - us-west-2-phx-2
+	// You cannot provision or advertise BYOIPv6 address ranges in Local Zones at this
+	// time.
+	NetworkBorderGroup *string
 
 	// The state of the address pool.
 	State ByoipCidrState
@@ -959,6 +1042,42 @@ type CapacityAllocation struct {
 	// The amount of instance capacity associated with the usage. For example a value
 	// of 4 indicates that instance capacity for 4 instances is currently in use.
 	Count *int32
+
+	noSmithyDocumentSerde
+}
+
+// The recommended Capacity Block that fits your search requirements.
+type CapacityBlockOffering struct {
+
+	// The Availability Zone of the Capacity Block offering.
+	AvailabilityZone *string
+
+	// The amount of time of the Capacity Block reservation in hours.
+	CapacityBlockDurationHours *int32
+
+	// The ID of the Capacity Block offering.
+	CapacityBlockOfferingId *string
+
+	// The currency of the payment for the Capacity Block.
+	CurrencyCode *string
+
+	// The end date of the Capacity Block offering.
+	EndDate *time.Time
+
+	// The number of instances in the Capacity Block offering.
+	InstanceCount *int32
+
+	// The instance type of the Capacity Block offering.
+	InstanceType *string
+
+	// The start date of the Capacity Block offering.
+	StartDate *time.Time
+
+	// The tenancy of the Capacity Block.
+	Tenancy CapacityReservationTenancy
+
+	// The total price to be paid up front.
+	UpfrontFee *string
 
 	noSmithyDocumentSerde
 }
@@ -1048,6 +1167,9 @@ type CapacityReservation struct {
 	// Reservations for cluster placement groups (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/cr-cpg.html)
 	// in the Amazon EC2 User Guide.
 	PlacementGroupArn *string
+
+	// The type of Capacity Reservation.
+	ReservationType CapacityReservationType
 
 	// The date and time at which the Capacity Reservation was started.
 	StartDate *time.Time
@@ -1955,6 +2077,102 @@ type ConnectionNotification struct {
 	noSmithyDocumentSerde
 }
 
+// A security group connection tracking configuration that enables you to set the
+// idle timeout for connection tracking on an Elastic network interface. For more
+// information, see Connection tracking timeouts (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/security-group-connection-tracking.html#connection-tracking-timeouts)
+// in the Amazon Elastic Compute Cloud User Guide.
+type ConnectionTrackingConfiguration struct {
+
+	// Timeout (in seconds) for idle TCP connections in an established state. Min: 60
+	// seconds. Max: 432000 seconds (5 days). Default: 432000 seconds. Recommended:
+	// Less than 432000 seconds.
+	TcpEstablishedTimeout *int32
+
+	// Timeout (in seconds) for idle UDP flows classified as streams which have seen
+	// more than one request-response transaction. Min: 60 seconds. Max: 180 seconds (3
+	// minutes). Default: 180 seconds.
+	UdpStreamTimeout *int32
+
+	// Timeout (in seconds) for idle UDP flows that have seen traffic only in a single
+	// direction or a single request-response transaction. Min: 30 seconds. Max: 60
+	// seconds. Default: 30 seconds.
+	UdpTimeout *int32
+
+	noSmithyDocumentSerde
+}
+
+// A security group connection tracking specification that enables you to set the
+// idle timeout for connection tracking on an Elastic network interface. For more
+// information, see Connection tracking timeouts (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/security-group-connection-tracking.html#connection-tracking-timeouts)
+// in the Amazon Elastic Compute Cloud User Guide.
+type ConnectionTrackingSpecification struct {
+
+	// Timeout (in seconds) for idle TCP connections in an established state. Min: 60
+	// seconds. Max: 432000 seconds (5 days). Default: 432000 seconds. Recommended:
+	// Less than 432000 seconds.
+	TcpEstablishedTimeout *int32
+
+	// Timeout (in seconds) for idle UDP flows classified as streams which have seen
+	// more than one request-response transaction. Min: 60 seconds. Max: 180 seconds (3
+	// minutes). Default: 180 seconds.
+	UdpStreamTimeout *int32
+
+	// Timeout (in seconds) for idle UDP flows that have seen traffic only in a single
+	// direction or a single request-response transaction. Min: 30 seconds. Max: 60
+	// seconds. Default: 30 seconds.
+	UdpTimeout *int32
+
+	noSmithyDocumentSerde
+}
+
+// A security group connection tracking specification request that enables you to
+// set the idle timeout for connection tracking on an Elastic network interface.
+// For more information, see Connection tracking timeouts (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/security-group-connection-tracking.html#connection-tracking-timeouts)
+// in the Amazon Elastic Compute Cloud User Guide.
+type ConnectionTrackingSpecificationRequest struct {
+
+	// Timeout (in seconds) for idle TCP connections in an established state. Min: 60
+	// seconds. Max: 432000 seconds (5 days). Default: 432000 seconds. Recommended:
+	// Less than 432000 seconds.
+	TcpEstablishedTimeout *int32
+
+	// Timeout (in seconds) for idle UDP flows classified as streams which have seen
+	// more than one request-response transaction. Min: 60 seconds. Max: 180 seconds (3
+	// minutes). Default: 180 seconds.
+	UdpStreamTimeout *int32
+
+	// Timeout (in seconds) for idle UDP flows that have seen traffic only in a single
+	// direction or a single request-response transaction. Min: 30 seconds. Max: 60
+	// seconds. Default: 30 seconds.
+	UdpTimeout *int32
+
+	noSmithyDocumentSerde
+}
+
+// A security group connection tracking specification response that enables you to
+// set the idle timeout for connection tracking on an Elastic network interface.
+// For more information, see Connection tracking timeouts (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/security-group-connection-tracking.html#connection-tracking-timeouts)
+// in the Amazon Elastic Compute Cloud User Guide.
+type ConnectionTrackingSpecificationResponse struct {
+
+	// Timeout (in seconds) for idle TCP connections in an established state. Min: 60
+	// seconds. Max: 432000 seconds (5 days). Default: 432000 seconds. Recommended:
+	// Less than 432000 seconds.
+	TcpEstablishedTimeout *int32
+
+	// Timeout (in seconds) for idle UDP flows classified as streams which have seen
+	// more than one request-response transaction. Min: 60 seconds. Max: 180 seconds (3
+	// minutes). Default: 180 seconds.
+	UdpStreamTimeout *int32
+
+	// Timeout (in seconds) for idle UDP flows that have seen traffic only in a single
+	// direction or a single request-response transaction. Min: 30 seconds. Max: 60
+	// seconds. Default: 30 seconds.
+	UdpTimeout *int32
+
+	noSmithyDocumentSerde
+}
+
 // Describes a conversion task.
 type ConversionTask struct {
 
@@ -2025,12 +2243,12 @@ type CpuOptionsRequest struct {
 type CreateFleetError struct {
 
 	// The error code that indicates why the instance could not be launched. For more
-	// information about error codes, see Error codes (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/errors-overview.html.html)
+	// information about error codes, see Error codes (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/errors-overview.html)
 	// .
 	ErrorCode *string
 
 	// The error message that describes why the instance could not be launched. For
-	// more information about error messages, see Error codes (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/errors-overview.html.html)
+	// more information about error messages, see Error codes (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/errors-overview.html)
 	// .
 	ErrorMessage *string
 
@@ -2123,6 +2341,18 @@ type CreateTransitGatewayVpcAttachmentRequestOptions struct {
 	// Enable or disable IPv6 support. The default is disable .
 	Ipv6Support Ipv6SupportValue
 
+	// This parameter is in preview and may not be available for your account. Enables
+	// you to reference a security group across VPCs attached to a transit gateway. Use
+	// this option to simplify security group management and control of
+	// instance-to-instance traffic across VPCs that are connected by transit gateway.
+	// You can also use this option to migrate from VPC peering (which was the only
+	// option that supported security group referencing) to transit gateways (which now
+	// also support security group referencing). This option is disabled by default and
+	// there are no additional costs to use this feature. If you don't enable or
+	// disable SecurityGroupReferencingSupport in the request, the attachment will
+	// inherit the security group referencing support setting on the transit gateway.
+	SecurityGroupReferencingSupport SecurityGroupReferencingSupportValue
+
 	noSmithyDocumentSerde
 }
 
@@ -2164,6 +2394,10 @@ type CreateVerifiedAccessEndpointLoadBalancerOptions struct {
 // Describes the options when creating an Amazon Web Services Verified Access
 // trust provider using the device type.
 type CreateVerifiedAccessTrustProviderDeviceOptions struct {
+
+	// The URL Amazon Web Services Verified Access will use to verify the authenticity
+	// of the device tokens.
+	PublicSigningKeyUrl *string
 
 	// The ID of the tenant application with the device-identity provider.
 	TenantId *string
@@ -2442,41 +2676,40 @@ type DeregisterInstanceTagAttributeRequest struct {
 	noSmithyDocumentSerde
 }
 
-// Describe details about a fast-launch enabled Windows image that meets the
-// requested criteria. Criteria are defined by the DescribeFastLaunchImages action
-// filters.
+// Describe details about a Windows image with Windows fast launch enabled that
+// meets the requested criteria. Criteria are defined by the
+// DescribeFastLaunchImages action filters.
 type DescribeFastLaunchImagesSuccessItem struct {
 
-	// The image ID that identifies the fast-launch enabled Windows image.
+	// The image ID that identifies the Windows fast launch enabled image.
 	ImageId *string
 
-	// The launch template that the fast-launch enabled Windows AMI uses when it
+	// The launch template that the Windows fast launch enabled AMI uses when it
 	// launches Windows instances from pre-provisioned snapshots.
 	LaunchTemplate *FastLaunchLaunchTemplateSpecificationResponse
 
 	// The maximum number of instances that Amazon EC2 can launch at the same time to
-	// create pre-provisioned snapshots for Windows faster launching.
+	// create pre-provisioned snapshots for Windows fast launch.
 	MaxParallelLaunches *int32
 
-	// The owner ID for the fast-launch enabled Windows AMI.
+	// The owner ID for the Windows fast launch enabled AMI.
 	OwnerId *string
 
-	// The resource type that is used for pre-provisioning the Windows AMI. Supported
-	// values include: snapshot .
+	// The resource type that Amazon EC2 uses for pre-provisioning the Windows AMI.
+	// Supported values include: snapshot .
 	ResourceType FastLaunchResourceType
 
 	// A group of parameters that are used for pre-provisioning the associated Windows
 	// AMI using snapshots.
 	SnapshotConfiguration *FastLaunchSnapshotConfigurationResponse
 
-	// The current state of faster launching for the specified Windows AMI.
+	// The current state of Windows fast launch for the specified Windows AMI.
 	State FastLaunchStateCode
 
-	// The reason that faster launching for the Windows AMI changed to the current
-	// state.
+	// The reason that Windows fast launch for the AMI changed to the current state.
 	StateTransitionReason *string
 
-	// The time that faster launching for the Windows AMI changed to the current state.
+	// The time that Windows fast launch for the AMI changed to the current state.
 	StateTransitionTime *time.Time
 
 	noSmithyDocumentSerde
@@ -2612,6 +2845,10 @@ type DestinationOptionsResponse struct {
 // Describes the options for an Amazon Web Services Verified Access
 // device-identity based trust provider.
 type DeviceOptions struct {
+
+	// The URL Amazon Web Services Verified Access will use to verify the authenticity
+	// of the device tokens.
+	PublicSigningKeyUrl *string
 
 	// The ID of the tenant application with the device-identity provider.
 	TenantId *string
@@ -2908,11 +3145,11 @@ type EbsBlockDevice struct {
 	// restored from a backing snapshot. The effect of setting the encryption state to
 	// true depends on the volume origin (new or from a snapshot), starting encryption
 	// state, ownership, and whether encryption by default is enabled. For more
-	// information, see Amazon EBS encryption (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/EBSEncryption.html#encryption-parameters)
-	// in the Amazon EC2 User Guide. In no case can you remove encryption from an
+	// information, see Amazon EBS encryption (https://docs.aws.amazon.com/ebs/latest/userguide/ebs-encryption.html#encryption-parameters)
+	// in the Amazon EBS User Guide. In no case can you remove encryption from an
 	// encrypted volume. Encrypted volumes can only be attached to instances that
 	// support Amazon EBS encryption. For more information, see Supported instance
-	// types (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/EBSEncryption.html#EBSEncryption_supported_instances)
+	// types (https://docs.aws.amazon.com/ebs/latest/userguide/ebs-encryption-requirements.html#ebs-encryption_supported_instances)
 	// . This parameter is not returned by DescribeImageAttribute . For CreateImage
 	// and RegisterImage , whether you can include this parameter, and the allowed
 	// values differ depending on the type of block device mapping you are creating.
@@ -2939,15 +3176,14 @@ type EbsBlockDevice struct {
 	// For gp2 volumes, this represents the baseline performance of the volume and the
 	// rate at which the volume accumulates I/O credits for bursting. The following are
 	// the supported values for each volume type:
-	//   - gp3 : 3,000-16,000 IOPS
-	//   - io1 : 100-64,000 IOPS
-	//   - io2 : 100-64,000 IOPS
-	// For io1 and io2 volumes, we guarantee 64,000 IOPS only for Instances built on
-	// the Nitro System (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-types.html#ec2-nitro-instances)
-	// . Other instance families guarantee performance up to 32,000 IOPS. This
+	//   - gp3 : 3,000 - 16,000 IOPS
+	//   - io1 : 100 - 64,000 IOPS
+	//   - io2 : 100 - 256,000 IOPS
+	// For io2 volumes, you can achieve up to 256,000 IOPS on instances built on the
+	// Nitro System (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-types.html#ec2-nitro-instances)
+	// . On other instances, you can achieve performance up to 32,000 IOPS. This
 	// parameter is required for io1 and io2 volumes. The default for gp3 volumes is
-	// 3,000 IOPS. This parameter is not supported for gp2 , st1 , sc1 , or standard
-	// volumes.
+	// 3,000 IOPS.
 	Iops *int32
 
 	// Identifier (key ID, key alias, ID ARN, or alias ARN) for a customer managed CMK
@@ -2973,16 +3209,16 @@ type EbsBlockDevice struct {
 	// The size of the volume, in GiBs. You must specify either a snapshot ID or a
 	// volume size. If you specify a snapshot, the default is the snapshot size. You
 	// can specify a volume size that is equal to or larger than the snapshot size. The
-	// following are the supported volumes sizes for each volume type:
-	//   - gp2 and gp3 :1-16,384
-	//   - io1 and io2 : 4-16,384
-	//   - st1 and sc1 : 125-16,384
-	//   - standard : 1-1,024
+	// following are the supported sizes for each volume type:
+	//   - gp2 and gp3 : 1 - 16,384 GiB
+	//   - io1 : 4 - 16,384 GiB
+	//   - io2 : 4 - 65,536 GiB
+	//   - st1 and sc1 : 125 - 16,384 GiB
+	//   - standard : 1 - 1024 GiB
 	VolumeSize *int32
 
-	// The volume type. For more information, see Amazon EBS volume types (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/EBSVolumeTypes.html)
-	// in the Amazon EC2 User Guide. If the volume type is io1 or io2 , you must
-	// specify the IOPS that the volume supports.
+	// The volume type. For more information, see Amazon EBS volume types (https://docs.aws.amazon.com/ebs/latest/userguide/ebs-volume-types.html)
+	// in the Amazon EBS User Guide.
 	VolumeType VolumeType
 
 	noSmithyDocumentSerde
@@ -3011,6 +3247,9 @@ type EbsInfo struct {
 // Describes a parameter used to set up an EBS volume in a block device mapping.
 type EbsInstanceBlockDevice struct {
 
+	// The ARN of the Amazon ECS or Fargate task to which the volume is attached.
+	AssociatedResource *string
+
 	// The time stamp when the attachment initiated.
 	AttachTime *time.Time
 
@@ -3022,6 +3261,10 @@ type EbsInstanceBlockDevice struct {
 
 	// The ID of the EBS volume.
 	VolumeId *string
+
+	// The ID of the Amazon Web Services account that owns the volume. This parameter
+	// is returned only for volumes that are attached to Fargate tasks.
+	VolumeOwnerId *string
 
 	noSmithyDocumentSerde
 }
@@ -3150,8 +3393,10 @@ type EgressOnlyInternetGateway struct {
 	noSmithyDocumentSerde
 }
 
-// Describes the association between an instance and an Elastic Graphics
-// accelerator.
+// Amazon Elastic Graphics reached end of life on January 8, 2024. For workloads
+// that require graphics acceleration, we recommend that you use Amazon EC2 G4ad,
+// G4dn, or G5 instances. Describes the association between an instance and an
+// Elastic Graphics accelerator.
 type ElasticGpuAssociation struct {
 
 	// The ID of the association.
@@ -3170,7 +3415,9 @@ type ElasticGpuAssociation struct {
 	noSmithyDocumentSerde
 }
 
-// Describes the status of an Elastic Graphics accelerator.
+// Amazon Elastic Graphics reached end of life on January 8, 2024. For workloads
+// that require graphics acceleration, we recommend that you use Amazon EC2 G4ad,
+// G4dn, or G5 instances. Describes the status of an Elastic Graphics accelerator.
 type ElasticGpuHealth struct {
 
 	// The health status.
@@ -3179,7 +3426,9 @@ type ElasticGpuHealth struct {
 	noSmithyDocumentSerde
 }
 
-// Describes an Elastic Graphics accelerator.
+// Amazon Elastic Graphics reached end of life on January 8, 2024. For workloads
+// that require graphics acceleration, we recommend that you use Amazon EC2 G4ad,
+// G4dn, or G5 instances. Describes an Elastic Graphics accelerator.
 type ElasticGpus struct {
 
 	// The Availability Zone in the which the Elastic Graphics accelerator resides.
@@ -3206,7 +3455,9 @@ type ElasticGpus struct {
 	noSmithyDocumentSerde
 }
 
-// A specification for an Elastic Graphics accelerator.
+// Amazon Elastic Graphics reached end of life on January 8, 2024. For workloads
+// that require graphics acceleration, we recommend that you use Amazon EC2 G4ad,
+// G4dn, or G5 instances. A specification for an Elastic Graphics accelerator.
 type ElasticGpuSpecification struct {
 
 	// The type of Elastic Graphics accelerator. For more information about the values
@@ -3220,10 +3471,14 @@ type ElasticGpuSpecification struct {
 	noSmithyDocumentSerde
 }
 
-// Describes an elastic GPU.
+// Deprecated. Amazon Elastic Graphics reached end of life on January 8, 2024. For
+// workloads that require graphics acceleration, we recommend that you use Amazon
+// EC2 G4ad, G4dn, or G5 instances.
 type ElasticGpuSpecificationResponse struct {
 
-	// The elastic GPU type.
+	// Deprecated. Amazon Elastic Graphics reached end of life on January 8, 2024. For
+	// workloads that require graphics acceleration, we recommend that you use Amazon
+	// EC2 G4ad, G4dn, or G5 instances.
 	Type *string
 
 	noSmithyDocumentSerde
@@ -3369,7 +3624,20 @@ type EnaSrdSpecification struct {
 	noSmithyDocumentSerde
 }
 
-// ENA Express is compatible with both TCP and UDP transport protocols. When it’s
+// Launch instances with ENA Express settings configured from your launch template.
+type EnaSrdSpecificationRequest struct {
+
+	// Specifies whether ENA Express is enabled for the network interface when you
+	// launch an instance from your launch template.
+	EnaSrdEnabled *bool
+
+	// Contains ENA Express settings for UDP network traffic in your launch template.
+	EnaSrdUdpSpecification *EnaSrdUdpSpecificationRequest
+
+	noSmithyDocumentSerde
+}
+
+// ENA Express is compatible with both TCP and UDP transport protocols. When it's
 // enabled, TCP traffic automatically uses it. However, some UDP-based applications
 // are designed to handle network packets that are out of order, without a need for
 // retransmission, such as live video broadcasting or other near-real-time
@@ -3377,8 +3645,20 @@ type EnaSrdSpecification struct {
 // on your application environment needs.
 type EnaSrdUdpSpecification struct {
 
-	// Indicates whether UDP traffic uses ENA Express. To specify this setting, you
-	// must first enable ENA Express.
+	// Indicates whether UDP traffic to and from the instance uses ENA Express. To
+	// specify this setting, you must first enable ENA Express.
+	EnaSrdUdpEnabled *bool
+
+	noSmithyDocumentSerde
+}
+
+// Configures ENA Express for UDP network traffic from your launch template.
+type EnaSrdUdpSpecificationRequest struct {
+
+	// Indicates whether UDP traffic uses ENA Express for your instance. To ensure
+	// that UDP traffic can use ENA Express when you launch an instance, you must also
+	// set EnaSrdEnabled in the EnaSrdSpecificationRequest to true in your launch
+	// template.
 	EnaSrdUdpEnabled *bool
 
 	noSmithyDocumentSerde
@@ -3801,61 +4081,60 @@ type FailedQueuedPurchaseDeletion struct {
 	noSmithyDocumentSerde
 }
 
-// Request to create a launch template for a fast-launch enabled Windows AMI. Note
+// Request to create a launch template for a Windows fast launch enabled AMI. Note
 // - You can specify either the LaunchTemplateName or the LaunchTemplateId , but
 // not both.
 type FastLaunchLaunchTemplateSpecificationRequest struct {
 
-	// The version of the launch template to use for faster launching for a Windows
-	// AMI.
+	// Specify the version of the launch template that the AMI should use for Windows
+	// fast launch.
 	//
 	// This member is required.
 	Version *string
 
-	// The ID of the launch template to use for faster launching for a Windows AMI.
+	// Specify the ID of the launch template that the AMI should use for Windows fast
+	// launch.
 	LaunchTemplateId *string
 
-	// The name of the launch template to use for faster launching for a Windows AMI.
+	// Specify the name of the launch template that the AMI should use for Windows
+	// fast launch.
 	LaunchTemplateName *string
 
 	noSmithyDocumentSerde
 }
 
-// Identifies the launch template to use for faster launching of the Windows AMI.
+// Identifies the launch template that the AMI uses for Windows fast launch.
 type FastLaunchLaunchTemplateSpecificationResponse struct {
 
-	// The ID of the launch template for faster launching of the associated Windows
-	// AMI.
+	// The ID of the launch template that the AMI uses for Windows fast launch.
 	LaunchTemplateId *string
 
-	// The name of the launch template for faster launching of the associated Windows
-	// AMI.
+	// The name of the launch template that the AMI uses for Windows fast launch.
 	LaunchTemplateName *string
 
-	// The version of the launch template for faster launching of the associated
-	// Windows AMI.
+	// The version of the launch template that the AMI uses for Windows fast launch.
 	Version *string
 
 	noSmithyDocumentSerde
 }
 
 // Configuration settings for creating and managing pre-provisioned snapshots for
-// a fast-launch enabled Windows AMI.
+// a Windows fast launch enabled AMI.
 type FastLaunchSnapshotConfigurationRequest struct {
 
-	// The number of pre-provisioned snapshots to keep on hand for a fast-launch
-	// enabled Windows AMI.
+	// The number of pre-provisioned snapshots to keep on hand for a Windows fast
+	// launch enabled AMI.
 	TargetResourceCount *int32
 
 	noSmithyDocumentSerde
 }
 
 // Configuration settings for creating and managing pre-provisioned snapshots for
-// a fast-launch enabled Windows AMI.
+// a Windows fast launch enabled Windows AMI.
 type FastLaunchSnapshotConfigurationResponse struct {
 
-	// The number of pre-provisioned snapshots requested to keep on hand for a
-	// fast-launch enabled Windows AMI.
+	// The number of pre-provisioned snapshots requested to keep on hand for a Windows
+	// fast launch enabled AMI.
 	TargetResourceCount *int32
 
 	noSmithyDocumentSerde
@@ -4199,7 +4478,12 @@ type FleetLaunchTemplateOverrides struct {
 	// The ID of the subnet in which to launch the instances.
 	SubnetId *string
 
-	// The number of units provided by the specified instance type.
+	// The number of units provided by the specified instance type. When specifying
+	// weights, the price used in the lowest-price and price-capacity-optimized
+	// allocation strategies is per unit hour (where the instance price is divided by
+	// the specified weight). However, if all the specified weights are above the
+	// requested TargetCapacity , resulting in only 1 instance being launched, the
+	// price used is per instance hour.
 	WeightedCapacity *float64
 
 	noSmithyDocumentSerde
@@ -4253,7 +4537,12 @@ type FleetLaunchTemplateOverridesRequest struct {
 	// ID.
 	SubnetId *string
 
-	// The number of units provided by the specified instance type.
+	// The number of units provided by the specified instance type. When specifying
+	// weights, the price used in the lowest-price and price-capacity-optimized
+	// allocation strategies is per unit hour (where the instance price is divided by
+	// the specified weight). However, if all the specified weights are above the
+	// requested TargetCapacity , resulting in only 1 instance being launched, the
+	// price used is per instance hour.
 	WeightedCapacity *float64
 
 	noSmithyDocumentSerde
@@ -4651,7 +4940,14 @@ type HibernationOptions struct {
 // in the Amazon EC2 User Guide.
 type HibernationOptionsRequest struct {
 
-	// Set to true to enable your instance for hibernation. Default: false
+	// Set to true to enable your instance for hibernation. For Spot Instances, if you
+	// set Configured to true , either omit the InstanceInterruptionBehavior parameter
+	// (for SpotMarketOptions (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_SpotMarketOptions.html)
+	// ), or set it to hibernate . When Configured is true:
+	//   - If you omit InstanceInterruptionBehavior , it defaults to hibernate .
+	//   - If you set InstanceInterruptionBehavior to a value other than hibernate ,
+	//   you'll get an error.
+	// Default: false
 	Configured *bool
 
 	noSmithyDocumentSerde
@@ -5000,13 +5296,16 @@ type Image struct {
 	// the seconds to the nearest minute.
 	DeprecationTime *string
 
+	// Indicates whether deregistration protection is enabled for the AMI.
+	DeregistrationProtection *string
+
 	// The description of the AMI that was provided during image creation.
 	Description *string
 
 	// Specifies whether enhanced networking with ENA is enabled.
 	EnaSupport *bool
 
-	// The hypervisor type of the image.
+	// The hypervisor type of the image. Only xen is supported. ovm is not supported.
 	Hypervisor HypervisorType
 
 	// The ID of the AMI.
@@ -5015,8 +5314,7 @@ type Image struct {
 	// The location of the AMI.
 	ImageLocation *string
 
-	// The Amazon Web Services account alias (for example, amazon , self ) or the
-	// Amazon Web Services account ID of the AMI owner.
+	// The owner alias ( amazon | aws-marketplace ).
 	ImageOwnerAlias *string
 
 	// The type of image.
@@ -5033,6 +5331,12 @@ type Image struct {
 	// The kernel associated with the image, if any. Only applicable for machine
 	// images.
 	KernelId *string
+
+	// The date and time, in ISO 8601 date-time format (http://www.iso.org/iso/iso8601)
+	// , when the AMI was last used to launch an EC2 instance. When the AMI is used to
+	// launch an instance, there is a 24-hour delay before that usage is reported.
+	// lastLaunchedTime data is available starting April 2017.
+	LastLaunchedTime *string
 
 	// The name of the AMI that was provided during image creation.
 	Name *string
@@ -5066,6 +5370,11 @@ type Image struct {
 	// The type of root device used by the AMI. The AMI can use an Amazon EBS volume
 	// or an instance store volume.
 	RootDeviceType DeviceType
+
+	// The ID of the instance that the AMI was created from if the AMI was created
+	// using CreateImage (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateImage.html)
+	// . This field only appears if the AMI was created using CreateImage.
+	SourceInstanceId *string
 
 	// Specifies whether enhanced networking with the Intel 82599 Virtual Function
 	// interface is enabled.
@@ -5438,7 +5747,9 @@ type Instance struct {
 	// EBS Optimized instance.
 	EbsOptimized *bool
 
-	// The Elastic GPU associated with the instance.
+	// Deprecated. Amazon Elastic Graphics reached end of life on January 8, 2024. For
+	// workloads that require graphics acceleration, we recommend that you use Amazon
+	// EC2 G4ad, G4dn, or G5 instances.
 	ElasticGpuAssociations []ElasticGpuAssociation
 
 	// The elastic inference accelerator associated with the instance.
@@ -5507,7 +5818,8 @@ type Instance struct {
 	// The location where the instance launched, if applicable.
 	Placement *Placement
 
-	// The value is Windows for Windows instances; otherwise blank.
+	// The platform. This value is windows for Windows instances; otherwise, it is
+	// empty.
 	Platform PlatformValues
 
 	// The platform details value for the instance. For more information, see AMI
@@ -5599,6 +5911,42 @@ type Instance struct {
 
 	// The ID of the VPC in which the instance is running.
 	VpcId *string
+
+	noSmithyDocumentSerde
+}
+
+// ENA Express uses Amazon Web Services Scalable Reliable Datagram (SRD)
+// technology to increase the maximum bandwidth used per stream and minimize tail
+// latency of network traffic between EC2 instances. With ENA Express, you can
+// communicate between two EC2 instances in the same subnet within the same
+// account, or in different accounts. Both sending and receiving instances must
+// have ENA Express enabled. To improve the reliability of network packet delivery,
+// ENA Express reorders network packets on the receiving end by default. However,
+// some UDP-based applications are designed to handle network packets that are out
+// of order to reduce the overhead for packet delivery at the network layer. When
+// ENA Express is enabled, you can specify whether UDP network traffic uses it.
+type InstanceAttachmentEnaSrdSpecification struct {
+
+	// Indicates whether ENA Express is enabled for the network interface.
+	EnaSrdEnabled *bool
+
+	// Configures ENA Express for UDP network traffic.
+	EnaSrdUdpSpecification *InstanceAttachmentEnaSrdUdpSpecification
+
+	noSmithyDocumentSerde
+}
+
+// ENA Express is compatible with both TCP and UDP transport protocols. When it's
+// enabled, TCP traffic automatically uses it. However, some UDP-based applications
+// are designed to handle network packets that are out of order, without a need for
+// retransmission, such as live video broadcasting or other near-real-time
+// applications. For UDP traffic, you can specify whether to use ENA Express, based
+// on your application environment needs.
+type InstanceAttachmentEnaSrdUdpSpecification struct {
+
+	// Indicates whether UDP traffic to and from the instance uses ENA Express. To
+	// specify this setting, you must first enable ENA Express.
+	EnaSrdUdpEnabled *bool
 
 	noSmithyDocumentSerde
 }
@@ -5924,6 +6272,33 @@ type InstanceMarketOptionsRequest struct {
 	noSmithyDocumentSerde
 }
 
+// The default instance metadata service (IMDS) settings that were set at the
+// account level in the specified Amazon Web Services  Region.
+type InstanceMetadataDefaultsResponse struct {
+
+	// Indicates whether the IMDS endpoint for an instance is enabled or disabled.
+	// When disabled, the instance metadata can't be accessed.
+	HttpEndpoint InstanceMetadataEndpointState
+
+	// The maximum number of hops that the metadata token can travel.
+	HttpPutResponseHopLimit *int32
+
+	// Indicates whether IMDSv2 is required.
+	//   - optional – IMDSv2 is optional, which means that you can use either IMDSv2 or
+	//   IMDSv1.
+	//   - required – IMDSv2 is required, which means that IMDSv1 is disabled, and you
+	//   must use IMDSv2.
+	HttpTokens HttpTokensState
+
+	// Indicates whether access to instance tags from the instance metadata is enabled
+	// or disabled. For more information, see Work with instance tags using the
+	// instance metadata (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html#work-with-tags-in-IMDS)
+	// in the Amazon EC2 User Guide.
+	InstanceMetadataTags InstanceMetadataTagsState
+
+	noSmithyDocumentSerde
+}
+
 // The metadata options for the instance.
 type InstanceMetadataOptionsRequest struct {
 
@@ -5933,26 +6308,28 @@ type InstanceMetadataOptionsRequest struct {
 	HttpEndpoint InstanceMetadataEndpointState
 
 	// Enables or disables the IPv6 endpoint for the instance metadata service.
+	// Default: disabled
 	HttpProtocolIpv6 InstanceMetadataProtocolState
 
-	// The desired HTTP PUT response hop limit for instance metadata requests. The
-	// larger the number, the further instance metadata requests can travel. Default: 1
-	// Possible values: Integers from 1 to 64
+	// The maximum number of hops that the metadata token can travel. Possible values:
+	// Integers from 1 to 64
 	HttpPutResponseHopLimit *int32
 
-	// IMDSv2 uses token-backed sessions. Set the use of HTTP tokens to optional (in
-	// other words, set the use of IMDSv2 to optional ) or required (in other words,
-	// set the use of IMDSv2 to required ).
-	//   - optional - When IMDSv2 is optional, you can choose to retrieve instance
-	//   metadata with or without a session token in your request. If you retrieve the
-	//   IAM role credentials without a token, the IMDSv1 role credentials are returned.
-	//   If you retrieve the IAM role credentials using a valid session token, the IMDSv2
-	//   role credentials are returned.
-	//   - required - When IMDSv2 is required, you must send a session token with any
-	//   instance metadata retrieval requests. In this state, retrieving the IAM role
-	//   credentials always returns IMDSv2 credentials; IMDSv1 credentials are not
-	//   available.
-	// Default: optional
+	// Indicates whether IMDSv2 is required.
+	//   - optional - IMDSv2 is optional, which means that you can use either IMDSv2 or
+	//   IMDSv1.
+	//   - required - IMDSv2 is required, which means that IMDSv1 is disabled, and you
+	//   must use IMDSv2.
+	// Default:
+	//   - If the value of ImdsSupport for the Amazon Machine Image (AMI) for your
+	//   instance is v2.0 and the account level default is set to no-preference , the
+	//   default is required .
+	//   - If the value of ImdsSupport for the Amazon Machine Image (AMI) for your
+	//   instance is v2.0 , but the account level default is set to V1 or V2 , the
+	//   default is optional .
+	// The default value can also be affected by other combinations of parameters. For
+	// more information, see Order of precedence for instance metadata options (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-options.html#instance-metadata-options-order-of-precedence)
+	// in the Amazon EC2 User Guide.
 	HttpTokens HttpTokensState
 
 	// Set to enabled to allow access to instance tags from the instance metadata. Set
@@ -5972,27 +6349,18 @@ type InstanceMetadataOptionsResponse struct {
 	HttpEndpoint InstanceMetadataEndpointState
 
 	// Indicates whether the IPv6 endpoint for the instance metadata service is
-	// enabled or disabled.
+	// enabled or disabled. Default: disabled
 	HttpProtocolIpv6 InstanceMetadataProtocolState
 
-	// The desired HTTP PUT response hop limit for instance metadata requests. The
-	// larger the number, the further instance metadata requests can travel. Default: 1
-	// Possible values: Integers from 1 to 64
+	// The maximum number of hops that the metadata token can travel. Possible values:
+	// Integers from 1 to 64
 	HttpPutResponseHopLimit *int32
 
-	// IMDSv2 uses token-backed sessions. Indicates whether the use of HTTP tokens is
-	// optional (in other words, indicates whether the use of IMDSv2 is optional ) or
-	// required (in other words, indicates whether the use of IMDSv2 is required ).
-	//   - optional - When IMDSv2 is optional, you can choose to retrieve instance
-	//   metadata with or without a session token in your request. If you retrieve the
-	//   IAM role credentials without a token, the IMDSv1 role credentials are returned.
-	//   If you retrieve the IAM role credentials using a valid session token, the IMDSv2
-	//   role credentials are returned.
-	//   - required - When IMDSv2 is required, you must send a session token with any
-	//   instance metadata retrieval requests. In this state, retrieving the IAM role
-	//   credentials always returns IMDSv2 credentials; IMDSv1 credentials are not
-	//   available.
-	// Default: optional
+	// Indicates whether IMDSv2 is required.
+	//   - optional - IMDSv2 is optional, which means that you can use either IMDSv2 or
+	//   IMDSv1.
+	//   - required - IMDSv2 is required, which means that IMDSv1 is disabled, and you
+	//   must use IMDSv2.
 	HttpTokens HttpTokensState
 
 	// Indicates whether access to instance tags from the instance metadata is enabled
@@ -6031,6 +6399,12 @@ type InstanceNetworkInterface struct {
 
 	// The network interface attachment.
 	Attachment *InstanceNetworkInterfaceAttachment
+
+	// A security group connection tracking configuration that enables you to set the
+	// timeout for connection tracking on an Elastic network interface. For more
+	// information, see Connection tracking timeouts (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/security-group-connection-tracking.html#connection-tracking-timeouts)
+	// in the Amazon Elastic Compute Cloud User Guide.
+	ConnectionTrackingConfiguration *ConnectionTrackingSpecificationResponse
 
 	// The description.
 	Description *string
@@ -6120,6 +6494,10 @@ type InstanceNetworkInterfaceAttachment struct {
 	// The index of the device on the instance for the network interface attachment.
 	DeviceIndex *int32
 
+	// Contains the ENA Express settings for the network interface that's attached to
+	// the instance.
+	EnaSrdSpecification *InstanceAttachmentEnaSrdSpecification
+
 	// The index of the network card.
 	NetworkCardIndex *int32
 
@@ -6143,8 +6521,18 @@ type InstanceNetworkInterfaceSpecification struct {
 	// a VPC. The public IP address can only be assigned to a network interface for
 	// eth0, and can only be assigned to a new network interface, not an existing one.
 	// You cannot specify more than one network interface in the request. If launching
-	// into a default subnet, the default value is true .
+	// into a default subnet, the default value is true . Amazon Web Services charges
+	// for all public IPv4 addresses, including public IPv4 addresses associated with
+	// running instances and Elastic IP addresses. For more information, see the Public
+	// IPv4 Address tab on the Amazon VPC pricing page (http://aws.amazon.com/vpc/pricing/)
+	// .
 	AssociatePublicIpAddress *bool
+
+	// A security group connection tracking specification that enables you to set the
+	// timeout for connection tracking on an Elastic network interface. For more
+	// information, see Connection tracking timeouts (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/security-group-connection-tracking.html#connection-tracking-timeouts)
+	// in the Amazon Elastic Compute Cloud User Guide.
+	ConnectionTrackingSpecification *ConnectionTrackingSpecificationRequest
 
 	// If set to true , the interface is deleted when the instance is terminated. You
 	// can specify true only if creating a new network interface when launching an
@@ -6159,6 +6547,10 @@ type InstanceNetworkInterfaceSpecification struct {
 	// network interface has a device index of 0. If you specify a network interface
 	// when launching an instance, you must specify the device index.
 	DeviceIndex *int32
+
+	// Specifies the ENA Express settings for the network interface that's attached to
+	// the instance.
+	EnaSrdSpecification *EnaSrdSpecificationRequest
 
 	// The IDs of the security groups for the network interface. Applies only if
 	// creating a network interface when launching an instance.
@@ -6281,8 +6673,10 @@ type InstancePrivateIpAddress struct {
 // Scaling groups, EC2 Fleet, and Spot Fleet to launch instances. If you plan to
 // use the launch template in the launch instance wizard (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-launch-instance-wizard.html)
 // or with the RunInstances API (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_RunInstances.html)
-// , you can't specify InstanceRequirements . For more information, see
-// Attribute-based instance type selection for EC2 Fleet (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-fleet-attribute-based-instance-type-selection.html)
+// , you can't specify InstanceRequirements . For more information, see Create a
+// mixed instances group using attribute-based instance type selection (https://docs.aws.amazon.com/autoscaling/ec2/userguide/create-mixed-instances-group-attribute-based-instance-type-selection.html)
+// in the Amazon EC2 Auto Scaling User Guide, and also Attribute-based instance
+// type selection for EC2 Fleet (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-fleet-attribute-based-instance-type-selection.html)
 // , Attribute-based instance type selection for Spot Fleet (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/spot-fleet-attribute-based-instance-type-selection.html)
 // , and Spot placement score (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/spot-placement-score.html)
 // in the Amazon EC2 User Guide.
@@ -6295,25 +6689,29 @@ type InstanceRequirements struct {
 
 	// Indicates whether instance types must have accelerators by specific
 	// manufacturers.
-	//   - For instance types with NVIDIA devices, specify nvidia .
-	//   - For instance types with AMD devices, specify amd .
 	//   - For instance types with Amazon Web Services devices, specify
 	//   amazon-web-services .
+	//   - For instance types with AMD devices, specify amd .
+	//   - For instance types with Habana devices, specify habana .
+	//   - For instance types with NVIDIA devices, specify nvidia .
 	//   - For instance types with Xilinx devices, specify xilinx .
 	// Default: Any manufacturer
 	AcceleratorManufacturers []AcceleratorManufacturer
 
 	// The accelerators that must be on the instance type.
+	//   - For instance types with NVIDIA A10G GPUs, specify a10g .
 	//   - For instance types with NVIDIA A100 GPUs, specify a100 .
-	//   - For instance types with NVIDIA V100 GPUs, specify v100 .
-	//   - For instance types with NVIDIA K80 GPUs, specify k80 .
-	//   - For instance types with NVIDIA T4 GPUs, specify t4 .
-	//   - For instance types with NVIDIA M60 GPUs, specify m60 .
-	//   - For instance types with AMD Radeon Pro V520 GPUs, specify radeon-pro-v520 .
-	//   - For instance types with Xilinx VU9P FPGAs, specify vu9p .
+	//   - For instance types with NVIDIA H100 GPUs, specify h100 .
 	//   - For instance types with Amazon Web Services Inferentia chips, specify
 	//   inferentia .
 	//   - For instance types with NVIDIA GRID K520 GPUs, specify k520 .
+	//   - For instance types with NVIDIA K80 GPUs, specify k80 .
+	//   - For instance types with NVIDIA M60 GPUs, specify m60 .
+	//   - For instance types with AMD Radeon Pro V520 GPUs, specify radeon-pro-v520 .
+	//   - For instance types with NVIDIA T4 GPUs, specify t4 .
+	//   - For instance types with NVIDIA T4G GPUs, specify t4g .
+	//   - For instance types with Xilinx VU9P FPGAs, specify vu9p .
+	//   - For instance types with NVIDIA V100 GPUs, specify v100 .
 	// Default: Any accelerator
 	AcceleratorNames []AcceleratorName
 
@@ -6407,6 +6805,27 @@ type InstanceRequirements struct {
 	// Default: hdd and ssd
 	LocalStorageTypes []LocalStorageType
 
+	// [Price protection] The price protection threshold for Spot Instances, as a
+	// percentage of an identified On-Demand price. The identified On-Demand price is
+	// the price of the lowest priced current generation C, M, or R instance type with
+	// your specified attributes. If no current generation C, M, or R instance type
+	// matches your attributes, then the identified price is from the lowest priced
+	// current generation instance types, and failing that, from the lowest priced
+	// previous generation instance types that match your attributes. When Amazon EC2
+	// selects instance types with your attributes, it will exclude instance types
+	// whose price exceeds your specified threshold. The parameter accepts an integer,
+	// which Amazon EC2 interprets as a percentage. If you set DesiredCapacityType to
+	// vcpu or memory-mib , the price protection threshold is based on the per vCPU or
+	// per memory price instead of the per instance price. Only one of
+	// SpotMaxPricePercentageOverLowestPrice or
+	// MaxSpotPriceAsPercentageOfOptimalOnDemandPrice can be specified. If you don't
+	// specify either, Amazon EC2 will automatically apply optimal price protection to
+	// consistently select from a wide range of instance types. To indicate no price
+	// protection threshold for Spot Instances, meaning you want to consider all
+	// instance types that match your attributes, include one of these parameters and
+	// specify a high value, such as 999999 .
+	MaxSpotPriceAsPercentageOfOptimalOnDemandPrice *int32
+
 	// The minimum and maximum amount of memory per vCPU, in GiB. Default: No minimum
 	// or maximum limits
 	MemoryGiBPerVCpu *MemoryGiBPerVCpu
@@ -6422,14 +6841,14 @@ type InstanceRequirements struct {
 	// maximum limits
 	NetworkInterfaceCount *NetworkInterfaceCount
 
-	// The price protection threshold for On-Demand Instances. This is the maximum
-	// you’ll pay for an On-Demand Instance, expressed as a percentage above the least
-	// expensive current generation M, C, or R instance type with your specified
-	// attributes. When Amazon EC2 selects instance types with your attributes, it
-	// excludes instance types priced above your threshold. The parameter accepts an
-	// integer, which Amazon EC2 interprets as a percentage. To turn off price
-	// protection, specify a high value, such as 999999 . This parameter is not
-	// supported for GetSpotPlacementScores (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_GetSpotPlacementScores.html)
+	// [Price protection] The price protection threshold for On-Demand Instances, as a
+	// percentage higher than an identified On-Demand price. The identified On-Demand
+	// price is the price of the lowest priced current generation C, M, or R instance
+	// type with your specified attributes. When Amazon EC2 selects instance types with
+	// your attributes, it will exclude instance types whose price exceeds your
+	// specified threshold. The parameter accepts an integer, which Amazon EC2
+	// interprets as a percentage. To turn off price protection, specify a high value,
+	// such as 999999 . This parameter is not supported for GetSpotPlacementScores (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_GetSpotPlacementScores.html)
 	// and GetInstanceTypesFromInstanceRequirements (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_GetInstanceTypesFromInstanceRequirements.html)
 	// . If you set TargetCapacityUnitType to vcpu or memory-mib , the price protection
 	// threshold is applied based on the per-vCPU or per-memory price instead of the
@@ -6441,18 +6860,27 @@ type InstanceRequirements struct {
 	// . Default: false
 	RequireHibernateSupport *bool
 
-	// The price protection threshold for Spot Instances. This is the maximum you’ll
-	// pay for a Spot Instance, expressed as a percentage above the least expensive
-	// current generation M, C, or R instance type with your specified attributes. When
-	// Amazon EC2 selects instance types with your attributes, it excludes instance
-	// types priced above your threshold. The parameter accepts an integer, which
-	// Amazon EC2 interprets as a percentage. To turn off price protection, specify a
-	// high value, such as 999999 . This parameter is not supported for
-	// GetSpotPlacementScores (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_GetSpotPlacementScores.html)
+	// [Price protection] The price protection threshold for Spot Instances, as a
+	// percentage higher than an identified Spot price. The identified Spot price is
+	// the Spot price of the lowest priced current generation C, M, or R instance type
+	// with your specified attributes. If no current generation C, M, or R instance
+	// type matches your attributes, then the identified Spot price is from the lowest
+	// priced current generation instance types, and failing that, from the lowest
+	// priced previous generation instance types that match your attributes. When
+	// Amazon EC2 selects instance types with your attributes, it will exclude instance
+	// types whose Spot price exceeds your specified threshold. The parameter accepts
+	// an integer, which Amazon EC2 interprets as a percentage. If you set
+	// TargetCapacityUnitType to vcpu or memory-mib , the price protection threshold is
+	// applied based on the per-vCPU or per-memory price instead of the per-instance
+	// price. This parameter is not supported for GetSpotPlacementScores (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_GetSpotPlacementScores.html)
 	// and GetInstanceTypesFromInstanceRequirements (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_GetInstanceTypesFromInstanceRequirements.html)
-	// . If you set TargetCapacityUnitType to vcpu or memory-mib , the price protection
-	// threshold is applied based on the per-vCPU or per-memory price instead of the
-	// per-instance price. Default: 100
+	// . Only one of SpotMaxPricePercentageOverLowestPrice or
+	// MaxSpotPriceAsPercentageOfOptimalOnDemandPrice can be specified. If you don't
+	// specify either, Amazon EC2 will automatically apply optimal price protection to
+	// consistently select from a wide range of instance types. To indicate no price
+	// protection threshold for Spot Instances, meaning you want to consider all
+	// instance types that match your attributes, include one of these parameters and
+	// specify a high value, such as 999999 . Default: 100
 	SpotMaxPricePercentageOverLowestPrice *int32
 
 	// The minimum and maximum amount of total local storage, in GB. Default: No
@@ -6510,25 +6938,29 @@ type InstanceRequirementsRequest struct {
 
 	// Indicates whether instance types must have accelerators by specific
 	// manufacturers.
-	//   - For instance types with NVIDIA devices, specify nvidia .
-	//   - For instance types with AMD devices, specify amd .
 	//   - For instance types with Amazon Web Services devices, specify
 	//   amazon-web-services .
+	//   - For instance types with AMD devices, specify amd .
+	//   - For instance types with Habana devices, specify habana .
+	//   - For instance types with NVIDIA devices, specify nvidia .
 	//   - For instance types with Xilinx devices, specify xilinx .
 	// Default: Any manufacturer
 	AcceleratorManufacturers []AcceleratorManufacturer
 
 	// The accelerators that must be on the instance type.
+	//   - For instance types with NVIDIA A10G GPUs, specify a10g .
 	//   - For instance types with NVIDIA A100 GPUs, specify a100 .
-	//   - For instance types with NVIDIA V100 GPUs, specify v100 .
-	//   - For instance types with NVIDIA K80 GPUs, specify k80 .
-	//   - For instance types with NVIDIA T4 GPUs, specify t4 .
-	//   - For instance types with NVIDIA M60 GPUs, specify m60 .
-	//   - For instance types with AMD Radeon Pro V520 GPUs, specify radeon-pro-v520 .
-	//   - For instance types with Xilinx VU9P FPGAs, specify vu9p .
+	//   - For instance types with NVIDIA H100 GPUs, specify h100 .
 	//   - For instance types with Amazon Web Services Inferentia chips, specify
 	//   inferentia .
 	//   - For instance types with NVIDIA GRID K520 GPUs, specify k520 .
+	//   - For instance types with NVIDIA K80 GPUs, specify k80 .
+	//   - For instance types with NVIDIA M60 GPUs, specify m60 .
+	//   - For instance types with AMD Radeon Pro V520 GPUs, specify radeon-pro-v520 .
+	//   - For instance types with NVIDIA T4 GPUs, specify t4 .
+	//   - For instance types with NVIDIA T4G GPUs, specify t4g .
+	//   - For instance types with Xilinx VU9P FPGAs, specify vu9p .
+	//   - For instance types with NVIDIA V100 GPUs, specify v100 .
 	// Default: Any accelerator
 	AcceleratorNames []AcceleratorName
 
@@ -6622,6 +7054,27 @@ type InstanceRequirementsRequest struct {
 	// Default: hdd and ssd
 	LocalStorageTypes []LocalStorageType
 
+	// [Price protection] The price protection threshold for Spot Instances, as a
+	// percentage of an identified On-Demand price. The identified On-Demand price is
+	// the price of the lowest priced current generation C, M, or R instance type with
+	// your specified attributes. If no current generation C, M, or R instance type
+	// matches your attributes, then the identified price is from the lowest priced
+	// current generation instance types, and failing that, from the lowest priced
+	// previous generation instance types that match your attributes. When Amazon EC2
+	// selects instance types with your attributes, it will exclude instance types
+	// whose price exceeds your specified threshold. The parameter accepts an integer,
+	// which Amazon EC2 interprets as a percentage. If you set DesiredCapacityType to
+	// vcpu or memory-mib , the price protection threshold is based on the per vCPU or
+	// per memory price instead of the per instance price. Only one of
+	// SpotMaxPricePercentageOverLowestPrice or
+	// MaxSpotPriceAsPercentageOfOptimalOnDemandPrice can be specified. If you don't
+	// specify either, Amazon EC2 will automatically apply optimal price protection to
+	// consistently select from a wide range of instance types. To indicate no price
+	// protection threshold for Spot Instances, meaning you want to consider all
+	// instance types that match your attributes, include one of these parameters and
+	// specify a high value, such as 999999 .
+	MaxSpotPriceAsPercentageOfOptimalOnDemandPrice *int32
+
 	// The minimum and maximum amount of memory per vCPU, in GiB. Default: No minimum
 	// or maximum limits
 	MemoryGiBPerVCpu *MemoryGiBPerVCpuRequest
@@ -6635,14 +7088,15 @@ type InstanceRequirementsRequest struct {
 	// maximum limits
 	NetworkInterfaceCount *NetworkInterfaceCountRequest
 
-	// The price protection threshold for On-Demand Instances. This is the maximum
-	// you’ll pay for an On-Demand Instance, expressed as a percentage above the least
-	// expensive current generation M, C, or R instance type with your specified
-	// attributes. When Amazon EC2 selects instance types with your attributes, it
-	// excludes instance types priced above your threshold. The parameter accepts an
-	// integer, which Amazon EC2 interprets as a percentage. To turn off price
-	// protection, specify a high value, such as 999999 . This parameter is not
-	// supported for GetSpotPlacementScores (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_GetSpotPlacementScores.html)
+	// [Price protection] The price protection threshold for On-Demand Instances, as a
+	// percentage higher than an identified On-Demand price. The identified On-Demand
+	// price is the price of the lowest priced current generation C, M, or R instance
+	// type with your specified attributes. When Amazon EC2 selects instance types with
+	// your attributes, it will exclude instance types whose price exceeds your
+	// specified threshold. The parameter accepts an integer, which Amazon EC2
+	// interprets as a percentage. To indicate no price protection threshold, specify a
+	// high value, such as 999999 . This parameter is not supported for
+	// GetSpotPlacementScores (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_GetSpotPlacementScores.html)
 	// and GetInstanceTypesFromInstanceRequirements (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_GetInstanceTypesFromInstanceRequirements.html)
 	// . If you set TargetCapacityUnitType to vcpu or memory-mib , the price protection
 	// threshold is applied based on the per-vCPU or per-memory price instead of the
@@ -6654,18 +7108,27 @@ type InstanceRequirementsRequest struct {
 	// . Default: false
 	RequireHibernateSupport *bool
 
-	// The price protection threshold for Spot Instance. This is the maximum you’ll
-	// pay for an Spot Instance, expressed as a percentage above the least expensive
-	// current generation M, C, or R instance type with your specified attributes. When
-	// Amazon EC2 selects instance types with your attributes, it excludes instance
-	// types priced above your threshold. The parameter accepts an integer, which
-	// Amazon EC2 interprets as a percentage. To turn off price protection, specify a
-	// high value, such as 999999 . This parameter is not supported for
-	// GetSpotPlacementScores (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_GetSpotPlacementScores.html)
+	// [Price protection] The price protection threshold for Spot Instances, as a
+	// percentage higher than an identified Spot price. The identified Spot price is
+	// the Spot price of the lowest priced current generation C, M, or R instance type
+	// with your specified attributes. If no current generation C, M, or R instance
+	// type matches your attributes, then the identified Spot price is from the lowest
+	// priced current generation instance types, and failing that, from the lowest
+	// priced previous generation instance types that match your attributes. When
+	// Amazon EC2 selects instance types with your attributes, it will exclude instance
+	// types whose Spot price exceeds your specified threshold. The parameter accepts
+	// an integer, which Amazon EC2 interprets as a percentage. If you set
+	// TargetCapacityUnitType to vcpu or memory-mib , the price protection threshold is
+	// applied based on the per-vCPU or per-memory price instead of the per-instance
+	// price. This parameter is not supported for GetSpotPlacementScores (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_GetSpotPlacementScores.html)
 	// and GetInstanceTypesFromInstanceRequirements (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_GetInstanceTypesFromInstanceRequirements.html)
-	// . If you set TargetCapacityUnitType to vcpu or memory-mib , the price protection
-	// threshold is applied based on the per-vCPU or per-memory price instead of the
-	// per-instance price. Default: 100
+	// . Only one of SpotMaxPricePercentageOverLowestPrice or
+	// MaxSpotPriceAsPercentageOfOptimalOnDemandPrice can be specified. If you don't
+	// specify either, Amazon EC2 will automatically apply optimal price protection to
+	// consistently select from a wide range of instance types. To indicate no price
+	// protection threshold for Spot Instances, meaning you want to consider all
+	// instance types that match your attributes, include one of these parameters and
+	// specify a high value, such as 999999 . Default: 100
 	SpotMaxPricePercentageOverLowestPrice *int32
 
 	// The minimum and maximum amount of total local storage, in GB. Default: No
@@ -6871,6 +7334,32 @@ type InstanceTagNotificationAttribute struct {
 	noSmithyDocumentSerde
 }
 
+// Information about the instance topology.
+type InstanceTopology struct {
+
+	// The name of the Availability Zone or Local Zone that the instance is in.
+	AvailabilityZone *string
+
+	// The name of the placement group that the instance is in.
+	GroupName *string
+
+	// The instance ID.
+	InstanceId *string
+
+	// The instance type.
+	InstanceType *string
+
+	// The network nodes. The nodes are hashed based on your account. Instances from
+	// different accounts running under the same server will return a different hashed
+	// list of strings.
+	NetworkNodes []string
+
+	// The ID of the Availability Zone or Local Zone that the instance is in.
+	ZoneId *string
+
+	noSmithyDocumentSerde
+}
+
 // Describes the instance type.
 type InstanceTypeInfo struct {
 
@@ -6922,11 +7411,17 @@ type InstanceTypeInfo struct {
 	// in the Amazon EC2 User Guide.
 	InstanceType InstanceType
 
+	// Describes the media accelerator settings for the instance type.
+	MediaAcceleratorInfo *MediaAcceleratorInfo
+
 	// Describes the memory for the instance type.
 	MemoryInfo *MemoryInfo
 
 	// Describes the network settings for the instance type.
 	NetworkInfo *NetworkInfo
+
+	// Describes the Neuron accelerator settings for the instance type.
+	NeuronInfo *NeuronInfo
 
 	// Indicates whether Nitro Enclaves is supported.
 	NitroEnclavesSupport NitroEnclavesSupport
@@ -7097,11 +7592,19 @@ type Ipam struct {
 	// The state of the IPAM.
 	State IpamState
 
+	// The state message.
+	StateMessage *string
+
 	// The key/value combination of a tag assigned to the resource. Use the tag key in
 	// the filter name and the tag value as the filter value. For example, to find all
 	// resources that have a tag with the key Owner and the value TeamA , specify
 	// tag:Owner for the filter name and TeamA for the filter value.
 	Tags []Tag
+
+	// IPAM is offered in a Free Tier and an Advanced Tier. For more information about
+	// the features available in each tier and the costs associated with the tiers, see
+	// Amazon VPC pricing > IPAM tab (http://aws.amazon.com/vpc/pricing/) .
+	Tier IpamTier
 
 	noSmithyDocumentSerde
 }
@@ -7191,6 +7694,71 @@ type IpamDiscoveredAccount struct {
 
 	// The last successful resource discovery time.
 	LastSuccessfulDiscoveryTime *time.Time
+
+	noSmithyDocumentSerde
+}
+
+// A public IP Address discovered by IPAM.
+type IpamDiscoveredPublicAddress struct {
+
+	// The IP address.
+	Address *string
+
+	// The allocation ID of the resource the IP address is assigned to.
+	AddressAllocationId *string
+
+	// The ID of the owner of the resource the IP address is assigned to.
+	AddressOwnerId *string
+
+	// The Region of the resource the IP address is assigned to.
+	AddressRegion *string
+
+	// The IP address type.
+	AddressType IpamPublicAddressType
+
+	// The association status.
+	AssociationStatus IpamPublicAddressAssociationStatus
+
+	// The instance ID of the instance the assigned IP address is assigned to.
+	InstanceId *string
+
+	// The resource discovery ID.
+	IpamResourceDiscoveryId *string
+
+	// The network border group that the resource that the IP address is assigned to
+	// is in.
+	NetworkBorderGroup *string
+
+	// The description of the network interface that IP address is assigned to.
+	NetworkInterfaceDescription *string
+
+	// The network interface ID of the resource with the assigned IP address.
+	NetworkInterfaceId *string
+
+	// The ID of the public IPv4 pool that the resource with the assigned IP address
+	// is from.
+	PublicIpv4PoolId *string
+
+	// The last successful resource discovery time.
+	SampleTime *time.Time
+
+	// Security groups associated with the resource that the IP address is assigned to.
+	SecurityGroups []IpamPublicAddressSecurityGroup
+
+	// The Amazon Web Services service associated with the IP address.
+	Service IpamPublicAddressAwsService
+
+	// The resource ARN or ID.
+	ServiceResource *string
+
+	// The ID of the subnet that the resource with the assigned IP address is in.
+	SubnetId *string
+
+	// Tags associated with the IP address.
+	Tags *IpamPublicAddressTags
+
+	// The ID of the VPC that the resource with the assigned IP address is in.
+	VpcId *string
 
 	noSmithyDocumentSerde
 }
@@ -7391,10 +7959,13 @@ type IpamPool struct {
 	// within an existing source pool.
 	SourceIpamPoolId *string
 
+	// The resource used to provision CIDRs to a resource planning pool.
+	SourceResource *IpamPoolSourceResource
+
 	// The state of the IPAM pool.
 	State IpamPoolState
 
-	// A message related to the failed creation of an IPAM pool.
+	// The state message.
 	StateMessage *string
 
 	// The key/value combination of a tag assigned to the resource. Use the tag key in
@@ -7471,6 +8042,75 @@ type IpamPoolCidrFailureReason struct {
 
 	// A message related to why an IPAM pool CIDR failed to be provisioned.
 	Message *string
+
+	noSmithyDocumentSerde
+}
+
+// The resource used to provision CIDRs to a resource planning pool.
+type IpamPoolSourceResource struct {
+
+	// The source resource ID.
+	ResourceId *string
+
+	// The source resource owner.
+	ResourceOwner *string
+
+	// The source resource Region.
+	ResourceRegion *string
+
+	// The source resource type.
+	ResourceType IpamPoolSourceResourceType
+
+	noSmithyDocumentSerde
+}
+
+// The resource used to provision CIDRs to a resource planning pool.
+type IpamPoolSourceResourceRequest struct {
+
+	// The source resource ID.
+	ResourceId *string
+
+	// The source resource owner.
+	ResourceOwner *string
+
+	// The source resource Region.
+	ResourceRegion *string
+
+	// The source resource type.
+	ResourceType IpamPoolSourceResourceType
+
+	noSmithyDocumentSerde
+}
+
+// The security group that the resource with the public IP address is in.
+type IpamPublicAddressSecurityGroup struct {
+
+	// The security group's ID.
+	GroupId *string
+
+	// The security group's name.
+	GroupName *string
+
+	noSmithyDocumentSerde
+}
+
+// A tag for a public IP address discovered by IPAM.
+type IpamPublicAddressTag struct {
+
+	// The tag's key.
+	Key *string
+
+	// The tag's value.
+	Value *string
+
+	noSmithyDocumentSerde
+}
+
+// Tags for a public IP address discovered by IPAM.
+type IpamPublicAddressTags struct {
+
+	// Tags for an Elastic IP address.
+	EipTags []IpamPublicAddressTag
 
 	noSmithyDocumentSerde
 }
@@ -7726,13 +8366,11 @@ type IpamScope struct {
 	noSmithyDocumentSerde
 }
 
-// Describes a set of permissions for a security group rule.
+// Describes the permissions for a security group rule.
 type IpPermission struct {
 
 	// If the protocol is TCP or UDP, this is the start of the port range. If the
-	// protocol is ICMP or ICMPv6, this is the type number. A value of -1 indicates all
-	// ICMP/ICMPv6 types. If you specify all ICMP/ICMPv6 types, you must specify all
-	// ICMP/ICMPv6 codes.
+	// protocol is ICMP or ICMPv6, this is the ICMP type or -1 (all ICMP types).
 	FromPort *int32
 
 	// The IP protocol name ( tcp , udp , icmp , icmpv6 ) or number (see Protocol
@@ -7745,19 +8383,19 @@ type IpPermission struct {
 	// allowed.
 	IpProtocol *string
 
-	// The IPv4 ranges.
+	// The IPv4 address ranges.
 	IpRanges []IpRange
 
-	// The IPv6 ranges.
+	// The IPv6 address ranges.
 	Ipv6Ranges []Ipv6Range
 
 	// The prefix list IDs.
 	PrefixListIds []PrefixListId
 
 	// If the protocol is TCP or UDP, this is the end of the port range. If the
-	// protocol is ICMP or ICMPv6, this is the code. A value of -1 indicates all
-	// ICMP/ICMPv6 codes. If you specify all ICMP/ICMPv6 types, you must specify all
-	// ICMP/ICMPv6 codes.
+	// protocol is ICMP or ICMPv6, this is the ICMP code or -1 (all ICMP codes). If the
+	// start port is -1 (all ICMP types), then the end port must be -1 (all ICMP
+	// codes).
 	ToPort *int32
 
 	// The security group and Amazon Web Services account ID pairs.
@@ -7766,11 +8404,12 @@ type IpPermission struct {
 	noSmithyDocumentSerde
 }
 
-// Describes an IPv4 range.
+// Describes an IPv4 address range.
 type IpRange struct {
 
-	// The IPv4 CIDR range. You can either specify a CIDR range or a source security
-	// group, not both. To specify a single IPv4 address, use the /32 prefix length.
+	// The IPv4 address range. You can either specify a CIDR block or a source
+	// security group, not both. To specify a single IPv4 address, use the /32 prefix
+	// length.
 	CidrIp *string
 
 	// A description for the security group rule that references this IPv4 address
@@ -7878,11 +8517,12 @@ type Ipv6PrefixSpecificationResponse struct {
 	noSmithyDocumentSerde
 }
 
-// Describes an IPv6 range.
+// Describes an IPv6 address range.
 type Ipv6Range struct {
 
-	// The IPv6 CIDR range. You can either specify a CIDR range or a source security
-	// group, not both. To specify a single IPv6 address, use the /128 prefix length.
+	// The IPv6 address range. You can either specify a CIDR block or a source
+	// security group, not both. To specify a single IPv6 address, use the /128 prefix
+	// length.
 	CidrIpv6 *string
 
 	// A description for the security group rule that references this IPv6 address
@@ -8254,14 +8894,13 @@ type LaunchTemplateEbsBlockDeviceRequest struct {
 	// For gp2 volumes, this represents the baseline performance of the volume and the
 	// rate at which the volume accumulates I/O credits for bursting. The following are
 	// the supported values for each volume type:
-	//   - gp3 : 3,000-16,000 IOPS
-	//   - io1 : 100-64,000 IOPS
-	//   - io2 : 100-64,000 IOPS
-	// For io1 and io2 volumes, we guarantee 64,000 IOPS only for Instances built on
-	// the Nitro System (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-types.html#ec2-nitro-instances)
-	// . Other instance families guarantee performance up to 32,000 IOPS. This
-	// parameter is supported for io1 , io2 , and gp3 volumes only. This parameter is
-	// not supported for gp2 , st1 , sc1 , or standard volumes.
+	//   - gp3 : 3,000 - 16,000 IOPS
+	//   - io1 : 100 - 64,000 IOPS
+	//   - io2 : 100 - 256,000 IOPS
+	// For io2 volumes, you can achieve up to 256,000 IOPS on instances built on the
+	// Nitro System (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-types.html#ec2-nitro-instances)
+	// . On other instances, you can achieve performance up to 32,000 IOPS. This
+	// parameter is supported for io1 , io2 , and gp3 volumes only.
 	Iops *int32
 
 	// The ARN of the symmetric Key Management Service (KMS) CMK used for encryption.
@@ -8277,14 +8916,15 @@ type LaunchTemplateEbsBlockDeviceRequest struct {
 	// The size of the volume, in GiBs. You must specify either a snapshot ID or a
 	// volume size. The following are the supported volumes sizes for each volume type:
 	//
-	//   - gp2 and gp3 : 1-16,384
-	//   - io1 and io2 : 4-16,384
-	//   - st1 and sc1 : 125-16,384
-	//   - standard : 1-1,024
+	//   - gp2 and gp3 : 1 - 16,384 GiB
+	//   - io1 : 4 - 16,384 GiB
+	//   - io2 : 4 - 65,536 GiB
+	//   - st1 and sc1 : 125 - 16,384 GiB
+	//   - standard : 1 - 1024 GiB
 	VolumeSize *int32
 
-	// The volume type. For more information, see Amazon EBS volume types (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/EBSVolumeTypes.html)
-	// in the Amazon Elastic Compute Cloud User Guide.
+	// The volume type. For more information, see Amazon EBS volume types (https://docs.aws.amazon.com/ebs/latest/userguide/ebs-volume-types.html)
+	// in the Amazon EBS User Guide.
 	VolumeType VolumeType
 
 	noSmithyDocumentSerde
@@ -8316,6 +8956,42 @@ type LaunchTemplateElasticInferenceAcceleratorResponse struct {
 	// The type of elastic inference accelerator. The possible values are eia1.medium,
 	// eia1.large, and eia1.xlarge.
 	Type *string
+
+	noSmithyDocumentSerde
+}
+
+// ENA Express uses Amazon Web Services Scalable Reliable Datagram (SRD)
+// technology to increase the maximum bandwidth used per stream and minimize tail
+// latency of network traffic between EC2 instances. With ENA Express, you can
+// communicate between two EC2 instances in the same subnet within the same
+// account, or in different accounts. Both sending and receiving instances must
+// have ENA Express enabled. To improve the reliability of network packet delivery,
+// ENA Express reorders network packets on the receiving end by default. However,
+// some UDP-based applications are designed to handle network packets that are out
+// of order to reduce the overhead for packet delivery at the network layer. When
+// ENA Express is enabled, you can specify whether UDP network traffic uses it.
+type LaunchTemplateEnaSrdSpecification struct {
+
+	// Indicates whether ENA Express is enabled for the network interface.
+	EnaSrdEnabled *bool
+
+	// Configures ENA Express for UDP network traffic.
+	EnaSrdUdpSpecification *LaunchTemplateEnaSrdUdpSpecification
+
+	noSmithyDocumentSerde
+}
+
+// ENA Express is compatible with both TCP and UDP transport protocols. When it's
+// enabled, TCP traffic automatically uses it. However, some UDP-based applications
+// are designed to handle network packets that are out of order, without a need for
+// retransmission, such as live video broadcasting or other near-real-time
+// applications. For UDP traffic, you can specify whether to use ENA Express, based
+// on your application environment needs.
+type LaunchTemplateEnaSrdUdpSpecification struct {
+
+	// Indicates whether UDP traffic to and from the instance uses ENA Express. To
+	// specify this setting, you must first enable ENA Express.
+	EnaSrdUdpEnabled *bool
 
 	noSmithyDocumentSerde
 }
@@ -8453,15 +9129,16 @@ type LaunchTemplateInstanceMetadataOptions struct {
 	// Possible values: Integers from 1 to 64
 	HttpPutResponseHopLimit *int32
 
-	// Indicates whether IMDSv2 is optional or required . optional - When IMDSv2 is
-	// optional, you can choose to retrieve instance metadata with or without a session
-	// token in your request. If you retrieve the IAM role credentials without a token,
-	// the IMDSv1 role credentials are returned. If you retrieve the IAM role
-	// credentials using a valid session token, the IMDSv2 role credentials are
-	// returned. required - When IMDSv2 is required, you must send a session token
-	// with any instance metadata retrieval requests. In this state, retrieving the IAM
-	// role credentials always returns IMDSv2 credentials; IMDSv1 credentials are not
-	// available. Default: optional
+	// Indicates whether IMDSv2 is required.
+	//   - optional - IMDSv2 is optional. You can choose whether to send a session
+	//   token in your instance metadata retrieval requests. If you retrieve IAM role
+	//   credentials without a session token, you receive the IMDSv1 role credentials. If
+	//   you retrieve IAM role credentials using a valid session token, you receive the
+	//   IMDSv2 role credentials.
+	//   - required - IMDSv2 is required. You must send a session token in your
+	//   instance metadata retrieval requests. With this option, retrieving the IAM role
+	//   credentials always returns IMDSv2 credentials; IMDSv1 credentials are not
+	//   available.
 	HttpTokens LaunchTemplateHttpTokensState
 
 	// Set to enabled to allow access to instance tags from the instance metadata. Set
@@ -8498,19 +9175,18 @@ type LaunchTemplateInstanceMetadataOptionsRequest struct {
 	// Possible values: Integers from 1 to 64
 	HttpPutResponseHopLimit *int32
 
-	// IMDSv2 uses token-backed sessions. Set the use of HTTP tokens to optional (in
-	// other words, set the use of IMDSv2 to optional ) or required (in other words,
-	// set the use of IMDSv2 to required ).
-	//   - optional - When IMDSv2 is optional, you can choose to retrieve instance
-	//   metadata with or without a session token in your request. If you retrieve the
-	//   IAM role credentials without a token, the IMDSv1 role credentials are returned.
-	//   If you retrieve the IAM role credentials using a valid session token, the IMDSv2
-	//   role credentials are returned.
-	//   - required - When IMDSv2 is required, you must send a session token with any
-	//   instance metadata retrieval requests. In this state, retrieving the IAM role
+	// Indicates whether IMDSv2 is required.
+	//   - optional - IMDSv2 is optional. You can choose whether to send a session
+	//   token in your instance metadata retrieval requests. If you retrieve IAM role
+	//   credentials without a session token, you receive the IMDSv1 role credentials. If
+	//   you retrieve IAM role credentials using a valid session token, you receive the
+	//   IMDSv2 role credentials.
+	//   - required - IMDSv2 is required. You must send a session token in your
+	//   instance metadata retrieval requests. With this option, retrieving the IAM role
 	//   credentials always returns IMDSv2 credentials; IMDSv1 credentials are not
 	//   available.
-	// Default: optional
+	// Default: If the value of ImdsSupport for the Amazon Machine Image (AMI) for
+	// your instance is v2.0 , the default is required .
 	HttpTokens LaunchTemplateHttpTokensState
 
 	// Set to enabled to allow access to instance tags from the instance metadata. Set
@@ -8533,8 +9209,17 @@ type LaunchTemplateInstanceNetworkInterfaceSpecification struct {
 	AssociateCarrierIpAddress *bool
 
 	// Indicates whether to associate a public IPv4 address with eth0 for a new
-	// network interface.
+	// network interface. Amazon Web Services charges for all public IPv4 addresses,
+	// including public IPv4 addresses associated with running instances and Elastic IP
+	// addresses. For more information, see the Public IPv4 Address tab on the Amazon
+	// VPC pricing page (http://aws.amazon.com/vpc/pricing/) .
 	AssociatePublicIpAddress *bool
+
+	// A security group connection tracking specification that enables you to set the
+	// timeout for connection tracking on an Elastic network interface. For more
+	// information, see Connection tracking timeouts (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/security-group-connection-tracking.html#connection-tracking-timeouts)
+	// in the Amazon Elastic Compute Cloud User Guide.
+	ConnectionTrackingSpecification *ConnectionTrackingSpecification
 
 	// Indicates whether the network interface is deleted when the instance is
 	// terminated.
@@ -8545,6 +9230,10 @@ type LaunchTemplateInstanceNetworkInterfaceSpecification struct {
 
 	// The device index for the network interface attachment.
 	DeviceIndex *int32
+
+	// Contains the ENA Express settings for instances launched from your launch
+	// template.
+	EnaSrdSpecification *LaunchTemplateEnaSrdSpecification
 
 	// The IDs of one or more security groups.
 	Groups []string
@@ -8610,8 +9299,18 @@ type LaunchTemplateInstanceNetworkInterfaceSpecificationRequest struct {
 	// in the Wavelength Developer Guide.
 	AssociateCarrierIpAddress *bool
 
-	// Associates a public IPv4 address with eth0 for a new network interface.
+	// Associates a public IPv4 address with eth0 for a new network interface. Amazon
+	// Web Services charges for all public IPv4 addresses, including public IPv4
+	// addresses associated with running instances and Elastic IP addresses. For more
+	// information, see the Public IPv4 Address tab on the Amazon VPC pricing page (http://aws.amazon.com/vpc/pricing/)
+	// .
 	AssociatePublicIpAddress *bool
+
+	// A security group connection tracking specification that enables you to set the
+	// timeout for connection tracking on an Elastic network interface. For more
+	// information, see Connection tracking timeouts (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/security-group-connection-tracking.html#connection-tracking-timeouts)
+	// in the Amazon Elastic Compute Cloud User Guide.
+	ConnectionTrackingSpecification *ConnectionTrackingSpecificationRequest
 
 	// Indicates whether the network interface is deleted when the instance is
 	// terminated.
@@ -8620,8 +9319,15 @@ type LaunchTemplateInstanceNetworkInterfaceSpecificationRequest struct {
 	// A description for the network interface.
 	Description *string
 
-	// The device index for the network interface attachment.
+	// The device index for the network interface attachment. Each network interface
+	// requires a device index. If you create a launch template that includes secondary
+	// network interfaces but not a primary network interface, then you must add a
+	// primary network interface as a launch parameter when you launch an instance from
+	// the template.
 	DeviceIndex *int32
+
+	// Configure ENA Express settings for your launch template.
+	EnaSrdSpecification *EnaSrdSpecificationRequest
 
 	// The IDs of one or more security groups.
 	Groups []string
@@ -8744,7 +9450,12 @@ type LaunchTemplateOverrides struct {
 	// The ID of the subnet in which to launch the instances.
 	SubnetId *string
 
-	// The number of units provided by the specified instance type.
+	// The number of units provided by the specified instance type. When specifying
+	// weights, the price used in the lowest-price and price-capacity-optimized
+	// allocation strategies is per unit hour (where the instance price is divided by
+	// the specified weight). However, if all the specified weights are above the
+	// requested TargetCapacity , resulting in only 1 instance being launched, the
+	// price used is per instance hour.
 	WeightedCapacity *float64
 
 	noSmithyDocumentSerde
@@ -8881,22 +9592,21 @@ type LaunchTemplatesMonitoringRequest struct {
 	noSmithyDocumentSerde
 }
 
-// The launch template to use. You must specify either the launch template ID or
-// launch template name in the request, but not both.
+// Describes the launch template to use.
 type LaunchTemplateSpecification struct {
 
-	// The ID of the launch template. You must specify the LaunchTemplateId or the
-	// LaunchTemplateName , but not both.
+	// The ID of the launch template. You must specify either the launch template ID
+	// or the launch template name, but not both.
 	LaunchTemplateId *string
 
-	// The name of the launch template. You must specify the LaunchTemplateName or the
-	// LaunchTemplateId , but not both.
+	// The name of the launch template. You must specify either the launch template ID
+	// or the launch template name, but not both.
 	LaunchTemplateName *string
 
-	// The launch template version number, $Latest , or $Default . If the value is
-	// $Latest , Amazon EC2 uses the latest version of the launch template. If the
-	// value is $Default , Amazon EC2 uses the default version of the launch template.
-	// Default: The default version of the launch template.
+	// The launch template version number, $Latest , or $Default . A value of $Latest
+	// uses the latest version of the launch template. A value of $Default uses the
+	// default version of the launch template. Default: The default version of the
+	// launch template.
 	Version *string
 
 	noSmithyDocumentSerde
@@ -8979,11 +9689,12 @@ type LaunchTemplateTagSpecification struct {
 // launch.
 type LaunchTemplateTagSpecificationRequest struct {
 
-	// The type of resource to tag. The Valid Values are all the resource types that
-	// can be tagged. However, when creating a launch template, you can specify tags
-	// for the following resource types only: instance | volume | elastic-gpu |
-	// network-interface | spot-instances-request To tag a resource after it has been
-	// created, see CreateTags (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateTags.html)
+	// The type of resource to tag. Valid Values lists all resource types for Amazon
+	// EC2 that can be tagged. When you create a launch template, you can specify tags
+	// for the following resource types only: instance | volume | network-interface |
+	// spot-instances-request . If the instance does not include the resource type that
+	// you specify, the instance launch fails. For example, not all instance types
+	// include a volume. To tag a resource after it has been created, see CreateTags (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateTags.html)
 	// .
 	ResourceType ResourceType
 
@@ -9306,6 +10017,70 @@ type LocalGatewayVirtualInterfaceGroup struct {
 	noSmithyDocumentSerde
 }
 
+// Information about a locked snapshot.
+type LockedSnapshotsInfo struct {
+
+	// The compliance mode cooling-off period, in hours.
+	CoolOffPeriod *int32
+
+	// The date and time at which the compliance mode cooling-off period expires, in
+	// the UTC time zone ( YYYY-MM-DDThh:mm:ss.sssZ ).
+	CoolOffPeriodExpiresOn *time.Time
+
+	// The date and time at which the snapshot was locked, in the UTC time zone (
+	// YYYY-MM-DDThh:mm:ss.sssZ ).
+	LockCreatedOn *time.Time
+
+	// The period of time for which the snapshot is locked, in days.
+	LockDuration *int32
+
+	// The date and time at which the lock duration started, in the UTC time zone (
+	// YYYY-MM-DDThh:mm:ss.sssZ ). If you lock a snapshot that is in the pending
+	// state, the lock duration starts only once the snapshot enters the completed
+	// state.
+	LockDurationStartTime *time.Time
+
+	// The date and time at which the lock will expire, in the UTC time zone (
+	// YYYY-MM-DDThh:mm:ss.sssZ ).
+	LockExpiresOn *time.Time
+
+	// The state of the snapshot lock. Valid states include:
+	//   - compliance-cooloff - The snapshot has been locked in compliance mode but it
+	//   is still within the cooling-off period. The snapshot can't be deleted, but it
+	//   can be unlocked and the lock settings can be modified by users with appropriate
+	//   permissions.
+	//   - governance - The snapshot is locked in governance mode. The snapshot can't
+	//   be deleted, but it can be unlocked and the lock settings can be modified by
+	//   users with appropriate permissions.
+	//   - compliance - The snapshot is locked in compliance mode and the cooling-off
+	//   period has expired. The snapshot can't be unlocked or deleted. The lock duration
+	//   can only be increased by users with appropriate permissions.
+	//   - expired - The snapshot was locked in compliance or governance mode but the
+	//   lock duration has expired. The snapshot is not locked and can be deleted.
+	LockState LockState
+
+	// The account ID of the Amazon Web Services account that owns the snapshot.
+	OwnerId *string
+
+	// The ID of the snapshot.
+	SnapshotId *string
+
+	noSmithyDocumentSerde
+}
+
+// Information about the EC2 Mac Dedicated Host.
+type MacHost struct {
+
+	// The EC2 Mac Dedicated Host ID.
+	HostId *string
+
+	// The latest macOS versions that the EC2 Mac Dedicated Host can launch without
+	// being upgraded.
+	MacOSLatestSupportedVersions []string
+
+	noSmithyDocumentSerde
+}
+
 // Details for Site-to-Site VPN tunnel endpoint maintenance events.
 type MaintenanceDetails struct {
 
@@ -9354,6 +10129,46 @@ type ManagedPrefixList struct {
 
 	// The version of the prefix list.
 	Version *int64
+
+	noSmithyDocumentSerde
+}
+
+// Describes the media accelerators for the instance type.
+type MediaAcceleratorInfo struct {
+
+	// Describes the media accelerators for the instance type.
+	Accelerators []MediaDeviceInfo
+
+	// The total size of the memory for the media accelerators for the instance type,
+	// in MiB.
+	TotalMediaMemoryInMiB *int32
+
+	noSmithyDocumentSerde
+}
+
+// Describes the media accelerators for the instance type.
+type MediaDeviceInfo struct {
+
+	// The number of media accelerators for the instance type.
+	Count *int32
+
+	// The manufacturer of the media accelerator.
+	Manufacturer *string
+
+	// Describes the memory available to the media accelerator.
+	MemoryInfo *MediaDeviceMemoryInfo
+
+	// The name of the media accelerator.
+	Name *string
+
+	noSmithyDocumentSerde
+}
+
+// Describes the memory available to the media accelerator.
+type MediaDeviceMemoryInfo struct {
+
+	// The size of the memory available to each media accelerator, in MiB.
+	SizeInMiB *int32
 
 	noSmithyDocumentSerde
 }
@@ -9483,6 +10298,16 @@ type ModifyTransitGatewayOptions struct {
 	// Removes CIDR blocks for the transit gateway.
 	RemoveTransitGatewayCidrBlocks []string
 
+	// This parameter is in preview and may not be available for your account. Enables
+	// you to reference a security group across VPCs attached to a transit gateway. Use
+	// this option to simplify security group management and control of
+	// instance-to-instance traffic across VPCs that are connected by transit gateway.
+	// You can also use this option to migrate from VPC peering (which was the only
+	// option that supported security group referencing) to transit gateways (which now
+	// also support security group referencing). This option is disabled by default and
+	// there are no additional costs to use this feature.
+	SecurityGroupReferencingSupport SecurityGroupReferencingSupportValue
+
 	// Enable or disable Equal Cost Multipath Protocol support.
 	VpnEcmpSupport VpnEcmpSupportValue
 
@@ -9502,6 +10327,16 @@ type ModifyTransitGatewayVpcAttachmentRequestOptions struct {
 
 	// Enable or disable IPv6 support. The default is enable .
 	Ipv6Support Ipv6SupportValue
+
+	// This parameter is in preview and may not be available for your account. Enables
+	// you to reference a security group across VPCs attached to a transit gateway. Use
+	// this option to simplify security group management and control of
+	// instance-to-instance traffic across VPCs that are connected by transit gateway.
+	// You can also use this option to migrate from VPC peering (which was the only
+	// option that supported security group referencing) to transit gateways (which now
+	// also support security group referencing). This option is disabled by default and
+	// there are no additional costs to use this feature.
+	SecurityGroupReferencingSupport SecurityGroupReferencingSupportValue
 
 	noSmithyDocumentSerde
 }
@@ -9531,6 +10366,17 @@ type ModifyVerifiedAccessEndpointLoadBalancerOptions struct {
 
 	// The IDs of the subnets.
 	SubnetIds []string
+
+	noSmithyDocumentSerde
+}
+
+// Modifies the configuration of the specified device-based Amazon Web Services
+// Verified Access trust provider.
+type ModifyVerifiedAccessTrustProviderDeviceOptions struct {
+
+	// The URL Amazon Web Services Verified Access will use to verify the authenticity
+	// of the device tokens.
+	PublicSigningKeyUrl *string
 
 	noSmithyDocumentSerde
 }
@@ -9572,8 +10418,10 @@ type ModifyVpnTunnelOptionsSpecification struct {
 	// restart Default: clear
 	DPDTimeoutAction *string
 
-	// The number of seconds after which a DPD timeout occurs. Constraints: A value
-	// greater than or equal to 30. Default: 30
+	// The number of seconds after which a DPD timeout occurs. A DPD timeout of 40
+	// seconds means that the VPN endpoint will consider the peer dead 30 seconds after
+	// the first failed keep-alive. Constraints: A value greater than or equal to 30.
+	// Default: 40
 	DPDTimeoutSeconds *int32
 
 	// Turn on or off tunnel endpoint lifecycle control feature.
@@ -9638,7 +10486,7 @@ type ModifyVpnTunnelOptionsSpecification struct {
 	// the Amazon Web Services side of the VPN connection performs an IKE rekey. The
 	// exact time of the rekey is randomly selected based on the value for
 	// RekeyFuzzPercentage . Constraints: A value between 60 and half of
-	// Phase2LifetimeSeconds . Default: 540
+	// Phase2LifetimeSeconds . Default: 270
 	RekeyMarginTimeSeconds *int32
 
 	// The number of packets in an IKE replay window. Constraints: A value between 64
@@ -10177,6 +11025,12 @@ type NetworkInterface struct {
 	// The Availability Zone.
 	AvailabilityZone *string
 
+	// A security group connection tracking configuration that enables you to set the
+	// timeout for connection tracking on an Elastic network interface. For more
+	// information, see Connection tracking timeouts (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/security-group-connection-tracking.html#connection-tracking-timeouts)
+	// in the Amazon Elastic Compute Cloud User Guide.
+	ConnectionTrackingConfiguration *ConnectionTrackingConfiguration
+
 	// Indicates whether a network interface with an IPv6 address is unreachable from
 	// the public internet. If the value is true , inbound traffic from the internet is
 	// dropped and you cannot assign an elastic IP address to the network interface.
@@ -10434,6 +11288,58 @@ type NetworkInterfacePrivateIpAddress struct {
 	noSmithyDocumentSerde
 }
 
+// Describes the cores available to the neuron accelerator.
+type NeuronDeviceCoreInfo struct {
+
+	// The number of cores available to the neuron accelerator.
+	Count *int32
+
+	// The version of the neuron accelerator.
+	Version *int32
+
+	noSmithyDocumentSerde
+}
+
+// Describes the neuron accelerators for the instance type.
+type NeuronDeviceInfo struct {
+
+	// Describes the cores available to each neuron accelerator.
+	CoreInfo *NeuronDeviceCoreInfo
+
+	// The number of neuron accelerators for the instance type.
+	Count *int32
+
+	// Describes the memory available to each neuron accelerator.
+	MemoryInfo *NeuronDeviceMemoryInfo
+
+	// The name of the neuron accelerator.
+	Name *string
+
+	noSmithyDocumentSerde
+}
+
+// Describes the memory available to the neuron accelerator.
+type NeuronDeviceMemoryInfo struct {
+
+	// The size of the memory available to the neuron accelerator, in MiB.
+	SizeInMiB *int32
+
+	noSmithyDocumentSerde
+}
+
+// Describes the neuron accelerators for the instance type.
+type NeuronInfo struct {
+
+	// Describes the neuron accelerators for the instance type.
+	NeuronDevices []NeuronDeviceInfo
+
+	// The total size of the memory for the neuron accelerators for the instance type,
+	// in MiB.
+	TotalNeuronDeviceMemoryInMiB *int32
+
+	noSmithyDocumentSerde
+}
+
 // Describes a DHCP configuration option.
 type NewDhcpConfiguration struct {
 
@@ -10498,6 +11404,13 @@ type OnDemandOptions struct {
 	CapacityReservationOptions *CapacityReservationOptions
 
 	// The maximum amount per hour for On-Demand Instances that you're willing to pay.
+	// If your fleet includes T instances that are configured as unlimited , and if
+	// their average CPU usage exceeds the baseline utilization, you will incur a
+	// charge for surplus credits. The maxTotalPrice does not account for surplus
+	// credits, and, if you use surplus credits, your final cost might be higher than
+	// what you specified for maxTotalPrice . For more information, see Surplus
+	// credits can incur charges (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/burstable-performance-instances-unlimited-mode-concepts.html#unlimited-mode-surplus-credits)
+	// in the EC2 User Guide.
 	MaxTotalPrice *string
 
 	// The minimum target capacity for On-Demand Instances in the fleet. If the
@@ -10532,6 +11445,13 @@ type OnDemandOptionsRequest struct {
 	CapacityReservationOptions *CapacityReservationOptionsRequest
 
 	// The maximum amount per hour for On-Demand Instances that you're willing to pay.
+	// If your fleet includes T instances that are configured as unlimited , and if
+	// their average CPU usage exceeds the baseline utilization, you will incur a
+	// charge for surplus credits. The MaxTotalPrice does not account for surplus
+	// credits, and, if you use surplus credits, your final cost might be higher than
+	// what you specified for MaxTotalPrice . For more information, see Surplus
+	// credits can incur charges (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/burstable-performance-instances-unlimited-mode-concepts.html#unlimited-mode-surplus-credits)
+	// in the EC2 User Guide.
 	MaxTotalPrice *string
 
 	// The minimum target capacity for On-Demand Instances in the fleet. If the
@@ -11274,6 +12194,9 @@ type PrivateIpAddressSpecification struct {
 // Describes the processor used by the instance type.
 type ProcessorInfo struct {
 
+	// The manufacturer of the processor.
+	Manufacturer *string
+
 	// The architectures supported by the instance type.
 	SupportedArchitectures []ArchitectureType
 
@@ -11480,7 +12403,7 @@ type ReferencedSecurityGroup struct {
 	// The ID of the VPC.
 	VpcId *string
 
-	// The ID of the VPC peering connection.
+	// The ID of the VPC peering connection (if applicable).
 	VpcPeeringConnectionId *string
 
 	noSmithyDocumentSerde
@@ -11654,10 +12577,22 @@ type RequestLaunchTemplateData struct {
 	// apply when using an EBS-optimized instance.
 	EbsOptimized *bool
 
-	// An elastic GPU to associate with the instance.
+	// Deprecated. Amazon Elastic Graphics reached end of life on January 8, 2024. For
+	// workloads that require graphics acceleration, we recommend that you use Amazon
+	// EC2 G4ad, G4dn, or G5 instances.
 	ElasticGpuSpecifications []ElasticGpuSpecification
 
-	// The elastic inference accelerator for the instance.
+	// An elastic inference accelerator to associate with the instance. Elastic
+	// inference accelerators are a resource you can attach to your Amazon EC2
+	// instances to accelerate your Deep Learning (DL) inference workloads. You cannot
+	// specify accelerators from different generations in the same request. Starting
+	// April 15, 2023, Amazon Web Services will not onboard new customers to Amazon
+	// Elastic Inference (EI), and will help current customers migrate their workloads
+	// to options that offer better price and performance. After April 15, 2023, new
+	// customers will not be able to launch instances with Amazon EI accelerators in
+	// Amazon SageMaker, Amazon ECS, or Amazon EC2. However, customers who have used
+	// Amazon EI at least once during the past 30-day period are considered current
+	// customers and will be able to continue using the service.
 	ElasticInferenceAccelerators []LaunchTemplateElasticInferenceAccelerator
 
 	// Indicates whether the instance is enabled for Amazon Web Services Nitro
@@ -11754,8 +12689,7 @@ type RequestLaunchTemplateData struct {
 	// The monitoring for the instance.
 	Monitoring *LaunchTemplatesMonitoringRequest
 
-	// One or more network interfaces. If you specify a network interface, you must
-	// specify any security groups and subnets as part of the network interface.
+	// The network interfaces for the instance.
 	NetworkInterfaces []LaunchTemplateInstanceNetworkInterfaceSpecificationRequest
 
 	// The placement for the instance.
@@ -11770,27 +12704,19 @@ type RequestLaunchTemplateData struct {
 	// in the Amazon Elastic Compute Cloud User Guide.
 	RamDiskId *string
 
-	// One or more security group IDs. You can create a security group using
-	// CreateSecurityGroup (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateSecurityGroup.html)
-	// . You cannot specify both a security group ID and security name in the same
-	// request.
+	// The IDs of the security groups. If you specify a network interface, you must
+	// specify any security groups as part of the network interface instead of using
+	// this parameter.
 	SecurityGroupIds []string
 
-	// One or more security group names. For a nondefault VPC, you must use security
-	// group IDs instead. You cannot specify both a security group ID and security name
-	// in the same request.
+	// The names of the security groups. For a nondefault VPC, you must use security
+	// group IDs instead. If you specify a network interface, you must specify any
+	// security groups as part of the network interface instead of using this
+	// parameter.
 	SecurityGroups []string
 
-	// The tags to apply to the resources that are created during instance launch. You
-	// can specify tags for the following resources only:
-	//   - Instances
-	//   - Volumes
-	//   - Elastic graphics
-	//   - Spot Instance requests
-	//   - Network interfaces
-	// To tag a resource after it has been created, see CreateTags (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateTags.html)
-	// . To tag the launch template itself, you must use the TagSpecification (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateLaunchTemplate.html)
-	// parameter.
+	// The tags to apply to the resources that are created during instance launch.
+	// These tags are not applied to the launch template.
 	TagSpecifications []LaunchTemplateTagSpecificationRequest
 
 	// The user data to make available to the instance. You must provide
@@ -12291,10 +13217,22 @@ type ResponseLaunchTemplateData struct {
 	// Indicates whether the instance is optimized for Amazon EBS I/O.
 	EbsOptimized *bool
 
-	// The elastic GPU specification.
+	// Deprecated. Amazon Elastic Graphics reached end of life on January 8, 2024. For
+	// workloads that require graphics acceleration, we recommend that you use Amazon
+	// EC2 G4ad, G4dn, or G5 instances.
 	ElasticGpuSpecifications []ElasticGpuSpecificationResponse
 
-	// The elastic inference accelerator for the instance.
+	// An elastic inference accelerator to associate with the instance. Elastic
+	// inference accelerators are a resource you can attach to your Amazon EC2
+	// instances to accelerate your Deep Learning (DL) inference workloads. You cannot
+	// specify accelerators from different generations in the same request. Starting
+	// April 15, 2023, Amazon Web Services will not onboard new customers to Amazon
+	// Elastic Inference (EI), and will help current customers migrate their workloads
+	// to options that offer better price and performance. After April 15, 2023, new
+	// customers will not be able to launch instances with Amazon EI accelerators in
+	// Amazon SageMaker, Amazon ECS, or Amazon EC2. However, customers who have used
+	// Amazon EI at least once during the past 30-day period are considered current
+	// customers and will be able to continue using the service.
 	ElasticInferenceAccelerators []LaunchTemplateElasticInferenceAcceleratorResponse
 
 	// Indicates whether the instance is enabled for Amazon Web Services Nitro
@@ -12786,14 +13724,8 @@ type ScheduledInstancesEbs struct {
 	// only to instances that support them.
 	Encrypted *bool
 
-	// The number of I/O operations per second (IOPS) to provision for an io1 or io2
-	// volume, with a maximum ratio of 50 IOPS/GiB for io1 , and 500 IOPS/GiB for io2 .
-	// Range is 100 to 64,000 IOPS for volumes in most Regions. Maximum IOPS of 64,000
-	// is guaranteed only on instances built on the Nitro System (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-types.html#ec2-nitro-instances)
-	// . Other instance families guarantee performance up to 32,000 IOPS. For more
-	// information, see Amazon EBS volume types (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/EBSVolumeTypes.html)
-	// in the Amazon EC2 User Guide. This parameter is valid only for Provisioned IOPS
-	// SSD ( io1 and io2 ) volumes.
+	// The number of I/O operations per second (IOPS) to provision for a gp3 , io1 , or
+	// io2 volume.
 	Iops *int32
 
 	// The ID of the snapshot.
@@ -12803,9 +13735,7 @@ type ScheduledInstancesEbs struct {
 	// snapshot and don't specify a volume size, the default is the snapshot size.
 	VolumeSize *int32
 
-	// The volume type. gp2 for General Purpose SSD, io1 or  io2 for Provisioned IOPS
-	// SSD, Throughput Optimized HDD for st1 , Cold HDD for sc1 , or standard for
-	// Magnetic. Default: gp2
+	// The volume type. Default: gp2
 	VolumeType *string
 
 	noSmithyDocumentSerde
@@ -12904,7 +13834,11 @@ type ScheduledInstancesNetworkInterface struct {
 	// VPC. The public IPv4 address can only be assigned to a network interface for
 	// eth0, and can only be assigned to a new network interface, not an existing one.
 	// You cannot specify more than one network interface in the request. If launching
-	// into a default subnet, the default value is true .
+	// into a default subnet, the default value is true . Amazon Web Services charges
+	// for all public IPv4 addresses, including public IPv4 addresses associated with
+	// running instances and Elastic IP addresses. For more information, see the Public
+	// IPv4 Address tab on the Amazon VPC pricing page (http://aws.amazon.com/vpc/pricing/)
+	// .
 	AssociatePublicIpAddress *bool
 
 	// Indicates whether to delete the interface when the instance is terminated.
@@ -12999,6 +13933,30 @@ type SecurityGroup struct {
 	noSmithyDocumentSerde
 }
 
+// A security group that can be used by interfaces in the VPC.
+type SecurityGroupForVpc struct {
+
+	// The security group's description.
+	Description *string
+
+	// The security group ID.
+	GroupId *string
+
+	// The security group name.
+	GroupName *string
+
+	// The security group owner ID.
+	OwnerId *string
+
+	// The VPC ID in which the security group was created.
+	PrimaryVpcId *string
+
+	// The security group tags.
+	Tags []Tag
+
+	noSmithyDocumentSerde
+}
+
 // Describes a security group.
 type SecurityGroupIdentifier struct {
 
@@ -13020,7 +13978,14 @@ type SecurityGroupReference struct {
 	// The ID of the VPC with the referencing security group.
 	ReferencingVpcId *string
 
-	// The ID of the VPC peering connection.
+	// This parameter is in preview and may not be available for your account. The ID
+	// of the transit gateway (if applicable).
+	TransitGatewayId *string
+
+	// The ID of the VPC peering connection (if applicable). For more information
+	// about security group referencing for peering connections, see Update your
+	// security groups to reference peer security groups (https://docs.aws.amazon.com/vpc/latest/peering/vpc-peering-security-groups.html)
+	// in the VPC Peering Guide.
 	VpcPeeringConnectionId *string
 
 	noSmithyDocumentSerde
@@ -13039,9 +14004,7 @@ type SecurityGroupRule struct {
 	Description *string
 
 	// If the protocol is TCP or UDP, this is the start of the port range. If the
-	// protocol is ICMP or ICMPv6, this is the type number. A value of -1 indicates all
-	// ICMP/ICMPv6 types. If you specify all ICMP/ICMPv6 types, you must specify all
-	// ICMP/ICMPv6 codes.
+	// protocol is ICMP or ICMPv6, this is the ICMP type or -1 (all ICMP types).
 	FromPort *int32
 
 	// The ID of the security group.
@@ -13071,9 +14034,9 @@ type SecurityGroupRule struct {
 	Tags []Tag
 
 	// If the protocol is TCP or UDP, this is the end of the port range. If the
-	// protocol is ICMP or ICMPv6, this is the type number. A value of -1 indicates all
-	// ICMP/ICMPv6 codes. If you specify all ICMP/ICMPv6 types, you must specify all
-	// ICMP/ICMPv6 codes.
+	// protocol is ICMP or ICMPv6, this is the ICMP code or -1 (all ICMP codes). If the
+	// start port is -1 (all ICMP types), then the end port must be -1 (all ICMP
+	// codes).
 	ToPort *int32
 
 	noSmithyDocumentSerde
@@ -13117,9 +14080,7 @@ type SecurityGroupRuleRequest struct {
 	Description *string
 
 	// If the protocol is TCP or UDP, this is the start of the port range. If the
-	// protocol is ICMP or ICMPv6, this is the type number. A value of -1 indicates all
-	// ICMP/ICMPv6 types. If you specify all ICMP/ICMPv6 types, you must specify all
-	// ICMP/ICMPv6 codes.
+	// protocol is ICMP or ICMPv6, this is the ICMP type or -1 (all ICMP types).
 	FromPort *int32
 
 	// The IP protocol name ( tcp , udp , icmp , icmpv6 ) or number (see Protocol
@@ -13134,9 +14095,9 @@ type SecurityGroupRuleRequest struct {
 	ReferencedGroupId *string
 
 	// If the protocol is TCP or UDP, this is the end of the port range. If the
-	// protocol is ICMP or ICMPv6, this is the code. A value of -1 indicates all
-	// ICMP/ICMPv6 codes. If you specify all ICMP/ICMPv6 types, you must specify all
-	// ICMP/ICMPv6 codes.
+	// protocol is ICMP or ICMPv6, this is the ICMP code or -1 (all ICMP codes). If the
+	// start port is -1 (all ICMP types), then the end port must be -1 (all ICMP
+	// codes).
 	ToPort *int32
 
 	noSmithyDocumentSerde
@@ -13325,8 +14286,8 @@ type Snapshot struct {
 	KmsKeyId *string
 
 	// The ARN of the Outpost on which the snapshot is stored. For more information,
-	// see Amazon EBS local snapshots on Outposts (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/snapshots-outposts.html)
-	// in the Amazon Elastic Compute Cloud User Guide.
+	// see Amazon EBS local snapshots on Outposts (https://docs.aws.amazon.com/ebs/latest/userguide/snapshots-outposts.html)
+	// in the Amazon EBS User Guide.
 	OutpostArn *string
 
 	// The Amazon Web Services owner alias, from an Amazon-maintained list ( amazon ).
@@ -13450,8 +14411,8 @@ type SnapshotInfo struct {
 	Encrypted *bool
 
 	// The ARN of the Outpost on which the snapshot is stored. For more information,
-	// see Amazon EBS local snapshots on Outposts (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/snapshots-outposts.html)
-	// in the Amazon Elastic Compute Cloud User Guide.
+	// see Amazon EBS local snapshots on Outposts (https://docs.aws.amazon.com/ebs/latest/userguide/snapshots-outposts.html)
+	// in the Amazon EBS User Guide.
 	OutpostArn *string
 
 	// Account id used when creating this snapshot.
@@ -13688,11 +14649,9 @@ type SpotFleetLaunchSpecification struct {
 	// Enable or disable monitoring for the instances.
 	Monitoring *SpotFleetMonitoring
 
-	// One or more network interfaces. If you specify a network interface, you must
-	// specify subnet IDs and security group IDs using the network interface.
-	// SpotFleetLaunchSpecification currently does not support Elastic Fabric Adapter
-	// (EFA). To specify an EFA, you must use LaunchTemplateConfig (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_LaunchTemplateConfig.html)
-	// .
+	// The network interfaces. SpotFleetLaunchSpecification does not support Elastic
+	// Fabric Adapter (EFA). You must use LaunchTemplateConfig (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_LaunchTemplateConfig.html)
+	// instead.
 	NetworkInterfaces []InstanceNetworkInterfaceSpecification
 
 	// The placement information.
@@ -13704,7 +14663,9 @@ type SpotFleetLaunchSpecification struct {
 	// Resource Center and search for the kernel ID.
 	RamdiskId *string
 
-	// The security groups.
+	// The security groups. If you specify a network interface, you must specify any
+	// security groups as part of the network interface instead of using this
+	// parameter.
 	SecurityGroups []GroupIdentifier
 
 	// The maximum price per unit hour that you are willing to pay for a Spot
@@ -13716,7 +14677,8 @@ type SpotFleetLaunchSpecification struct {
 
 	// The IDs of the subnets in which to launch the instances. To specify multiple
 	// subnets, separate them using commas; for example, "subnet-1234abcdeexample1,
-	// subnet-0987cdef6example2".
+	// subnet-0987cdef6example2". If you specify a network interface, you must specify
+	// any subnets as part of the network interface instead of using this parameter.
 	SubnetId *string
 
 	// The tags to apply during creation.
@@ -13865,7 +14827,10 @@ type SpotFleetRequestConfigData struct {
 
 	// The launch specifications for the Spot Fleet request. If you specify
 	// LaunchSpecifications , you can't specify LaunchTemplateConfigs . If you include
-	// On-Demand capacity in your request, you must use LaunchTemplateConfigs .
+	// On-Demand capacity in your request, you must use LaunchTemplateConfigs . If an
+	// AMI specified in a launch specification is deregistered or disabled, no new
+	// instances can be launched from the AMI. For fleets of type maintain , the target
+	// capacity will not be maintained.
 	LaunchSpecifications []SpotFleetLaunchSpecification
 
 	// The launch template and overrides. If you specify LaunchTemplateConfigs , you
@@ -13899,7 +14864,13 @@ type SpotFleetRequestConfigData struct {
 	// Spot Instances in your request, Spot Fleet will launch instances until it
 	// reaches the maximum amount you're willing to pay. When the maximum amount you're
 	// willing to pay is reached, the fleet stops launching instances even if it hasn’t
-	// met the target capacity.
+	// met the target capacity. If your fleet includes T instances that are configured
+	// as unlimited , and if their average CPU usage exceeds the baseline utilization,
+	// you will incur a charge for surplus credits. The onDemandMaxTotalPrice does not
+	// account for surplus credits, and, if you use surplus credits, your final cost
+	// might be higher than what you specified for onDemandMaxTotalPrice . For more
+	// information, see Surplus credits can incur charges (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/burstable-performance-instances-unlimited-mode-concepts.html#unlimited-mode-surplus-credits)
+	// in the EC2 User Guide.
 	OnDemandMaxTotalPrice *string
 
 	// The number of On-Demand units to request. You can choose to set the target
@@ -13916,13 +14887,19 @@ type SpotFleetRequestConfigData struct {
 	SpotMaintenanceStrategies *SpotMaintenanceStrategies
 
 	// The maximum amount per hour for Spot Instances that you're willing to pay. You
-	// can use the spotdMaxTotalPrice parameter, the onDemandMaxTotalPrice parameter,
+	// can use the spotMaxTotalPrice parameter, the onDemandMaxTotalPrice parameter,
 	// or both parameters to ensure that your fleet cost does not exceed your budget.
 	// If you set a maximum price per hour for the On-Demand Instances and Spot
 	// Instances in your request, Spot Fleet will launch instances until it reaches the
 	// maximum amount you're willing to pay. When the maximum amount you're willing to
 	// pay is reached, the fleet stops launching instances even if it hasn’t met the
-	// target capacity.
+	// target capacity. If your fleet includes T instances that are configured as
+	// unlimited , and if their average CPU usage exceeds the baseline utilization, you
+	// will incur a charge for surplus credits. The spotMaxTotalPrice does not account
+	// for surplus credits, and, if you use surplus credits, your final cost might be
+	// higher than what you specified for spotMaxTotalPrice . For more information, see
+	// Surplus credits can incur charges (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/burstable-performance-instances-unlimited-mode-concepts.html#unlimited-mode-surplus-credits)
+	// in the EC2 User Guide.
 	SpotMaxTotalPrice *string
 
 	// The maximum price per unit hour that you are willing to pay for a Spot
@@ -13938,12 +14915,12 @@ type SpotFleetRequestConfigData struct {
 	// (valid only if you use LaunchTemplateConfigs ) or in the
 	// SpotFleetTagSpecification (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_SpotFleetTagSpecification.html)
 	// (valid only if you use LaunchSpecifications ). For information about tagging
-	// after launch, see Tagging Your Resources (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html#tag-resources)
+	// after launch, see Tag your resources (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html#tag-resources)
 	// .
 	TagSpecifications []TagSpecification
 
-	// The unit for the target capacity. TargetCapacityUnitType can only be specified
-	// when InstanceRequirements is specified. Default: units (translates to number of
+	// The unit for the target capacity. You can specify this parameter only when
+	// using attribute-based instance type selection. Default: units (the number of
 	// instances)
 	TargetCapacityUnitType TargetCapacityUnitType
 
@@ -14119,7 +15096,15 @@ type SpotMarketOptions struct {
 	// Deprecated.
 	BlockDurationMinutes *int32
 
-	// The behavior when a Spot Instance is interrupted. The default is terminate .
+	// The behavior when a Spot Instance is interrupted. If Configured (for
+	// HibernationOptions (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_HibernationOptionsRequest.html)
+	// ) is set to true , the InstanceInterruptionBehavior parameter is automatically
+	// set to hibernate . If you set it to stop or terminate , you'll get an error. If
+	// Configured (for HibernationOptions (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_HibernationOptionsRequest.html)
+	// ) is set to false or null , the InstanceInterruptionBehavior parameter is
+	// automatically set to terminate . You can also set it to stop or hibernate . For
+	// more information, see Interruption behavior (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/interruption-behavior.html)
+	// in the Amazon EC2 User Guide.
 	InstanceInterruptionBehavior InstanceInterruptionBehavior
 
 	// The maximum hourly price that you're willing to pay for a Spot Instance. We do
@@ -14205,7 +15190,14 @@ type SpotOptions struct {
 	// do not recommend using this parameter because it can lead to increased
 	// interruptions. If you do not specify this parameter, you will pay the current
 	// Spot price. If you specify a maximum price, your Spot Instances will be
-	// interrupted more frequently than if you do not specify this parameter.
+	// interrupted more frequently than if you do not specify this parameter. If your
+	// fleet includes T instances that are configured as unlimited , and if their
+	// average CPU usage exceeds the baseline utilization, you will incur a charge for
+	// surplus credits. The maxTotalPrice does not account for surplus credits, and,
+	// if you use surplus credits, your final cost might be higher than what you
+	// specified for maxTotalPrice . For more information, see Surplus credits can
+	// incur charges (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/burstable-performance-instances-unlimited-mode-concepts.html#unlimited-mode-surplus-credits)
+	// in the EC2 User Guide.
 	MaxTotalPrice *string
 
 	// The minimum target capacity for Spot Instances in the fleet. If the minimum
@@ -14284,7 +15276,14 @@ type SpotOptionsRequest struct {
 	// do not recommend using this parameter because it can lead to increased
 	// interruptions. If you do not specify this parameter, you will pay the current
 	// Spot price. If you specify a maximum price, your Spot Instances will be
-	// interrupted more frequently than if you do not specify this parameter.
+	// interrupted more frequently than if you do not specify this parameter. If your
+	// fleet includes T instances that are configured as unlimited , and if their
+	// average CPU usage exceeds the baseline utilization, you will incur a charge for
+	// surplus credits. The MaxTotalPrice does not account for surplus credits, and,
+	// if you use surplus credits, your final cost might be higher than what you
+	// specified for MaxTotalPrice . For more information, see Surplus credits can
+	// incur charges (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/burstable-performance-instances-unlimited-mode-concepts.html#unlimited-mode-surplus-credits)
+	// in the EC2 User Guide.
 	MaxTotalPrice *string
 
 	// The minimum target capacity for Spot Instances in the fleet. If the minimum
@@ -14375,11 +15374,11 @@ type SpotPrice struct {
 // Describes a stale rule in a security group.
 type StaleIpPermission struct {
 
-	// The start of the port range for the TCP and UDP protocols, or an ICMP type
-	// number. A value of -1 indicates all ICMP types.
+	// If the protocol is TCP or UDP, this is the start of the port range. If the
+	// protocol is ICMP or ICMPv6, this is the ICMP type or -1 (all ICMP types).
 	FromPort *int32
 
-	// The IP protocol name (for tcp , udp , and icmp ) or number (see Protocol
+	// The IP protocol name ( tcp , udp , icmp , icmpv6 ) or number (see Protocol
 	// Numbers) (http://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml)
 	// .
 	IpProtocol *string
@@ -14390,8 +15389,8 @@ type StaleIpPermission struct {
 	// The prefix list IDs. Not applicable for stale security group rules.
 	PrefixListIds []string
 
-	// The end of the port range for the TCP and UDP protocols, or an ICMP type
-	// number. A value of -1 indicates all ICMP types.
+	// If the protocol is TCP or UDP, this is the end of the port range. If the
+	// protocol is ICMP or ICMPv6, this is the ICMP code or -1 (all ICMP codes).
 	ToPort *int32
 
 	// The security group pairs. Returns the ID of the referenced security group and
@@ -14444,8 +15443,8 @@ type StateReason struct {
 	//   - Server.SpotInstanceTermination : The instance was terminated because the
 	//   number of Spot requests with a maximum price equal to or higher than the Spot
 	//   price exceeded available capacity or because of an increase in the Spot price.
-	//   - Client.InstanceInitiatedShutdown : The instance was shut down using the
-	//   shutdown -h command from the instance.
+	//   - Client.InstanceInitiatedShutdown : The instance was shut down from the
+	//   operating system of the instance.
 	//   - Client.InstanceTerminated : The instance was terminated or rebooted during
 	//   AMI creation.
 	//   - Client.InternalError : A client error caused the instance to terminate
@@ -14558,7 +15557,10 @@ type Subnet struct {
 	MapCustomerOwnedIpOnLaunch *bool
 
 	// Indicates whether instances launched in this subnet receive a public IPv4
-	// address.
+	// address. Amazon Web Services charges for all public IPv4 addresses, including
+	// public IPv4 addresses associated with running instances and Elastic IP
+	// addresses. For more information, see the Public IPv4 Address tab on the Amazon
+	// VPC pricing page (http://aws.amazon.com/vpc/pricing/) .
 	MapPublicIpOnLaunch *bool
 
 	// The Amazon Resource Name (ARN) of the Outpost.
@@ -14785,7 +15787,7 @@ type TagSpecification struct {
 // .
 type TargetCapacitySpecification struct {
 
-	// The default TotalTargetCapacity , which is either Spot or On-Demand .
+	// The default target capacity type.
 	DefaultTargetCapacityType DefaultTargetCapacityType
 
 	// The number of On-Demand units to request. If you specify a target capacity for
@@ -14796,12 +15798,10 @@ type TargetCapacitySpecification struct {
 	// for On-Demand units, you cannot specify a target capacity for Spot units.
 	SpotTargetCapacity *int32
 
-	// The unit for the target capacity. TargetCapacityUnitType can only be specified
-	// when InstanceRequirements is specified. Default: units (translates to number of
-	// instances)
+	// The unit for the target capacity.
 	TargetCapacityUnitType TargetCapacityUnitType
 
-	// The number of units to request, filled using DefaultTargetCapacityType .
+	// The number of units to request, filled the default target capacity type.
 	TotalTargetCapacity *int32
 
 	noSmithyDocumentSerde
@@ -14817,18 +15817,18 @@ type TargetCapacitySpecification struct {
 // set a maximum price per hour for the On-Demand Instances and Spot Instances in
 // your request, EC2 Fleet will launch instances until it reaches the maximum
 // amount that you're willing to pay. When the maximum amount you're willing to pay
-// is reached, the fleet stops launching instances even if it hasn’t met the target
+// is reached, the fleet stops launching instances even if it hasn't met the target
 // capacity. The MaxTotalPrice parameters are located in OnDemandOptionsRequest (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_OnDemandOptionsRequest)
 // and SpotOptionsRequest (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_SpotOptionsRequest)
 // .
 type TargetCapacitySpecificationRequest struct {
 
-	// The number of units to request, filled using DefaultTargetCapacityType .
+	// The number of units to request, filled using the default target capacity type.
 	//
 	// This member is required.
 	TotalTargetCapacity *int32
 
-	// The default TotalTargetCapacity , which is either Spot or On-Demand .
+	// The default target capacity type.
 	DefaultTargetCapacityType DefaultTargetCapacityType
 
 	// The number of On-Demand units to request.
@@ -14837,8 +15837,8 @@ type TargetCapacitySpecificationRequest struct {
 	// The number of Spot units to request.
 	SpotTargetCapacity *int32
 
-	// The unit for the target capacity. TargetCapacityUnitType can only be specified
-	// when InstanceRequirements is specified. Default: units (translates to number of
+	// The unit for the target capacity. You can specify this parameter only when
+	// using attributed-based instance type selection. Default: units (the number of
 	// instances)
 	TargetCapacityUnitType TargetCapacityUnitType
 
@@ -15607,6 +16607,16 @@ type TransitGatewayOptions struct {
 	// The ID of the default propagation route table.
 	PropagationDefaultRouteTableId *string
 
+	// This parameter is in preview and may not be available for your account. Enables
+	// you to reference a security group across VPCs attached to a transit gateway. Use
+	// this option to simplify security group management and control of
+	// instance-to-instance traffic across VPCs that are connected by transit gateway.
+	// You can also use this option to migrate from VPC peering (which was the only
+	// option that supported security group referencing) to transit gateways (which now
+	// also support security group referencing). This option is disabled by default and
+	// there are no additional costs to use this feature.
+	SecurityGroupReferencingSupport SecurityGroupReferencingSupportValue
+
 	// The transit gateway CIDR blocks.
 	TransitGatewayCidrBlocks []string
 
@@ -15844,6 +16854,16 @@ type TransitGatewayRequestOptions struct {
 	// Indicates whether multicast is enabled on the transit gateway
 	MulticastSupport MulticastSupportValue
 
+	// This parameter is in preview and may not be available for your account. Enables
+	// you to reference a security group across VPCs attached to a transit gateway. Use
+	// this option to simplify security group management and control of
+	// instance-to-instance traffic across VPCs that are connected by transit gateway.
+	// You can also use this option to migrate from VPC peering (which was the only
+	// option that supported security group referencing) to transit gateways (which now
+	// also support security group referencing). This option is disabled by default and
+	// there are no additional costs to use this feature.
+	SecurityGroupReferencingSupport SecurityGroupReferencingSupportValue
+
 	// One or more IPv4 or IPv6 CIDR blocks for the transit gateway. Must be a size
 	// /24 CIDR block or larger for IPv4, or a size /64 CIDR block or larger for IPv6.
 	TransitGatewayCidrBlocks []string
@@ -16076,12 +17096,21 @@ type TransitGatewayVpcAttachmentOptions struct {
 	// Indicates whether IPv6 support is disabled.
 	Ipv6Support Ipv6SupportValue
 
+	// This parameter is in preview and may not be available for your account. Enables
+	// you to reference a security group across VPCs attached to a transit gateway. Use
+	// this option to simplify security group management and control of
+	// instance-to-instance traffic across VPCs that are connected by transit gateway.
+	// You can also use this option to migrate from VPC peering (which was the only
+	// option that supported security group referencing) to transit gateways (which now
+	// also support security group referencing). This option is disabled by default and
+	// there are no additional costs to use this feature.
+	SecurityGroupReferencingSupport SecurityGroupReferencingSupportValue
+
 	noSmithyDocumentSerde
 }
 
-// Currently available in limited preview only. If you are interested in using
-// this feature, contact your account manager. Information about an association
-// between a branch network interface with a trunk network interface.
+// Information about an association between a branch network interface with a
+// trunk network interface.
 type TrunkInterfaceAssociation struct {
 
 	// The ID of the association.
@@ -16437,6 +17466,9 @@ type VerifiedAccessEndpoint struct {
 	// The IDs of the security groups for the endpoint.
 	SecurityGroupIds []string
 
+	// The options in use for server side encryption.
+	SseSpecification *VerifiedAccessSseSpecificationResponse
+
 	// The endpoint status.
 	Status *VerifiedAccessEndpointStatus
 
@@ -16519,6 +17551,9 @@ type VerifiedAccessGroup struct {
 	// The Amazon Web Services account number that owns the group.
 	Owner *string
 
+	// The options in use for server side encryption.
+	SseSpecification *VerifiedAccessSseSpecificationResponse
+
 	// The tags.
 	Tags []Tag
 
@@ -16542,6 +17577,10 @@ type VerifiedAccessInstance struct {
 
 	// A description for the Amazon Web Services Verified Access instance.
 	Description *string
+
+	// Indicates whether support for Federal Information Processing Standards (FIPS)
+	// is enabled on the instance.
+	FipsEnabled *bool
 
 	// The last updated time.
 	LastUpdatedTime *string
@@ -16646,13 +17685,13 @@ type VerifiedAccessLogOptions struct {
 	// Sends Verified Access logs to CloudWatch Logs.
 	CloudWatchLogs *VerifiedAccessLogCloudWatchLogsDestinationOptions
 
-	// Include trust data sent by trust providers into the logs.
+	// Indicates whether to include trust data sent by trust providers in the logs.
 	IncludeTrustContext *bool
 
 	// Sends Verified Access logs to Kinesis.
 	KinesisDataFirehose *VerifiedAccessLogKinesisDataFirehoseDestinationOptions
 
-	// The logging version to use. Valid values: ocsf-0.1 | ocsf-1.0.0-rc.2
+	// The logging version. Valid values: ocsf-0.1 | ocsf-1.0.0-rc.2
 	LogVersion *string
 
 	// Sends Verified Access logs to Amazon S3.
@@ -16667,13 +17706,13 @@ type VerifiedAccessLogs struct {
 	// CloudWatch Logs logging destination.
 	CloudWatchLogs *VerifiedAccessLogCloudWatchLogsDestination
 
-	// Describes current setting for including trust data into the logs.
+	// Indicates whether trust data is included in the logs.
 	IncludeTrustContext *bool
 
 	// Kinesis logging destination.
 	KinesisDataFirehose *VerifiedAccessLogKinesisDataFirehoseDestination
 
-	// Describes current setting for the logging version.
+	// The log version.
 	LogVersion *string
 
 	// Amazon S3 logging options.
@@ -16723,6 +17762,34 @@ type VerifiedAccessLogS3DestinationOptions struct {
 	noSmithyDocumentSerde
 }
 
+// Verified Access provides server side encryption by default to data at rest
+// using Amazon Web Services-owned KMS keys. You also have the option of using
+// customer managed KMS keys, which can be specified using the options below.
+type VerifiedAccessSseSpecificationRequest struct {
+
+	// Enable or disable the use of customer managed KMS keys for server side
+	// encryption. Valid values: True | False
+	CustomerManagedKeyEnabled *bool
+
+	// The ARN of the KMS key.
+	KmsKeyArn *string
+
+	noSmithyDocumentSerde
+}
+
+// The options in use for server side encryption.
+type VerifiedAccessSseSpecificationResponse struct {
+
+	// Indicates whether customer managed KMS keys are in use for server side
+	// encryption. Valid values: True | False
+	CustomerManagedKeyEnabled *bool
+
+	// The ARN of the KMS key.
+	KmsKeyArn *string
+
+	noSmithyDocumentSerde
+}
+
 // Describes a Verified Access trust provider.
 type VerifiedAccessTrustProvider struct {
 
@@ -16746,6 +17813,9 @@ type VerifiedAccessTrustProvider struct {
 
 	// The identifier to be used when working with policy rules.
 	PolicyReferenceName *string
+
+	// The options in use for server side encryption.
+	SseSpecification *VerifiedAccessSseSpecificationResponse
 
 	// The tags.
 	Tags []Tag
@@ -16792,7 +17862,8 @@ type VgwTelemetry struct {
 	// The Amazon Resource Name (ARN) of the VPN tunnel endpoint certificate.
 	CertificateArn *string
 
-	// The date and time of the last change in status.
+	// The date and time of the last change in status. This field is updated when
+	// changes in IKE (Phase 1), IPSec (Phase 2), or BGP status are detected.
 	LastStatusChange *time.Time
 
 	// The Internet-routable IP address of the virtual private gateway's outside
@@ -16811,7 +17882,8 @@ type VgwTelemetry struct {
 // Describes a volume.
 type Volume struct {
 
-	// Information about the volume attachments.
+	// This parameter is not returned by CreateVolume. Information about the volume
+	// attachments.
 	Attachments []VolumeAttachment
 
 	// The Availability Zone for the volume.
@@ -16823,7 +17895,8 @@ type Volume struct {
 	// Indicates whether the volume is encrypted.
 	Encrypted *bool
 
-	// Indicates whether the volume was created using fast snapshot restore.
+	// This parameter is not returned by CreateVolume. Indicates whether the volume
+	// was created using fast snapshot restore.
 	FastRestored *bool
 
 	// The number of I/O operations per second (IOPS). For gp3 , io1 , and io2
@@ -16848,7 +17921,7 @@ type Volume struct {
 	// The snapshot from which the volume was created, if applicable.
 	SnapshotId *string
 
-	// Reserved for future use.
+	// This parameter is not returned by CreateVolume. Reserved for future use.
 	SseType SSEType
 
 	// The volume state.
@@ -16872,17 +17945,27 @@ type Volume struct {
 // Describes volume attachment details.
 type VolumeAttachment struct {
 
+	// The ARN of the Amazon ECS or Fargate task to which the volume is attached.
+	AssociatedResource *string
+
 	// The time stamp when the attachment initiated.
 	AttachTime *time.Time
 
 	// Indicates whether the EBS volume is deleted on instance termination.
 	DeleteOnTermination *bool
 
-	// The device name.
+	// The device name. If the volume is attached to a Fargate task, this parameter
+	// returns null .
 	Device *string
 
-	// The ID of the instance.
+	// The ID of the instance. If the volume is attached to a Fargate task, this
+	// parameter returns null .
 	InstanceId *string
+
+	// The service principal of Amazon Web Services service that owns the underlying
+	// instance to which the volume is attached. This parameter is returned only for
+	// volumes that are attached to Fargate tasks.
+	InstanceOwningService *string
 
 	// The attachment state of the volume.
 	State VolumeAttachmentState
@@ -17660,7 +18743,7 @@ type VpnTunnelOptionsSpecification struct {
 	// the Amazon Web Services side of the VPN connection performs an IKE rekey. The
 	// exact time of the rekey is randomly selected based on the value for
 	// RekeyFuzzPercentage . Constraints: A value between 60 and half of
-	// Phase2LifetimeSeconds . Default: 540
+	// Phase2LifetimeSeconds . Default: 270
 	RekeyMarginTimeSeconds *int32
 
 	// The number of packets in an IKE replay window. Constraints: A value between 64

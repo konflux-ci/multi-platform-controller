@@ -4,30 +4,29 @@ package ec2
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/aws"
 	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
-	internalauth "github.com/aws/aws-sdk-go-v2/internal/auth"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	smithyendpoints "github.com/aws/smithy-go/endpoints"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Adds the specified inbound (ingress) rules to a security group. An inbound rule
-// permits instances to receive traffic from the specified IPv4 or IPv6 CIDR
-// address range, or from the instances that are associated with the specified
-// destination security groups. When specifying an inbound rule for your security
-// group in a VPC, the IpPermissions must include a source for the traffic. You
-// specify a protocol for each rule (for example, TCP). For TCP and UDP, you must
-// also specify the destination port or port range. For ICMP/ICMPv6, you must also
-// specify the ICMP/ICMPv6 type and code. You can use -1 to mean all types or all
-// codes. Rule changes are propagated to instances within the security group as
-// quickly as possible. However, a small delay might occur. For more information
-// about VPC security group quotas, see Amazon VPC quotas (https://docs.aws.amazon.com/vpc/latest/userguide/amazon-vpc-limits.html)
-// .
+// permits instances to receive traffic from the specified IPv4 or IPv6 address
+// range, the IP address ranges that are specified by a prefix list, or the
+// instances that are associated with a destination security group. For more
+// information, see Security group rules (https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html)
+// . You must specify exactly one of the following sources: an IPv4 or IPv6 address
+// range, a prefix list, or a security group. You must specify a protocol for each
+// rule (for example, TCP). If the protocol is TCP or UDP, you must also specify a
+// port or port range. If the protocol is ICMP or ICMPv6, you must also specify the
+// ICMP/ICMPv6 type and code. Rule changes are propagated to instances associated
+// with the security group as quickly as possible. However, a small delay might
+// occur. For examples of rules that you can add to security groups for specific
+// access scenarios, see Security group rules for different use cases (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/security-group-rules-reference.html)
+// in the Amazon EC2 User Guide. For more information about security group quotas,
+// see Amazon VPC quotas (https://docs.aws.amazon.com/vpc/latest/userguide/amazon-vpc-limits.html)
+// in the Amazon VPC User Guide.
 func (c *Client) AuthorizeSecurityGroupIngress(ctx context.Context, params *AuthorizeSecurityGroupIngressInput, optFns ...func(*Options)) (*AuthorizeSecurityGroupIngressOutput, error) {
 	if params == nil {
 		params = &AuthorizeSecurityGroupIngressInput{}
@@ -45,10 +44,9 @@ func (c *Client) AuthorizeSecurityGroupIngress(ctx context.Context, params *Auth
 
 type AuthorizeSecurityGroupIngressInput struct {
 
-	// The IPv4 address range, in CIDR format. You can't specify this parameter when
-	// specifying a source security group. To specify an IPv6 address range, use a set
-	// of IP permissions. Alternatively, use a set of IP permissions to specify
-	// multiple rules and a description for the rule.
+	// The IPv4 address range, in CIDR format. To specify an IPv6 address range, use
+	// IP permissions instead. To specify multiple rules and descriptions for the
+	// rules, use IP permissions instead.
 	CidrIp *string
 
 	// Checks whether you have the required permissions for the action, without
@@ -58,57 +56,49 @@ type AuthorizeSecurityGroupIngressInput struct {
 	DryRun *bool
 
 	// If the protocol is TCP or UDP, this is the start of the port range. If the
-	// protocol is ICMP, this is the type number. A value of -1 indicates all ICMP
-	// types. If you specify all ICMP types, you must specify all ICMP codes.
-	// Alternatively, use a set of IP permissions to specify multiple rules and a
-	// description for the rule.
+	// protocol is ICMP, this is the ICMP type or -1 (all ICMP types). To specify
+	// multiple rules and descriptions for the rules, use IP permissions instead.
 	FromPort *int32
 
-	// The ID of the security group. You must specify either the security group ID or
-	// the security group name in the request. For security groups in a nondefault VPC,
-	// you must specify the security group ID.
+	// The ID of the security group.
 	GroupId *string
 
-	// [Default VPC] The name of the security group. You must specify either the
-	// security group ID or the security group name in the request. For security groups
-	// in a nondefault VPC, you must specify the security group ID.
+	// [Default VPC] The name of the security group. For security groups for a default
+	// VPC you can specify either the ID or the name of the security group. For
+	// security groups for a nondefault VPC, you must specify the ID of the security
+	// group.
 	GroupName *string
 
-	// The sets of IP permissions.
+	// The permissions for the security group rules.
 	IpPermissions []types.IpPermission
 
 	// The IP protocol name ( tcp , udp , icmp ) or number (see Protocol Numbers (http://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml)
-	// ). To specify icmpv6 , use a set of IP permissions. Use -1 to specify all
-	// protocols. If you specify -1 or a protocol other than tcp , udp , or icmp ,
-	// traffic on all ports is allowed, regardless of any ports you specify.
-	// Alternatively, use a set of IP permissions to specify multiple rules and a
-	// description for the rule.
+	// ). To specify all protocols, use -1 . To specify icmpv6 , use IP permissions
+	// instead. If you specify a protocol other than one of the supported values,
+	// traffic is allowed on all ports, regardless of any ports that you specify. To
+	// specify multiple rules and descriptions for the rules, use IP permissions
+	// instead.
 	IpProtocol *string
 
-	// [Default VPC] The name of the source security group. You can't specify this
-	// parameter in combination with the following parameters: the CIDR IP address
-	// range, the start of the port range, the IP protocol, and the end of the port
-	// range. Creates rules that grant full ICMP, UDP, and TCP access. To create a rule
-	// with a specific IP protocol and port range, use a set of IP permissions instead.
-	// The source security group must be in the same VPC.
+	// [Default VPC] The name of the source security group. The rule grants full ICMP,
+	// UDP, and TCP access. To create a rule with a specific protocol and port range,
+	// specify a set of IP permissions instead.
 	SourceSecurityGroupName *string
 
-	// [Nondefault VPC] The Amazon Web Services account ID for the source security
-	// group, if the source security group is in a different account. You can't specify
-	// this parameter in combination with the following parameters: the CIDR IP address
-	// range, the IP protocol, the start of the port range, and the end of the port
-	// range. Creates rules that grant full ICMP, UDP, and TCP access. To create a rule
-	// with a specific IP protocol and port range, use a set of IP permissions instead.
+	// The Amazon Web Services account ID for the source security group, if the source
+	// security group is in a different account. The rule grants full ICMP, UDP, and
+	// TCP access. To create a rule with a specific protocol and port range, use IP
+	// permissions instead.
 	SourceSecurityGroupOwnerId *string
 
-	// [VPC Only] The tags applied to the security group rule.
+	// The tags applied to the security group rule.
 	TagSpecifications []types.TagSpecification
 
 	// If the protocol is TCP or UDP, this is the end of the port range. If the
-	// protocol is ICMP, this is the code. A value of -1 indicates all ICMP codes. If
-	// you specify all ICMP types, you must specify all ICMP codes. Alternatively, use
-	// a set of IP permissions to specify multiple rules and a description for the
-	// rule.
+	// protocol is ICMP, this is the ICMP code or -1 (all ICMP codes). If the start
+	// port is -1 (all ICMP types), then the end port must be -1 (all ICMP codes). To
+	// specify multiple rules and descriptions for the rules, use IP permissions
+	// instead.
 	ToPort *int32
 
 	noSmithyDocumentSerde
@@ -129,6 +119,9 @@ type AuthorizeSecurityGroupIngressOutput struct {
 }
 
 func (c *Client) addOperationAuthorizeSecurityGroupIngressMiddlewares(stack *middleware.Stack, options Options) (err error) {
+	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+		return err
+	}
 	err = stack.Serialize.Add(&awsEc2query_serializeOpAuthorizeSecurityGroupIngress{}, middleware.After)
 	if err != nil {
 		return err
@@ -137,34 +130,35 @@ func (c *Client) addOperationAuthorizeSecurityGroupIngressMiddlewares(stack *mid
 	if err != nil {
 		return err
 	}
+	if err := addProtocolFinalizerMiddlewares(stack, options, "AuthorizeSecurityGroupIngress"); err != nil {
+		return fmt.Errorf("add protocol finalizers: %v", err)
+	}
+
 	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
 		return err
 	}
 	if err = addSetLoggerMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
+	if err = addClientRequestID(stack); err != nil {
 		return err
 	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
+	if err = addComputeContentLength(stack); err != nil {
 		return err
 	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRetry(stack, options); err != nil {
 		return err
 	}
-	if err = addHTTPSignerV4Middleware(stack, options); err != nil {
+	if err = addRawResponseToMetadata(stack); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
+	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
 	if err = addClientUserAgent(stack, options); err != nil {
@@ -176,13 +170,13 @@ func (c *Client) addOperationAuthorizeSecurityGroupIngressMiddlewares(stack *mid
 	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
-	if err = addAuthorizeSecurityGroupIngressResolveEndpointMiddleware(stack, options); err != nil {
+	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
 		return err
 	}
 	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opAuthorizeSecurityGroupIngress(options.Region), middleware.Before); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
+	if err = addRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -194,7 +188,7 @@ func (c *Client) addOperationAuthorizeSecurityGroupIngressMiddlewares(stack *mid
 	if err = addRequestResponseLogging(stack, options); err != nil {
 		return err
 	}
-	if err = addendpointDisableHTTPSMiddleware(stack, options); err != nil {
+	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
 	return nil
@@ -204,130 +198,6 @@ func newServiceMetadataMiddleware_opAuthorizeSecurityGroupIngress(region string)
 	return &awsmiddleware.RegisterServiceMetadata{
 		Region:        region,
 		ServiceID:     ServiceID,
-		SigningName:   "ec2",
 		OperationName: "AuthorizeSecurityGroupIngress",
 	}
-}
-
-type opAuthorizeSecurityGroupIngressResolveEndpointMiddleware struct {
-	EndpointResolver EndpointResolverV2
-	BuiltInResolver  builtInParameterResolver
-}
-
-func (*opAuthorizeSecurityGroupIngressResolveEndpointMiddleware) ID() string {
-	return "ResolveEndpointV2"
-}
-
-func (m *opAuthorizeSecurityGroupIngressResolveEndpointMiddleware) HandleSerialize(ctx context.Context, in middleware.SerializeInput, next middleware.SerializeHandler) (
-	out middleware.SerializeOutput, metadata middleware.Metadata, err error,
-) {
-	if awsmiddleware.GetRequiresLegacyEndpoints(ctx) {
-		return next.HandleSerialize(ctx, in)
-	}
-
-	req, ok := in.Request.(*smithyhttp.Request)
-	if !ok {
-		return out, metadata, fmt.Errorf("unknown transport type %T", in.Request)
-	}
-
-	if m.EndpointResolver == nil {
-		return out, metadata, fmt.Errorf("expected endpoint resolver to not be nil")
-	}
-
-	params := EndpointParameters{}
-
-	m.BuiltInResolver.ResolveBuiltIns(&params)
-
-	var resolvedEndpoint smithyendpoints.Endpoint
-	resolvedEndpoint, err = m.EndpointResolver.ResolveEndpoint(ctx, params)
-	if err != nil {
-		return out, metadata, fmt.Errorf("failed to resolve service endpoint, %w", err)
-	}
-
-	req.URL = &resolvedEndpoint.URI
-
-	for k := range resolvedEndpoint.Headers {
-		req.Header.Set(
-			k,
-			resolvedEndpoint.Headers.Get(k),
-		)
-	}
-
-	authSchemes, err := internalauth.GetAuthenticationSchemes(&resolvedEndpoint.Properties)
-	if err != nil {
-		var nfe *internalauth.NoAuthenticationSchemesFoundError
-		if errors.As(err, &nfe) {
-			// if no auth scheme is found, default to sigv4
-			signingName := "ec2"
-			signingRegion := m.BuiltInResolver.(*builtInResolver).Region
-			ctx = awsmiddleware.SetSigningName(ctx, signingName)
-			ctx = awsmiddleware.SetSigningRegion(ctx, signingRegion)
-
-		}
-		var ue *internalauth.UnSupportedAuthenticationSchemeSpecifiedError
-		if errors.As(err, &ue) {
-			return out, metadata, fmt.Errorf(
-				"This operation requests signer version(s) %v but the client only supports %v",
-				ue.UnsupportedSchemes,
-				internalauth.SupportedSchemes,
-			)
-		}
-	}
-
-	for _, authScheme := range authSchemes {
-		switch authScheme.(type) {
-		case *internalauth.AuthenticationSchemeV4:
-			v4Scheme, _ := authScheme.(*internalauth.AuthenticationSchemeV4)
-			var signingName, signingRegion string
-			if v4Scheme.SigningName == nil {
-				signingName = "ec2"
-			} else {
-				signingName = *v4Scheme.SigningName
-			}
-			if v4Scheme.SigningRegion == nil {
-				signingRegion = m.BuiltInResolver.(*builtInResolver).Region
-			} else {
-				signingRegion = *v4Scheme.SigningRegion
-			}
-			if v4Scheme.DisableDoubleEncoding != nil {
-				// The signer sets an equivalent value at client initialization time.
-				// Setting this context value will cause the signer to extract it
-				// and override the value set at client initialization time.
-				ctx = internalauth.SetDisableDoubleEncoding(ctx, *v4Scheme.DisableDoubleEncoding)
-			}
-			ctx = awsmiddleware.SetSigningName(ctx, signingName)
-			ctx = awsmiddleware.SetSigningRegion(ctx, signingRegion)
-			break
-		case *internalauth.AuthenticationSchemeV4A:
-			v4aScheme, _ := authScheme.(*internalauth.AuthenticationSchemeV4A)
-			if v4aScheme.SigningName == nil {
-				v4aScheme.SigningName = aws.String("ec2")
-			}
-			if v4aScheme.DisableDoubleEncoding != nil {
-				// The signer sets an equivalent value at client initialization time.
-				// Setting this context value will cause the signer to extract it
-				// and override the value set at client initialization time.
-				ctx = internalauth.SetDisableDoubleEncoding(ctx, *v4aScheme.DisableDoubleEncoding)
-			}
-			ctx = awsmiddleware.SetSigningName(ctx, *v4aScheme.SigningName)
-			ctx = awsmiddleware.SetSigningRegion(ctx, v4aScheme.SigningRegionSet[0])
-			break
-		case *internalauth.AuthenticationSchemeNone:
-			break
-		}
-	}
-
-	return next.HandleSerialize(ctx, in)
-}
-
-func addAuthorizeSecurityGroupIngressResolveEndpointMiddleware(stack *middleware.Stack, options Options) error {
-	return stack.Serialize.Insert(&opAuthorizeSecurityGroupIngressResolveEndpointMiddleware{
-		EndpointResolver: options.EndpointResolverV2,
-		BuiltInResolver: &builtInResolver{
-			Region:       options.Region,
-			UseDualStack: options.EndpointOptions.UseDualStackEndpoint,
-			UseFIPS:      options.EndpointOptions.UseFIPSEndpoint,
-			Endpoint:     options.BaseEndpoint,
-		},
-	}, "ResolveEndpoint", middleware.After)
 }

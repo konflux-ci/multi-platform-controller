@@ -18,6 +18,7 @@ package v1
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/tektoncd/pipeline/pkg/apis/config"
@@ -153,6 +154,22 @@ func (pr *PipelineRun) GetNamespacedName() types.NamespacedName {
 	return types.NamespacedName{Namespace: pr.Namespace, Name: pr.Name}
 }
 
+// IsTimeoutConditionSet returns true when the pipelinerun has the pipelinerun timed out reason
+func (pr *PipelineRun) IsTimeoutConditionSet() bool {
+	condition := pr.Status.GetCondition(apis.ConditionSucceeded)
+	return condition.IsFalse() && condition.Reason == PipelineRunReasonTimedOut.String()
+}
+
+// SetTimeoutCondition sets the status of the PipelineRun to timed out.
+func (pr *PipelineRun) SetTimeoutCondition(ctx context.Context) {
+	pr.Status.SetCondition(&apis.Condition{
+		Type:    apis.ConditionSucceeded,
+		Status:  corev1.ConditionFalse,
+		Reason:  PipelineRunReasonTimedOut.String(),
+		Message: fmt.Sprintf("PipelineRun %q failed to finish within %q", pr.Name, pr.PipelineTimeout(ctx).String()),
+	})
+}
+
 // HasTimedOut returns true if a pipelinerun has exceeded its spec.Timeout based on its status.Timeout
 func (pr *PipelineRun) HasTimedOut(ctx context.Context, c clock.PassiveClock) bool {
 	timeout := pr.PipelineTimeout(ctx)
@@ -168,6 +185,19 @@ func (pr *PipelineRun) HasTimedOut(ctx context.Context, c clock.PassiveClock) bo
 		}
 	}
 	return false
+}
+
+// HasTimedOutForALongTime returns true if a pipelinerun has exceeed its spec.Timeout based its status.StartTime
+// by a large margin
+func (pr *PipelineRun) HasTimedOutForALongTime(ctx context.Context, c clock.PassiveClock) bool {
+	if !pr.HasTimedOut(ctx, c) {
+		return false
+	}
+	timeout := pr.PipelineTimeout(ctx)
+	startTime := pr.Status.StartTime
+	runtime := c.Since(startTime.Time)
+	// We are arbitrarily defining large margin as doubling the spec.timeout
+	return runtime >= 2*timeout
 }
 
 // HaveTasksTimedOut returns true if a pipelinerun has exceeded its spec.Timeouts.Tasks
@@ -321,6 +351,64 @@ const (
 	// PipelineRunReasonStoppedRunningFinally indicates that pipeline has been gracefully stopped
 	// and no new Tasks will be scheduled by the controller, but final tasks are now running
 	PipelineRunReasonStoppedRunningFinally PipelineRunReason = "StoppedRunningFinally"
+	// ReasonCouldntGetPipeline indicates that the reason for the failure status is that the
+	// associated Pipeline couldn't be retrieved
+	PipelineRunReasonCouldntGetPipeline PipelineRunReason = "CouldntGetPipeline"
+	// ReasonInvalidBindings indicates that the reason for the failure status is that the
+	// PipelineResources bound in the PipelineRun didn't match those declared in the Pipeline
+	PipelineRunReasonInvalidBindings PipelineRunReason = "InvalidPipelineResourceBindings"
+	// ReasonInvalidWorkspaceBinding indicates that a Pipeline expects a workspace but a
+	// PipelineRun has provided an invalid binding.
+	PipelineRunReasonInvalidWorkspaceBinding PipelineRunReason = "InvalidWorkspaceBindings"
+	// ReasonInvalidTaskRunSpec indicates that PipelineRun.Spec.TaskRunSpecs[].PipelineTaskName is defined with
+	// a not exist taskName in pipelineSpec.
+	PipelineRunReasonInvalidTaskRunSpec PipelineRunReason = "InvalidTaskRunSpecs"
+	// ReasonParameterTypeMismatch indicates that the reason for the failure status is that
+	// parameter(s) declared in the PipelineRun do not have the some declared type as the
+	// parameters(s) declared in the Pipeline that they are supposed to override.
+	PipelineRunReasonParameterTypeMismatch PipelineRunReason = "ParameterTypeMismatch"
+	// ReasonObjectParameterMissKeys indicates that the object param value provided from PipelineRun spec
+	// misses some keys required for the object param declared in Pipeline spec.
+	PipelineRunReasonObjectParameterMissKeys PipelineRunReason = "ObjectParameterMissKeys"
+	// ReasonParamArrayIndexingInvalid indicates that the use of param array indexing is not under correct api fields feature gate
+	// or the array is out of bound.
+	PipelineRunReasonParamArrayIndexingInvalid PipelineRunReason = "ParamArrayIndexingInvalid"
+	// ReasonCouldntGetTask indicates that the reason for the failure status is that the
+	// associated Pipeline's Tasks couldn't all be retrieved
+	PipelineRunReasonCouldntGetTask PipelineRunReason = "CouldntGetTask"
+	// ReasonParameterMissing indicates that the reason for the failure status is that the
+	// associated PipelineRun didn't provide all the required parameters
+	PipelineRunReasonParameterMissing PipelineRunReason = "ParameterMissing"
+	// ReasonFailedValidation indicates that the reason for failure status is
+	// that pipelinerun failed runtime validation
+	PipelineRunReasonFailedValidation PipelineRunReason = "PipelineValidationFailed"
+	// ReasonInvalidGraph indicates that the reason for the failure status is that the
+	// associated Pipeline is an invalid graph (a.k.a wrong order, cycle, …)
+	PipelineRunReasonInvalidGraph PipelineRunReason = "PipelineInvalidGraph"
+	// ReasonCouldntCancel indicates that a PipelineRun was cancelled but attempting to update
+	// all of the running TaskRuns as cancelled failed.
+	PipelineRunReasonCouldntCancel PipelineRunReason = "PipelineRunCouldntCancel"
+	// ReasonCouldntTimeOut indicates that a PipelineRun was timed out but attempting to update
+	// all of the running TaskRuns as timed out failed.
+	PipelineRunReasonCouldntTimeOut PipelineRunReason = "PipelineRunCouldntTimeOut"
+	// ReasonInvalidMatrixParameterTypes indicates a matrix contains invalid parameter types
+	PipelineRunReasonInvalidMatrixParameterTypes PipelineRunReason = "InvalidMatrixParameterTypes"
+	// ReasonInvalidTaskResultReference indicates a task result was declared
+	// but was not initialized by that task
+	PipelineRunReasonInvalidTaskResultReference PipelineRunReason = "InvalidTaskResultReference"
+	// ReasonRequiredWorkspaceMarkedOptional indicates an optional workspace
+	// has been passed to a Task that is expecting a non-optional workspace
+	PipelineRunReasonRequiredWorkspaceMarkedOptional PipelineRunReason = "RequiredWorkspaceMarkedOptional"
+	// ReasonResolvingPipelineRef indicates that the PipelineRun is waiting for
+	// its pipelineRef to be asynchronously resolved.
+	PipelineRunReasonResolvingPipelineRef PipelineRunReason = "ResolvingPipelineRef"
+	// ReasonResourceVerificationFailed indicates that the pipeline fails the trusted resource verification,
+	// it could be the content has changed, signature is invalid or public key is invalid
+	PipelineRunReasonResourceVerificationFailed PipelineRunReason = "ResourceVerificationFailed"
+	// ReasonCreateRunFailed indicates that the pipeline fails to create the taskrun or other run resources
+	PipelineRunReasonCreateRunFailed PipelineRunReason = "CreateRunFailed"
+	// ReasonCELEvaluationFailed indicates the pipeline fails the CEL evaluation
+	PipelineRunReasonCELEvaluationFailed PipelineRunReason = "CELEvaluationFailed"
 )
 
 func (t PipelineRunReason) String() string {

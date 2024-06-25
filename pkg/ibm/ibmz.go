@@ -5,37 +5,40 @@ import (
 	"crypto/md5" //#nosec
 	"encoding/base64"
 	"fmt"
-	"github.com/go-logr/logr"
-	"github.com/google/uuid"
-	"github.com/redhat-appstudio/multi-platform-controller/pkg/cloud"
-	v1 "k8s.io/api/core/v1"
-	types2 "k8s.io/apimachinery/pkg/types"
 	"net"
 	"os"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	"strconv"
 	"strings"
 	"time"
 
-	"github.com/IBM/go-sdk-core/v4/core"
+	"github.com/IBM/go-sdk-core/v5/core"
 	"github.com/IBM/vpc-go-sdk/vpcv1"
+	"github.com/go-logr/logr"
+	"github.com/google/uuid"
+	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
+	v1 "k8s.io/api/core/v1"
+	types2 "k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func IBMZProvider(arch string, config map[string]string, systemNamespace string) cloud.CloudProvider {
+	privateIp, _ := strconv.ParseBool(config["dynamic."+arch+".private-ip"])
 	return IBMZDynamicConfig{
 		Region:          config["dynamic."+arch+".region"],
 		Key:             config["dynamic."+arch+".key"],
 		Subnet:          config["dynamic."+arch+".subnet"],
 		Vpc:             config["dynamic."+arch+".vpc"],
 		SecurityGroup:   config["dynamic."+arch+".security-group"],
-		Image:           config["dynamic."+arch+".image"],
+		ImageId:         config["dynamic."+arch+".image-id"],
 		Secret:          config["dynamic."+arch+".secret"],
 		Url:             config["dynamic."+arch+".url"],
 		Profile:         config["dynamic."+arch+".profile"],
+		PrivateIP:       privateIp,
 		SystemNamespace: systemNamespace,
 	}
 }
 
-func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, taskRunName string, instanceTag string) (cloud.InstanceIdentifier, error) {
+func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunName string, instanceTag string) (cloud.InstanceIdentifier, error) {
 	vpcService, err := r.authenticate(kubeClient, ctx)
 	if err != nil {
 		return "", err
@@ -59,15 +62,12 @@ func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Lo
 		return "", err
 	}
 
-	image, err := r.lookupImage(vpcService)
-	if err != nil {
-		return "", err
-	}
+	image := r.ImageId
 	subnet, err := r.lookupSubnet(vpcService)
 	if err != nil {
 		return "", err
 	}
-	result, response, err := vpcService.CreateInstance(&vpcv1.CreateInstanceOptions{
+	result, _, err := vpcService.CreateInstance(&vpcv1.CreateInstanceOptions{
 		InstancePrototype: &vpcv1.InstancePrototype{
 			Name: &name,
 			Zone: &vpcv1.ZoneIdentityByName{Name: ptr(r.Region)},
@@ -94,10 +94,10 @@ func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Lo
 				Subnet:          &vpcv1.SubnetIdentityByID{ID: subnet.ID},
 				SecurityGroups:  []vpcv1.SecurityGroupIdentityIntf{&vpcv1.SecurityGroupIdentityByID{ID: vpc.DefaultSecurityGroup.ID}},
 			},
-			Image: &vpcv1.ImageIdentityByID{ID: image.ID},
+			AvailabilityPolicy: &vpcv1.InstanceAvailabilityPolicyPrototype{HostFailure: ptr("stop")},
+			Image:              &vpcv1.ImageIdentityByID{ID: &image},
 		},
 	})
-	log.Info(response.String())
 	if err != nil {
 		return "", err
 	}
@@ -106,7 +106,7 @@ func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, log *logr.Lo
 
 }
 
-func (r IBMZDynamicConfig) CountInstances(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceTag string) (int, error) {
+func (r IBMZDynamicConfig) CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error) {
 	vpcService, err := r.authenticate(kubeClient, ctx)
 	if err != nil {
 		return 0, err
@@ -129,6 +129,36 @@ func (r IBMZDynamicConfig) CountInstances(kubeClient client.Client, log *logr.Lo
 	return count, nil
 }
 
+func (r IBMZDynamicConfig) ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
+	vpcService, err := r.authenticate(kubeClient, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	vpc, err := r.lookupVpc(vpcService)
+	if err != nil {
+		return nil, err
+	}
+	instances, _, err := vpcService.ListInstances(&vpcv1.ListInstancesOptions{ResourceGroupID: vpc.ResourceGroup.ID, VPCName: &r.Vpc})
+	if err != nil {
+		return nil, err
+	}
+	ret := []cloud.CloudVMInstance{}
+	for _, instance := range instances.Instances {
+		if strings.HasPrefix(*instance.Name, instanceTag) {
+			identifier := cloud.InstanceIdentifier(*instance.ID)
+			addr, err := r.GetInstanceAddress(kubeClient, ctx, identifier)
+			if err != nil {
+				log := logr.FromContextOrDiscard(ctx)
+				log.Error(err, "not listing instance as address cannot be assigned yet", "instance", *instance.ID)
+			} else {
+				ret = append(ret, cloud.CloudVMInstance{InstanceId: identifier, Address: addr, StartTime: time.Time(*instance.CreatedAt)})
+			}
+		}
+	}
+	return ret, nil
+}
+
 func (r IBMZDynamicConfig) lookupSubnet(vpcService *vpcv1.VpcV1) (*vpcv1.Subnet, error) {
 	subnets, _, err := vpcService.ListSubnets(&vpcv1.ListSubnetsOptions{})
 	if err != nil {
@@ -145,23 +175,6 @@ func (r IBMZDynamicConfig) lookupSubnet(vpcService *vpcv1.VpcV1) (*vpcv1.Subnet,
 		return nil, fmt.Errorf("failed to find subnet %s", r.Subnet)
 	}
 	return subnet, nil
-}
-func (r IBMZDynamicConfig) lookupImage(vpcService *vpcv1.VpcV1) (*vpcv1.Image, error) {
-	images, _, err := vpcService.ListImages(&vpcv1.ListImagesOptions{})
-	if err != nil {
-		return nil, err
-	}
-	var image *vpcv1.Image
-	for i := range images.Images {
-		if *images.Images[i].Name == r.Image {
-			image = &images.Images[i]
-			break
-		}
-	}
-	if image == nil {
-		return nil, fmt.Errorf("failed to find image %s", r.Image)
-	}
-	return image, nil
 }
 func (r IBMZDynamicConfig) lookupSSHKey(vpcService *vpcv1.VpcV1) (*vpcv1.Key, error) {
 	keys, _, err := vpcService.ListKeys(&vpcv1.ListKeysOptions{})
@@ -226,22 +239,34 @@ func (r IBMZDynamicConfig) authenticate(kubeClient client.Client, ctx context.Co
 	return vpcService, err
 }
 
-func (r IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
+func (r IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
 	vpcService, err := r.authenticate(kubeClient, ctx)
 	if err != nil {
 		return "", err
 	}
 	instance, _, err := vpcService.GetInstance(&vpcv1.GetInstanceOptions{ID: ptr(string(instanceId))})
 	if err != nil {
-		return "", err
+		return "", nil //not permanent, this can take a while to appear
+	}
+	if r.PrivateIP {
+		for _, i := range instance.NetworkInterfaces {
+			if i.PrimaryIP != nil && i.PrimaryIP.Address != nil && *i.PrimaryIP.Address != "0.0.0.0" {
+				addr := checkAddressLive(ctx, *i.PrimaryIP.Address)
+				if addr != "" {
+					return addr, nil
+				}
+
+			}
+		}
+		return "", nil
 	}
 	ips, _, err := vpcService.ListInstanceNetworkInterfaceFloatingIps(&vpcv1.ListInstanceNetworkInterfaceFloatingIpsOptions{InstanceID: instance.ID, NetworkInterfaceID: instance.PrimaryNetworkInterface.ID})
 
 	if err != nil {
-		return "", err
+		return "", nil //not permanent, this can take a while to appear
 	}
 	if len(ips.FloatingIps) > 0 {
-		return checkAddressLive(*ips.FloatingIps[0].Address, log)
+		return checkAddressLive(ctx, *ips.FloatingIps[0].Address), nil
 	}
 	switch *instance.Status {
 	case vpcv1.InstanceStatusDeletingConst:
@@ -273,7 +298,7 @@ func (r IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, log *log
 			if err != nil {
 				return "", err
 			}
-			return checkAddressLive(*ip.Address, log)
+			return checkAddressLive(ctx, *ip.Address), nil
 		}
 
 	}
@@ -291,22 +316,24 @@ func (r IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, log *log
 	if err != nil {
 		return "", err
 	}
-	return checkAddressLive(*ip.Address, log)
+	return checkAddressLive(ctx, *ip.Address), nil
 }
 
-func checkAddressLive(addr string, log *logr.Logger) (string, error) {
+func checkAddressLive(ctx context.Context, addr string) string {
+	log := logr.FromContextOrDiscard(ctx)
+	log.Info(fmt.Sprintf("checking if address %s is live", addr))
 	server, _ := net.ResolveTCPAddr("tcp", addr+":22")
 	conn, err := net.DialTCP("tcp", nil, server)
 	if err != nil {
 		log.Info("failed to connect to IBM host " + addr)
-		return "", err
+		return ""
 	}
-	defer conn.Close()
-	return addr, nil
+	_ = conn.Close()
+	return addr
 
 }
 
-func (r IBMZDynamicConfig) TerminateInstance(kubeClient client.Client, log *logr.Logger, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
+func (r IBMZDynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
 
 	timeout := time.Now().Add(time.Minute * 10)
 	go func() {
@@ -315,6 +342,7 @@ func (r IBMZDynamicConfig) TerminateInstance(kubeClient client.Client, log *logr
 			return
 		}
 		for {
+			log := logr.FromContextOrDiscard(ctx)
 			instance, _, err := vpcService.GetInstance(&vpcv1.GetInstanceOptions{ID: ptr(string(instanceId))})
 			if err != nil {
 				log.Error(err, "failed to delete system z instance, unable to get instance")
@@ -357,9 +385,10 @@ type IBMZDynamicConfig struct {
 	Subnet          string
 	Vpc             string
 	SecurityGroup   string
-	Image           string
+	ImageId         string
 	Url             string
 	Profile         string
+	PrivateIP       bool
 }
 
 func (r IBMZDynamicConfig) SshUser() string {

@@ -2,10 +2,11 @@ package main
 
 import (
 	"flag"
+	"os"
+
 	zap2 "go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"k8s.io/klog/v2"
-	"os"
 
 	// needed for hack/update-codegen.sh
 	_ "k8s.io/code-generator"
@@ -14,7 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	"github.com/redhat-appstudio/multi-platform-controller/pkg/controller"
+	"github.com/konflux-ci/multi-platform-controller/pkg/controller"
 	//+kubebuilder:scaffold:imports
 	"github.com/go-logr/logr"
 )
@@ -54,12 +55,11 @@ func main() {
 	var mgr ctrl.Manager
 	var err error
 	mopts := ctrl.Options{
-		MetricsBindAddress:     metricsAddr,
-		Port:                   9443,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "5483be8f.redhat.com",
 	}
+	mopts.Metrics.BindAddress = metricsAddr
 
 	mainLog.Info("The apis.kcp.dev group is not present - creating standard manager")
 	mgr, err = controller.NewManager(restConfig, mopts)

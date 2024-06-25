@@ -3,15 +3,20 @@ package taskrun
 import (
 	"context"
 	"fmt"
-	errors2 "github.com/pkg/errors"
-	"github.com/redhat-appstudio/multi-platform-controller/pkg/aws"
-	"github.com/redhat-appstudio/multi-platform-controller/pkg/cloud"
-	"github.com/redhat-appstudio/multi-platform-controller/pkg/ibm"
 	"regexp"
+	"strconv"
+	"strings"
+	"time"
 
-	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
-	v12 "k8s.io/api/core/v1"
+	"github.com/konflux-ci/multi-platform-controller/pkg/aws"
+	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
+	"github.com/konflux-ci/multi-platform-controller/pkg/ibm"
+	errors2 "github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	tektonapi "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	kubecore "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -19,10 +24,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"strconv"
-	"strings"
-	"time"
 
 	"github.com/go-logr/logr"
 )
@@ -34,16 +37,21 @@ const (
 	SecretPrefix   = "multi-platform-ssh-"
 	ConfigMapLabel = "build.appstudio.redhat.com/multi-platform-config"
 
-	//user level labels that specify a task needs to be executed on a remote host
-	MultiPlatformLabel       = "build.appstudio.redhat.com/multi-platform-required"
 	MultiPlatformSecretLabel = "build.appstudio.redhat.com/multi-platform-secret"
 
 	AssignedHost           = "build.appstudio.redhat.com/assigned-host"
 	FailedHosts            = "build.appstudio.redhat.com/failed-hosts"
 	CloudInstanceId        = "build.appstudio.redhat.com/cloud-instance-id"
+	CloudFailures          = "build.appstudio.redhat.com/cloud-failure-count"
 	CloudAddress           = "build.appstudio.redhat.com/cloud-address"
 	CloudDynamicPlatform   = "build.appstudio.redhat.com/cloud-dynamic-platform"
 	ProvisionTaskProcessed = "build.appstudio.redhat.com/provision-task-processed"
+	ProvisionTaskFinalizer = "build.appstudio.redhat.com/provision-task-finalizer"
+
+	//AllocationStartTimeAnnotation Some allocations can take multiple calls, we track the actual start time in this annotation
+	AllocationStartTimeAnnotation = "build.appstudio.redhat.com/allocation-start-time"
+	//BuildStartTimeAnnotation The time the build actually starts
+	BuildStartTimeAnnotation = "build.appstudio.redhat.com/build-start-time"
 
 	UserTaskName      = "build.appstudio.redhat.com/user-task-name"
 	UserTaskNamespace = "build.appstudio.redhat.com/user-task-namespace"
@@ -52,25 +60,48 @@ const (
 	PipelineFinalizer       = "appstudio.io/multi-platform-finalizer"
 	HostConfig              = "host-config"
 
-	TaskTypeLabel     = "build.appstudio.redhat.com/task-type"
-	TaskTypeProvision = "provision"
-	TaskTypeClean     = "clean"
+	TaskTypeLabel                = "build.appstudio.redhat.com/task-type"
+	TaskTargetPlatformAnnotation = "build.appstudio.redhat.com/task-platform"
+	TaskTypeProvision            = "provision"
+	TaskTypeUpdate               = "update"
+	TaskTypeClean                = "clean"
 
-	ServiceAccountName = "multi-arch-controller"
+	ServiceAccountName = "multi-platform-controller"
 
-	PlatformParam     = "PLATFORM"
-	DynamicPlatforms  = "dynamic-platforms"
-	AllowedNamespaces = "allowed-namespaces"
+	PlatformParam          = "PLATFORM"
+	DynamicPlatforms       = "dynamic-platforms"
+	DynamicPoolPlatforms   = "dynamic-pool-platforms"
+	AllowedNamespaces      = "allowed-namespaces"
+	MultiPlatformSubsystem = "multi_platform_controller"
+	ParamNamespace         = "NAMESPACE"
+	ParamTaskrunName       = "TASKRUN_NAME"
+	ParamSecretName        = "SECRET_NAME"
+	ParamHost              = "HOST"
+	ParamUser              = "USER"
+	ParamSudoCommands      = "SUDO_COMMANDS"
 )
 
 type ReconcileTaskRun struct {
-	apiReader         client.Reader
-	client            client.Client
-	scheme            *runtime.Scheme
-	eventRecorder     record.EventRecorder
-	operatorNamespace string
+	apiReader                client.Reader
+	client                   client.Client
+	scheme                   *runtime.Scheme
+	eventRecorder            record.EventRecorder
+	operatorNamespace        string
+	configMapResourceVersion string
+	platformConfig           map[string]PlatformConfig
+	platformMetrics          map[string]*PlatformMetrics
+	cloudProviders           map[string]func(platform string, config map[string]string, systemNamespace string) cloud.CloudProvider
+}
 
-	cloudProviders map[string]func(platform string, config map[string]string, systemNamespace string) cloud.CloudProvider
+type PlatformMetrics struct {
+	allocationTime         prometheus.Histogram
+	waitTime               prometheus.Histogram
+	taskRunTime            prometheus.Histogram
+	runningTasks           prometheus.Gauge
+	waitingTasks           prometheus.Gauge
+	provisionFailures      prometheus.Counter
+	cleanupFailures        prometheus.Counter
+	hostAllocationFailures prometheus.Counter
 }
 
 func newReconciler(mgr ctrl.Manager, operatorNamespace string) reconcile.Reconciler {
@@ -80,6 +111,8 @@ func newReconciler(mgr ctrl.Manager, operatorNamespace string) reconcile.Reconci
 		scheme:            mgr.GetScheme(),
 		eventRecorder:     mgr.GetEventRecorderFor("ComponentBuild"),
 		operatorNamespace: operatorNamespace,
+		platformMetrics:   map[string]*PlatformMetrics{},
+		platformConfig:    map[string]PlatformConfig{},
 		cloudProviders:    map[string]func(platform string, config map[string]string, systemNamespace string) cloud.CloudProvider{"aws": aws.Ec2Provider, "ibmz": ibm.IBMZProvider, "ibmp": ibm.IBMPowerProvider},
 	}
 }
@@ -90,9 +123,8 @@ func (r *ReconcileTaskRun) Reconcile(ctx context.Context, request reconcile.Requ
 	ctx, cancel = context.WithTimeout(ctx, contextTimeout)
 	defer cancel()
 	log := ctrl.Log.WithName("taskrun").WithValues("request", request.NamespacedName)
-	log.Info("Reconciling")
 
-	pr := v1.TaskRun{}
+	pr := tektonapi.TaskRun{}
 	prerr := r.client.Get(ctx, request.NamespacedName, &pr)
 	if prerr != nil {
 		if !errors.IsNotFound(prerr) {
@@ -105,46 +137,90 @@ func (r *ReconcileTaskRun) Reconcile(ctx context.Context, request reconcile.Requ
 		log.Info(msg)
 		return ctrl.Result{}, nil
 	}
-
+	if pr.Annotations != nil {
+		if pr.Annotations[CloudInstanceId] != "" {
+			log.WithValues(CloudInstanceId, pr.Annotations[CloudInstanceId])
+		}
+		if pr.Annotations[AssignedHost] != "" {
+			log.WithValues(AssignedHost, pr.Annotations[AssignedHost])
+		}
+	}
+	ctx = logr.NewContext(ctx, log)
 	switch {
 	case prerr == nil:
-		return r.handleTaskRunReceived(ctx, &log, &pr)
+		return r.handleTaskRunReceived(ctx, &pr)
 	}
 
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, log *logr.Logger, tr *v1.TaskRun) (reconcile.Result, error) {
-	if tr.Labels == nil {
+func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, tr *tektonapi.TaskRun) (reconcile.Result, error) {
+	log := logr.FromContextOrDiscard(ctx)
+	if tr.Labels != nil {
+		taskType := tr.Labels[TaskTypeLabel]
+		if taskType == TaskTypeClean {
+			log.Info("Reconciling cleanup task")
+			return r.handleCleanTask(ctx, tr)
+		}
+		if taskType == TaskTypeProvision {
+			log.Info("Reconciling provision task")
+			return r.handleProvisionTask(ctx, tr)
+		}
+		if taskType == TaskTypeUpdate {
+			// We don't care about these
+			return reconcile.Result{}, nil
+		}
+	}
+	if tr.Spec.Params == nil {
 		return reconcile.Result{}, nil
 	}
-	taskType := tr.Labels[TaskTypeLabel]
-	if taskType == TaskTypeClean {
-		return r.handleCleanTask(ctx, log, tr)
-	}
-	if taskType == TaskTypeProvision {
-		return r.handleProvisionTask(ctx, log, tr)
-	}
 
-	if tr.Labels == nil || tr.Labels[MultiPlatformLabel] == "" {
+	//identify tasks by the PLATFORM param and multi-platform-ssh- secret
+	if tr.Status.TaskSpec == nil || tr.Status.TaskSpec.Volumes == nil {
+		return reconcile.Result{}, nil
+	}
+	found := false
+	for _, i := range tr.Status.TaskSpec.Volumes {
+		if i.Secret != nil {
+			if strings.HasPrefix(i.Secret.SecretName, SecretPrefix) {
+				found = true
+			}
+		}
+	}
+	if !found {
 		//this is not something we need to be concerned with
 		return reconcile.Result{}, nil
 	}
-	return r.handleUserTask(ctx, log, tr)
+	found = false
+	for _, i := range tr.Spec.Params {
+		if i.Name == PlatformParam {
+			found = true
+		}
+	}
+	if !found {
+		//this is not something we need to be concerned with
+		return reconcile.Result{}, nil
+	}
+	log.Info("Reconciling user task")
+
+	if tr.Status.TaskSpec == nil || tr.Status.TaskSpec.Volumes == nil {
+		return reconcile.Result{}, nil
+	}
+	return r.handleUserTask(ctx, tr)
 }
 
 // called when a task has finished, we look for waiting tasks
 // and then potentially requeue one of them
-func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, log *logr.Logger, platform string) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, platform string) (reconcile.Result, error) {
 
 	//try and requeue a waiting task if one exists
-	taskList := v1.TaskRunList{}
+	taskList := tektonapi.TaskRunList{}
 
 	err := r.client.List(ctx, &taskList, client.MatchingLabels{WaitingForPlatformLabel: platformLabel(platform)})
 	if err != nil {
 		return reconcile.Result{}, err
 	}
-	var oldest *v1.TaskRun
+	var oldest *tektonapi.TaskRun
 	var oldestTs time.Time
 	for i := range taskList.Items {
 		tr := taskList.Items[i]
@@ -162,22 +238,26 @@ func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, log *logr.Log
 
 }
 
-func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, log *logr.Logger, tr *v1.TaskRun) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, tr *tektonapi.TaskRun) (reconcile.Result, error) {
 	if tr.Status.CompletionTime == nil {
 		return reconcile.Result{}, nil
 	}
 	success := tr.Status.GetCondition(apis.ConditionSucceeded).IsTrue()
 	if !success {
+		log := logr.FromContextOrDiscard(ctx)
 		log.Info("cleanup task failed", "task", tr.Name)
+		r.handleMetrics(tr.Annotations[TaskTargetPlatformAnnotation], func(metrics *PlatformMetrics) {
+			metrics.provisionFailures.Inc()
+		})
 	}
-	//leave the TR for an hour
-	if tr.Status.CompletionTime.Add(time.Hour).Before(time.Now()) {
+	//leave the failed TR for an hour to view logs
+	if success || tr.Status.CompletionTime.Add(time.Hour).Before(time.Now()) {
 		return reconcile.Result{}, r.client.Delete(ctx, tr)
 	}
 	return reconcile.Result{RequeueAfter: time.Hour}, nil
 }
 
-func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Logger, tr *v1.TaskRun) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonapi.TaskRun) (reconcile.Result, error) {
 
 	if tr.Status.CompletionTime == nil {
 		return reconcile.Result{}, nil
@@ -185,16 +265,16 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 	if tr.Annotations == nil {
 		tr.Annotations = map[string]string{}
 	}
+	success := tr.Status.GetCondition(apis.ConditionSucceeded).IsTrue()
 	if tr.Annotations[ProvisionTaskProcessed] == "true" {
-		//leave the TR for an hour so we can view logs
+		//leave the failed TR for an hour so we can view logs
 		//TODO: tekton results integration
-		if tr.Status.CompletionTime.Add(time.Hour).Before(time.Now()) {
+		if success || tr.Status.CompletionTime.Add(time.Hour).Before(time.Now()) {
 			return reconcile.Result{}, r.client.Delete(ctx, tr)
 		}
 		return reconcile.Result{RequeueAfter: time.Hour}, nil
 	}
 	tr.Annotations[ProvisionTaskProcessed] = "true"
-	success := tr.Status.GetCondition(apis.ConditionSucceeded).IsTrue()
 	secretName := ""
 	for _, i := range tr.Spec.Params {
 		if i.Name == "SECRET_NAME" {
@@ -202,11 +282,18 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 			break
 		}
 	}
+	userNamespace := tr.Labels[UserTaskNamespace]
+	userTaskName := tr.Labels[UserTaskName]
+	assigned := tr.Labels[AssignedHost]
+	log := logr.FromContextOrDiscard(ctx)
 	if !success {
-		assigned := tr.Labels[AssignedHost]
+		r.handleMetrics(tr.Annotations[TaskTargetPlatformAnnotation], func(metrics *PlatformMetrics) {
+			metrics.provisionFailures.Inc()
+		})
+		log.Info(fmt.Sprintf("provision task for host %s for user task %s/%sfailed", assigned, userNamespace, userTaskName))
 		if assigned != "" {
-			userTr := v1.TaskRun{}
-			err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Labels[UserTaskNamespace], Name: tr.Labels[UserTaskName]}, &userTr)
+			userTr := tektonapi.TaskRun{}
+			err := r.client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: userTaskName}, &userTr)
 			if err == nil {
 				if userTr.Annotations == nil {
 					userTr.Annotations = map[string]string{}
@@ -234,12 +321,12 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 	} else {
 		log.Info("provision task succeeded")
 		//verify we ended up with a secret
-		secret := v12.Secret{}
-		err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Labels[UserTaskNamespace], Name: secretName}, &secret)
+		secret := kubecore.Secret{}
+		err := r.client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: secretName}, &secret)
 		if err != nil {
 			if errors.IsNotFound(err) {
-				userTr := v1.TaskRun{}
-				err = r.client.Get(ctx, types.NamespacedName{Namespace: tr.Labels[UserTaskNamespace], Name: tr.Labels[UserTaskName]}, &userTr)
+				userTr := tektonapi.TaskRun{}
+				err = r.client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: userTaskName}, &userTr)
 				if err != nil {
 					if !errors.IsNotFound(err) {
 						//if the task run is not found then this is just old
@@ -256,21 +343,55 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, log *logr.Lo
 				return reconcile.Result{}, err
 			}
 		}
+		// Now we 'bump' the pod, by giving it a label
+		// This forces a reconcile
+		pods := kubecore.PodList{}
+
+		err = r.client.List(ctx, &pods, client.InNamespace(userNamespace))
+		if err != nil {
+			log.Error(err, "unable to annotate task pod")
+		} else {
+			for i := range pods.Items {
+				pod := pods.Items[i]
+				//look for pods owned by the user taskrun
+				owned := false
+				for _, ref := range pod.OwnerReferences {
+					if ref.Name == userTaskName {
+						owned = true
+						break
+					}
+				}
+				if !owned {
+					continue
+				}
+
+				if pod.Annotations == nil {
+					pod.Annotations = map[string]string{}
+				}
+				pod.Annotations[AssignedHost] = assigned
+				err = r.client.Update(ctx, &pod)
+				if err != nil {
+					log.Error(err, "unable to annotate task pod")
+				}
+			}
+		}
 	}
 	return reconcile.Result{}, r.client.Update(ctx, tr)
 }
 
 // This creates an secret with the 'error' field set
 // This will result in the pipeline run immediately failing with the message printed in the logs
-func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, tr *v1.TaskRun, secretName string, msg string) error {
+func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, tr *tektonapi.TaskRun, secretName string, msg string) error {
 	if controllerutil.AddFinalizer(tr, PipelineFinalizer) {
 		err := r.client.Update(ctx, tr)
 		if err != nil {
 			return err
 		}
 	}
+	log := logr.FromContextOrDiscard(ctx)
+	log.Info("creating error secret " + msg)
 
-	secret := v12.Secret{}
+	secret := kubecore.Secret{}
 	secret.Labels = map[string]string{MultiPlatformSecretLabel: "true"}
 	secret.Namespace = tr.Namespace
 	secret.Name = secretName
@@ -293,26 +414,45 @@ func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, tr *v1.TaskRun
 	return nil
 }
 
-func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, log *logr.Logger, tr *v1.TaskRun) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *tektonapi.TaskRun) (reconcile.Result, error) {
 
+	log := logr.FromContextOrDiscard(ctx)
 	secretName := SecretPrefix + tr.Name
 	if tr.Labels[AssignedHost] != "" {
-		return r.handleHostAssigned(ctx, log, tr, secretName)
+		return r.handleHostAssigned(ctx, tr, secretName)
 	} else {
 		//if the PR is done we ignore it
 		if tr.Status.CompletionTime != nil || tr.GetDeletionTimestamp() != nil {
 			if controllerutil.ContainsFinalizer(tr, PipelineFinalizer) {
-				return r.handleHostAssigned(ctx, log, tr, secretName)
+				return r.handleHostAssigned(ctx, tr, secretName)
 
 			}
 			return reconcile.Result{}, nil
 		}
 
-		return r.handleHostAllocation(ctx, log, tr, secretName)
+		targetPlatform, err := extracPlatform(tr)
+		if err != nil {
+			err := r.createErrorSecret(ctx, tr, secretName, err.Error())
+			if err != nil {
+				log.Error(err, "could not create error secret")
+			}
+			return reconcile.Result{}, nil
+		}
+		res, err := r.handleHostAllocation(ctx, tr, secretName, targetPlatform)
+		if err != nil && !errors.IsConflict(err) {
+			r.handleMetrics(targetPlatform, func(metrics *PlatformMetrics) {
+				metrics.hostAllocationFailures.Inc()
+			})
+			err := r.createErrorSecret(ctx, tr, secretName, err.Error())
+			if err != nil {
+				log.Error(err, "could not create error secret")
+			}
+		}
+		return res, err
 	}
 }
 
-func extracPlatform(tr *v1.TaskRun) (string, error) {
+func extracPlatform(tr *tektonapi.TaskRun) (string, error) {
 	for _, p := range tr.Spec.Params {
 		if p.Name == PlatformParam {
 			return p.Value.StringVal, nil
@@ -321,8 +461,14 @@ func extracPlatform(tr *v1.TaskRun) (string, error) {
 	return "", errors2.New("failed to determine platform")
 }
 
-func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektonapi.TaskRun, secretName string, targetPlatform string) (reconcile.Result, error) {
+	log := logr.FromContextOrDiscard(ctx)
+
 	log.Info("attempting to allocate host")
+
+	if tr.Labels == nil {
+		tr.Labels = map[string]string{}
+	}
 	if r.apiReader != nil {
 		err := r.apiReader.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)
 		if err != nil {
@@ -330,7 +476,7 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.L
 		}
 	}
 	//check the secret does not already exist
-	secret := v12.Secret{}
+	secret := kubecore.Secret{}
 	err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: secretName}, &secret)
 	if err != nil {
 		if !errors.IsNotFound(err) {
@@ -340,36 +486,79 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, log *logr.L
 		//secret already exists (probably error secret)
 		return reconcile.Result{}, nil
 	}
-	targetPlatform, err := extracPlatform(tr)
-	if err != nil {
-		return reconcile.Result{}, r.createErrorSecret(ctx, tr, secretName, "failed to determine platform, no PLATFORM param")
-	}
 
 	//lets allocate a host, get the map with host info
-	hosts, instanceTag, err := r.readConfiguration(ctx, log, targetPlatform, tr.Namespace)
+	hosts, err := r.readConfiguration(ctx, targetPlatform, tr.Namespace)
 	if err != nil {
 		log.Error(err, "failed to read host config")
+		r.handleMetrics(targetPlatform, func(metrics *PlatformMetrics) { metrics.hostAllocationFailures.Inc() })
 		return reconcile.Result{}, r.createErrorSecret(ctx, tr, secretName, "failed to read host config "+err.Error())
 	}
-	return hosts.Allocate(r, ctx, log, tr, secretName, instanceTag)
+	if tr.Annotations == nil {
+		tr.Annotations = map[string]string{}
+	}
+	wasWaiting := tr.Labels[WaitingForPlatformLabel] != ""
+	startTime := time.Now().Unix()
+	ret, err := hosts.Allocate(r, ctx, tr, secretName)
+	isWaiting := tr.Labels[WaitingForPlatformLabel] != ""
 
+	if err != nil {
+		r.handleMetrics(targetPlatform, func(metrics *PlatformMetrics) {
+			metrics.hostAllocationFailures.Inc()
+		})
+	} else {
+		if tr.Labels[AssignedHost] != "" {
+			alternateStart := tr.Annotations[AllocationStartTimeAnnotation]
+			if alternateStart != "" {
+				startTime, err = strconv.ParseInt(alternateStart, 10, 64)
+			}
+			r.handleMetrics(targetPlatform, func(metrics *PlatformMetrics) {
+				metrics.allocationTime.Observe(float64(time.Now().Unix() - startTime))
+				metrics.runningTasks.Inc()
+			})
+		}
+		if wasWaiting {
+			r.handleMetrics(targetPlatform, func(metrics *PlatformMetrics) {
+				metrics.waitTime.Observe(float64(time.Now().Unix() - tr.CreationTimestamp.Unix()))
+			})
+		}
+		if isWaiting && !wasWaiting {
+			r.handleMetrics(targetPlatform, func(metrics *PlatformMetrics) {
+				metrics.waitingTasks.Inc()
+			})
+		} else if !isWaiting && wasWaiting {
+			r.handleMetrics(targetPlatform, func(metrics *PlatformMetrics) {
+				metrics.waitingTasks.Dec()
+			})
+		}
+	}
+	return ret, err
 }
 
-func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
+func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi.TaskRun, secretName string) (reconcile.Result, error) {
+	log := logr.FromContextOrDiscard(ctx)
 	//already exists
 	if tr.Status.CompletionTime != nil || tr.GetDeletionTimestamp() != nil {
-		log.Info("unassigning host from task")
-
 		selectedHost := tr.Labels[AssignedHost]
+		log.Info(fmt.Sprintf("unassigning host %s from task", AssignedHost))
+
 		platform, err := extracPlatform(tr)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		config, _, err := r.readConfiguration(ctx, log, platform, tr.Namespace)
+		config, err := r.readConfiguration(ctx, platform, tr.Namespace)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		err = config.Deallocate(r, ctx, log, tr, secretName, selectedHost)
+		if config == nil {
+			log.Error(fmt.Errorf("could not find config for platform %s", platform), "could not find config")
+			return reconcile.Result{}, nil
+		}
+		r.handleMetrics(platform, func(metrics *PlatformMetrics) {
+			metrics.taskRunTime.Observe(float64(time.Now().Unix() - tr.CreationTimestamp.Unix()))
+			metrics.runningTasks.Dec()
+		})
+		err = config.Deallocate(r, ctx, tr, secretName, selectedHost)
 		if err != nil {
 			log.Error(err, "Failed to deallocate host "+selectedHost)
 		}
@@ -380,7 +569,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, log *logr.Log
 			return reconcile.Result{}, err
 		}
 
-		secret := v12.Secret{}
+		secret := kubecore.Secret{}
 		//delete the secret
 		err = r.client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: secretName}, &secret)
 		if err == nil {
@@ -396,16 +585,24 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, log *logr.Log
 		} else {
 			log.Info("could not find secret", "secret", secretName)
 		}
-		return r.handleWaitingTasks(ctx, log, platform)
+		return r.handleWaitingTasks(ctx, platform)
 	}
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, log *logr.Logger, targetPlatform string, targetNamespace string) (PlatformConfig, string, error) {
-	cm := v12.ConfigMap{}
+func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform string, targetNamespace string) (PlatformConfig, error) {
+
+	cm := kubecore.ConfigMap{}
 	err := r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: HostConfig}, &cm)
 	if err != nil {
-		return nil, "", err
+		return nil, err
+	}
+	log := logr.FromContextOrDiscard(ctx)
+	if r.configMapResourceVersion != cm.ResourceVersion {
+		//if the config map has changes then dump the cached config
+		//metrics are fine, as they don't depend on the config anyway
+		r.configMapResourceVersion = cm.ResourceVersion
+		r.platformConfig = map[string]PlatformConfig{}
 	}
 
 	namespaces := cm.Data[AllowedNamespaces]
@@ -424,8 +621,12 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, log *logr.Logg
 			}
 		}
 		if !ok {
-			return nil, "", fmt.Errorf("namespace %s does not match any namespace defined in allowed namespaces, ask an administrator to enable multi platform builds for your namespace", targetNamespace)
+			return nil, fmt.Errorf("namespace %s does not match any namespace defined in allowed namespaces, ask an administrator to enable multi platform builds for your namespace", targetNamespace)
 		}
+	}
+	existing := r.platformConfig[targetPlatform]
+	if existing != nil {
+		return existing, nil
 	}
 
 	dynamic := cm.Data[DynamicPlatforms]
@@ -436,19 +637,88 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, log *logr.Logg
 			typeName := cm.Data["dynamic."+platformConfigName+".type"]
 			allocfunc := r.cloudProviders[typeName]
 			if allocfunc == nil {
-				return nil, "", errors2.New("unknown dynamic provisioning type " + typeName)
+				return nil, errors2.New("unknown dynamic provisioning type " + typeName)
 			}
 			maxInstances, err := strconv.Atoi(cm.Data["dynamic."+platformConfigName+".max-instances"])
 			if err != nil {
-				return nil, "", err
+				return nil, err
 			}
-			return DynamicResolver{
+			instanceTag := cm.Data["dynamic."+platformConfigName+".instance-tag"]
+			if instanceTag == "" {
+				instanceTag = cm.Data["instance-tag"]
+			}
+			timeoutSeconds := cm.Data["dynamic."+platformConfigName+".allocation-timeout"]
+			timeout := int64(600) //default to 10 minutes
+			if timeoutSeconds != "" {
+				timeoutInt, err := strconv.Atoi(timeoutSeconds)
+				if err != nil {
+					log.Error(err, "unable to parse allocation timeout")
+				} else {
+					timeout = int64(timeoutInt)
+				}
+			}
+			ret := DynamicResolver{
 				CloudProvider: allocfunc(platformConfigName, cm.Data, r.operatorNamespace),
-				SshSecret:     cm.Data["dynamic."+platformConfigName+".ssh-secret"],
-				Platform:      platform,
-				MaxInstances:  maxInstances,
-			}, cm.Data["instance-tag"], nil
+				sshSecret:     cm.Data["dynamic."+platformConfigName+".ssh-secret"],
+				platform:      platform,
+				maxInstances:  maxInstances,
+				instanceTag:   instanceTag,
+				timeout:       timeout,
+				sudoCommands:  cm.Data["dynamic."+platformConfigName+".sudo-commands"],
+			}
+			r.platformConfig[targetPlatform] = ret
+			metrics, err := r.registerMetrics(targetPlatform)
+			if err != nil {
+				return nil, err
+			}
+			r.platformMetrics[targetPlatform] = metrics
+			return ret, nil
+		}
+	}
 
+	dynamicPool := cm.Data[DynamicPoolPlatforms]
+	for _, platform := range strings.Split(dynamicPool, ",") {
+		platformConfigName := strings.ReplaceAll(platform, "/", "-")
+		if platform == targetPlatform {
+
+			typeName := cm.Data["dynamic."+platformConfigName+".type"]
+			allocfunc := r.cloudProviders[typeName]
+			if allocfunc == nil {
+				return nil, errors2.New("unknown dynamic provisioning type " + typeName)
+			}
+			maxInstances, err := strconv.Atoi(cm.Data["dynamic."+platformConfigName+".max-instances"])
+			if err != nil {
+				return nil, err
+			}
+			concurrency, err := strconv.Atoi(cm.Data["dynamic."+platformConfigName+".concurrency"])
+			if err != nil {
+				return nil, err
+			}
+			maxAge, err := strconv.Atoi(cm.Data["dynamic."+platformConfigName+".max-age"]) // Minutes
+			if err != nil {
+				return nil, err
+			}
+
+			instanceTag := cm.Data["dynamic."+platformConfigName+".instance-tag"]
+			if instanceTag == "" {
+				instanceTag = cm.Data["instance-tag"]
+			}
+			ret := DynamicHostPool{
+				cloudProvider: allocfunc(platformConfigName, cm.Data, r.operatorNamespace),
+				sshSecret:     cm.Data["dynamic."+platformConfigName+".ssh-secret"],
+				platform:      platform,
+				maxInstances:  maxInstances,
+				maxAge:        time.Minute * time.Duration(maxAge),
+				concurrency:   concurrency,
+				instanceTag:   instanceTag,
+			}
+			r.platformConfig[targetPlatform] = ret
+			metrics, err := r.registerMetrics(targetPlatform)
+			if err != nil {
+				return nil, err
+			}
+			r.platformMetrics[targetPlatform] = metrics
+			return ret, nil
 		}
 	}
 
@@ -482,7 +752,7 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, log *logr.Logg
 		case "concurrency":
 			atoi, err := strconv.Atoi(v)
 			if err != nil {
-				return nil, "", err
+				return nil, err
 			}
 			host.Concurrency = atoi
 		default:
@@ -490,48 +760,73 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, log *logr.Logg
 		}
 
 	}
-	return ret, cm.Data["instance-tag"], nil
+	r.platformConfig[targetPlatform] = ret
+	metrics, err := r.registerMetrics(targetPlatform)
+	if err != nil {
+		return nil, err
+	}
+	r.platformMetrics[targetPlatform] = metrics
+	return ret, nil
 }
 
 type PlatformConfig interface {
-	Allocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, instanceTag string) (reconcile.Result, error)
-	Deallocate(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, selectedHost string) error
+	Allocate(r *ReconcileTaskRun, ctx context.Context, tr *tektonapi.TaskRun, secretName string) (reconcile.Result, error)
+	Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *tektonapi.TaskRun, secretName string, selectedHost string) error
 }
 
-func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, log *logr.Logger, tr *v1.TaskRun, secretName string, sshSecret string, address string, user string) error {
+func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tektonapi.TaskRun, secretName string, sshSecret string, address string, user string, platform string, sudoCommands string) error {
 	//kick off the provisioning task
 	//note that we can't use owner refs here because this task runs in a different namespace
-	provision := v1.TaskRun{}
+
+	//first verify the secret exists, so we don't hang if it is missing
+	secret := kubecore.Secret{}
+	err := r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: sshSecret}, &secret)
+	if err != nil {
+		log := logr.FromContextOrDiscard(ctx)
+		log.Error(fmt.Errorf("failed to find SSH secret %s", sshSecret), "failed to find SSH secret")
+		return r.createErrorSecret(ctx, tr, secretName, "failed to get SSH secret, system may not be configured correctly")
+	}
+
+	provision := tektonapi.TaskRun{}
 	provision.GenerateName = "provision-task"
 	provision.Namespace = r.operatorNamespace
-	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name, MultiPlatformLabel: "true", AssignedHost: tr.Labels[AssignedHost]}
-	provision.Spec.TaskRef = &v1.TaskRef{Name: "provision-shared-host"}
-	provision.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: sshSecret}}}
+	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name, AssignedHost: tr.Labels[AssignedHost]}
+	provision.Annotations = map[string]string{TaskTargetPlatformAnnotation: platformLabel(platform)}
+	provision.Spec.TaskRef = &tektonapi.TaskRef{Name: "provision-shared-host"}
+	provision.Spec.Workspaces = []tektonapi.WorkspaceBinding{{Name: "ssh", Secret: &kubecore.SecretVolumeSource{SecretName: sshSecret}}}
+	computeRequests := map[kubecore.ResourceName]resource.Quantity{kubecore.ResourceCPU: resource.MustParse("100m"), kubecore.ResourceMemory: resource.MustParse("256Mi")}
+	computeLimits := map[kubecore.ResourceName]resource.Quantity{kubecore.ResourceCPU: resource.MustParse("100m"), kubecore.ResourceMemory: resource.MustParse("512Mi")}
+	provision.Spec.ComputeResources = &kubecore.ResourceRequirements{Requests: computeRequests, Limits: computeLimits}
 	provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
-	provision.Spec.Params = []v1.Param{
+
+	provision.Spec.Params = []tektonapi.Param{
 		{
-			Name:  "SECRET_NAME",
-			Value: *v1.NewStructuredValues(secretName),
+			Name:  ParamSecretName,
+			Value: *tektonapi.NewStructuredValues(secretName),
 		},
 		{
-			Name:  "TASKRUN_NAME",
-			Value: *v1.NewStructuredValues(tr.Name),
+			Name:  ParamTaskrunName,
+			Value: *tektonapi.NewStructuredValues(tr.Name),
 		},
 		{
-			Name:  "NAMESPACE",
-			Value: *v1.NewStructuredValues(tr.Namespace),
+			Name:  ParamNamespace,
+			Value: *tektonapi.NewStructuredValues(tr.Namespace),
 		},
 		{
-			Name:  "HOST",
-			Value: *v1.NewStructuredValues(address),
+			Name:  ParamHost,
+			Value: *tektonapi.NewStructuredValues(address),
 		},
 		{
-			Name:  "USER",
-			Value: *v1.NewStructuredValues(user),
+			Name:  ParamUser,
+			Value: *tektonapi.NewStructuredValues(user),
+		},
+		{
+			Name:  ParamSudoCommands,
+			Value: *tektonapi.NewStructuredValues(sudoCommands),
 		},
 	}
 
-	err := r.client.Create(ctx, &provision)
+	err = r.client.Create(ctx, &provision)
 	return err
 }
 
@@ -542,8 +837,105 @@ type Host struct {
 	Concurrency int
 	Platform    string
 	Secret      string
+	StartTime   *time.Time // Only used for the dynamic pool
 }
 
 func platformLabel(platform string) string {
 	return strings.ReplaceAll(platform, "/", "-")
+}
+
+func (r *ReconcileTaskRun) registerMetrics(platform string) (*PlatformMetrics, error) {
+
+	if r.platformMetrics[platform] != nil {
+		return r.platformMetrics[platform], nil
+	}
+	ret := PlatformMetrics{}
+
+	smallBuckets := []float64{1, 2, 3, 4, 5, 10, 15, 20, 30, 60, 120, 300, 600, 1200}
+	bigBuckets := []float64{20, 40, 60, 90, 120, 300, 600, 1200, 2400, 4800, 6000, 7200, 8400, 9600}
+	ret.allocationTime = prometheus.NewHistogram(prometheus.HistogramOpts{
+		ConstLabels: map[string]string{"platform": platform},
+		Namespace:   strings.ReplaceAll(r.operatorNamespace, "-", "_"),
+		Name:        "host_allocation_time",
+		Help:        "The time in seconds it takes to allocate a host, excluding wait time. In practice this is the amount of time it takes a cloud provider to start an instance",
+		Buckets:     smallBuckets})
+	err := metrics.Registry.Register(ret.allocationTime)
+	if err != nil {
+		return nil, err
+	}
+	ret.waitTime = prometheus.NewHistogram(prometheus.HistogramOpts{
+		ConstLabels: map[string]string{"platform": platform},
+		Namespace:   strings.ReplaceAll(r.operatorNamespace, "-", "_"),
+		Name:        "wait_time",
+		Help:        "The time in seconds a task has spent waiting for a host to become available, excluding the host allocation time",
+		Buckets:     smallBuckets})
+	err = metrics.Registry.Register(ret.waitTime)
+	if err != nil {
+		return nil, err
+	}
+	ret.taskRunTime = prometheus.NewHistogram(prometheus.HistogramOpts{
+		ConstLabels: map[string]string{"platform": platform},
+		Namespace:   strings.ReplaceAll(r.operatorNamespace, "-", "_"),
+		Name:        "task_run_time",
+		Help:        "The total time taken by a task, including wait and allocation time",
+		Buckets:     bigBuckets})
+	err = metrics.Registry.Register(ret.taskRunTime)
+	if err != nil {
+		return nil, err
+	}
+	ret.runningTasks = prometheus.NewGauge(prometheus.GaugeOpts{
+		ConstLabels: map[string]string{"platform": platform},
+		Namespace:   strings.ReplaceAll(r.operatorNamespace, "-", "_"),
+		Name:        "running_tasks",
+		Help:        "The number of currently running tasks on this platform"})
+	err = metrics.Registry.Register(ret.runningTasks)
+	if err != nil {
+		return nil, err
+	}
+	ret.waitingTasks = prometheus.NewGauge(prometheus.GaugeOpts{
+		ConstLabels: map[string]string{"platform": platform},
+		Namespace:   strings.ReplaceAll(r.operatorNamespace, "-", "_"),
+		Name:        "waiting_tasks",
+		Help:        "The number of tasks waiting for an executor to be available to run"})
+	err = metrics.Registry.Register(ret.waitingTasks)
+	if err != nil {
+		return nil, err
+	}
+
+	ret.provisionFailures = prometheus.NewCounter(prometheus.CounterOpts{
+		ConstLabels: map[string]string{"platform": platform},
+		Namespace:   strings.ReplaceAll(r.operatorNamespace, "-", "_"),
+		Name:        "provisioning_failures",
+		Help:        "The number of times a provisioning task has failed"})
+	err = metrics.Registry.Register(ret.provisionFailures)
+	if err != nil {
+		return nil, err
+	}
+	ret.cleanupFailures = prometheus.NewCounter(prometheus.CounterOpts{
+		ConstLabels: map[string]string{"platform": platform},
+		Namespace:   strings.ReplaceAll(r.operatorNamespace, "-", "_"),
+		Name:        "cleanup_failures",
+		Help:        "The number of times a cleanup task has failed"})
+	err = metrics.Registry.Register(ret.cleanupFailures)
+	if err != nil {
+		return nil, err
+	}
+	ret.hostAllocationFailures = prometheus.NewCounter(prometheus.CounterOpts{
+		ConstLabels: map[string]string{"platform": platform},
+		Namespace:   strings.ReplaceAll(r.operatorNamespace, "-", "_"),
+		Name:        "host_allocation_failures",
+		Help:        "The number of times host allocation has failed"})
+	err = metrics.Registry.Register(ret.hostAllocationFailures)
+	if err != nil {
+		return nil, err
+	}
+	return &ret, nil
+}
+
+func (r *ReconcileTaskRun) handleMetrics(platform string, f func(metrics *PlatformMetrics)) {
+	metrics := r.platformMetrics[platform]
+	if metrics == nil {
+		return
+	}
+	f(metrics)
 }

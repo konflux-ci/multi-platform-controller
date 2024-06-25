@@ -16,7 +16,7 @@ package main
 import (
 	"bytes"
 	"flag"
-	pipelinev1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	tektonapi "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -47,11 +47,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	task := pipelinev1beta1.Task{}
+	task := tektonapi.Task{}
 	streamFileYamlToTektonObj(buildahTask, &task)
 
 	decodingScheme := runtime.NewScheme()
-	utilruntime.Must(pipelinev1beta1.AddToScheme(decodingScheme))
+	utilruntime.Must(tektonapi.AddToScheme(decodingScheme))
 	convertToSsh(&task)
 	y := printers.YAMLPrinter{}
 	b := bytes.Buffer{}
@@ -64,9 +64,9 @@ func main() {
 
 func decodeBytesToTektonObjbytes(bytes []byte, obj runtime.Object) runtime.Object {
 	decodingScheme := runtime.NewScheme()
-	utilruntime.Must(pipelinev1beta1.AddToScheme(decodingScheme))
+	utilruntime.Must(tektonapi.AddToScheme(decodingScheme))
 	decoderCodecFactory := serializer.NewCodecFactory(decodingScheme)
-	decoder := decoderCodecFactory.UniversalDecoder(pipelinev1beta1.SchemeGroupVersion)
+	decoder := decoderCodecFactory.UniversalDecoder(tektonapi.SchemeGroupVersion)
 	err := runtime.DecodeInto(decoder, bytes, obj)
 	if err != nil {
 		panic(err)
@@ -82,11 +82,15 @@ func streamFileYamlToTektonObj(path string, obj runtime.Object) runtime.Object {
 	return decodeBytesToTektonObjbytes(bytes, obj)
 }
 
-//script
-//set 1 sets up the ssh server
+func convertToSsh(task *tektonapi.Task) {
 
-func convertToSsh(task *pipelinev1beta1.Task) {
-
+	builderImage := ""
+	syncVolumes := map[string]bool{}
+	for _, i := range task.Spec.Volumes {
+		if i.Secret != nil || i.ConfigMap != nil {
+			syncVolumes[i.Name] = true
+		}
+	}
 	for stepPod := range task.Spec.Steps {
 		step := &task.Spec.Steps[stepPod]
 		if step.Name != "build" {
@@ -95,20 +99,24 @@ func convertToSsh(task *pipelinev1beta1.Task) {
 		podmanArgs := ""
 
 		ret := `set -o verbose
+mkdir -p ~/.ssh
 if [ -e "/ssh/error" ]; then
   #no server could be provisioned
   cat /ssh/error
   exit 1
+elif [ -e "/ssh/otp" ]; then
+ curl --cacert /ssh/otp-ca -XPOST -d @/ssh/otp $(cat /ssh/otp-server) >~/.ssh/id_rsa
+ echo "" >> ~/.ssh/id_rsa
+else
+  cp /ssh/id_rsa ~/.ssh
 fi
-mkdir -p ~/.ssh
-cp /ssh/id_rsa ~/.ssh
 chmod 0400 ~/.ssh/id_rsa
 export SSH_HOST=$(cat /ssh/host)
 export BUILD_DIR=$(cat /ssh/user-dir)
 export SSH_ARGS="-o StrictHostKeyChecking=no"
 mkdir -p scripts
 echo "$BUILD_DIR"
-ssh $SSH_ARGS "$SSH_HOST"  mkdir -p "$BUILD_DIR/workspaces" "$BUILD_DIR/scripts"
+ssh $SSH_ARGS "$SSH_HOST"  mkdir -p "$BUILD_DIR/workspaces" "$BUILD_DIR/scripts" "$BUILD_DIR/volumes"
 
 PORT_FORWARD=""
 PODMAN_PORT_FORWARD=""
@@ -118,23 +126,37 @@ PODMAN_PORT_FORWARD=" -e JVM_BUILD_WORKSPACE_ARTIFACT_CACHE_PORT_80_TCP_ADDR=loc
 fi
 `
 
-		env := "$PODMAN_PORT_FORWARD"
-		//before the build we sync the contents of the workspace to the remote host
+		env := "$PODMAN_PORT_FORWARD \\\n"
+		// Before the build we sync the contents of the workspace to the remote host
 		for _, workspace := range task.Spec.Workspaces {
 			ret += "\nrsync -ra $(workspaces." + workspace.Name + ".path)/ \"$SSH_HOST:$BUILD_DIR/workspaces/" + workspace.Name + "/\""
-			podmanArgs += " -v \"$BUILD_DIR/workspaces/" + workspace.Name + ":$(workspaces." + workspace.Name + ".path):Z\" "
+			podmanArgs += " -v \"$BUILD_DIR/workspaces/" + workspace.Name + ":$(workspaces." + workspace.Name + ".path):Z\" \\\n"
 		}
+		// Also sync the volume mounts from the template
+		for _, volume := range task.Spec.StepTemplate.VolumeMounts {
+			ret += "\nrsync -ra " + volume.MountPath + "/ \"$SSH_HOST:$BUILD_DIR/volumes/" + volume.Name + "/\""
+			podmanArgs += " -v \"$BUILD_DIR/volumes/" + volume.Name + ":" + volume.MountPath + ":Z\" \\\n"
+		}
+		for _, volume := range step.VolumeMounts {
+			if syncVolumes[volume.Name] {
+				ret += "\nrsync -ra " + volume.MountPath + "/ \"$SSH_HOST:$BUILD_DIR/volumes/" + volume.Name + "/\""
+				podmanArgs += " -v \"$BUILD_DIR/volumes/" + volume.Name + ":" + volume.MountPath + ":Z\" \\\n"
+			}
+		}
+		ret += "\nrsync -ra \"$HOME/.docker/\" \"$SSH_HOST:$BUILD_DIR/.docker/\""
+		podmanArgs += " -v \"$BUILD_DIR/.docker/:/root/.docker:Z\" \\\n"
+		ret += "\nrsync -ra \"/tekton/results/\" \"$SSH_HOST:$BUILD_DIR/tekton-results/\""
+		podmanArgs += " -v \"$BUILD_DIR/tekton-results/:/tekton/results:Z\" \\\n"
+
 		script := "scripts/script-" + step.Name + ".sh"
 
 		ret += "\ncat >" + script + " <<'REMOTESSHEOF'\n"
 		if !strings.HasPrefix(step.Script, "#!") {
-			ret += "#!/bin/sh\nset -o verbose\n"
+			ret += "#!/bin/bash\nset -o verbose\nset -e\n"
 		}
 		if step.WorkingDir != "" {
 			ret += "cd " + step.WorkingDir + "\n"
-
 		}
-
 		ret += step.Script
 		ret += "\nbuildah push \"$IMAGE\" oci:rhtap-final-image"
 		ret += "\nREMOTESSHEOF"
@@ -142,25 +164,32 @@ fi
 
 		if task.Spec.StepTemplate != nil {
 			for _, e := range task.Spec.StepTemplate.Env {
-				env += " -e " + e.Name + "=\"$" + e.Name + "\""
+				env += " -e " + e.Name + "=\"$" + e.Name + "\" \\\n"
 			}
 		}
 		ret += "\nrsync -ra scripts \"$SSH_HOST:$BUILD_DIR\""
 		containerScript := "/script/script-" + step.Name + ".sh"
 		for _, e := range step.Env {
-			env += " -e " + e.Name + "=" + e.Value + " "
+			env += " -e " + e.Name + "=\"$" + e.Name + "\" \\\n"
 		}
+		podmanArgs += " -v $BUILD_DIR/scripts:/script:Z \\\n"
+		ret += "\nssh $SSH_ARGS \"$SSH_HOST\" $PORT_FORWARD podman  run " + env + "" + podmanArgs + "--user=0  --rm  \"$BUILDER_IMAGE\" " + containerScript
 
-		ret += "\nssh $SSH_ARGS \"$SSH_HOST\" $PORT_FORWARD podman  run " + env + " --rm " + podmanArgs + " -v $BUILD_DIR/scripts:/script:Z --user=0  " + replaceImage(step.Image) + "  " + containerScript
-
-		//sync the contents of the workspaces back so subsequent tasks can use them
+		// Sync the contents of the workspaces back so subsequent tasks can use them
 		for _, workspace := range task.Spec.Workspaces {
 			ret += "\nrsync -ra \"$SSH_HOST:$BUILD_DIR/workspaces/" + workspace.Name + "/\" \"$(workspaces." + workspace.Name + ".path)/\""
 		}
+
+		for _, volume := range task.Spec.StepTemplate.VolumeMounts {
+			ret += "\nrsync -ra \"$SSH_HOST:$BUILD_DIR/volumes/" + volume.Name + "/\" " + volume.MountPath + "/"
+		}
+		//sync back results
+		ret += "\nrsync -ra \"$SSH_HOST:$BUILD_DIR/tekton-results/\" \"/tekton/results/\""
+
 		ret += "\nbuildah pull oci:rhtap-final-image"
 		ret += "\nbuildah images"
 		ret += "\nbuildah tag localhost/rhtap-final-image \"$IMAGE\""
-		ret += "\ncontainer=$(buildah from --pull-never \"$IMAGE\")\nbuildah mount \"$container\" | tee /workspace/container_path\necho $container > /workspace/container_name"
+		ret += "\ncontainer=$(buildah from --pull-never \"$IMAGE\")\nbuildah mount \"$container\" | tee /shared/container_path\necho $container > /shared/container_name"
 
 		for _, i := range strings.Split(ret, "\n") {
 			if strings.HasSuffix(i, " ") {
@@ -168,8 +197,8 @@ fi
 			}
 		}
 		step.Script = ret
-		step.Image = "quay.io/redhat-user-workloads/rhtap-build-tenant/multi-arch-controller/hacktask-image-multi-platform-controller:build-6d7bd-1694570872@sha256:50b0745f503cb73f3441bddd74bc89d6cdd177fa8a376112065bef9f4cd15e79"
-		step.ImagePullPolicy = v1.PullAlways
+		builderImage = step.Image
+		step.Image = "quay.io/redhat-appstudio/multi-platform-runner:01c7670e81d5120347cf0ad13372742489985e5f@sha256:246adeaaba600e207131d63a7f706cffdcdc37d8f600c56187123ec62823ff44"
 		step.VolumeMounts = append(step.VolumeMounts, v1.VolumeMount{
 			Name:      "ssh",
 			ReadOnly:  true,
@@ -177,9 +206,8 @@ fi
 		})
 	}
 
-	task.Name = "buildah-remote"
-	task.Labels["build.appstudio.redhat.com/multi-platform-required"] = "true"
-	task.Spec.Params = append(task.Spec.Params, pipelinev1beta1.ParamSpec{Name: "PLATFORM", Type: pipelinev1beta1.ParamTypeString, Description: "The platform to build on"})
+	task.Name = strings.ReplaceAll(task.Name, "buildah", "buildah-remote")
+	task.Spec.Params = append(task.Spec.Params, tektonapi.ParamSpec{Name: "PLATFORM", Type: tektonapi.ParamTypeString, Description: "The platform to build on"})
 
 	faleVar := false
 	task.Spec.Volumes = append(task.Spec.Volumes, v1.Volume{
@@ -191,11 +219,5 @@ fi
 			},
 		},
 	})
-}
-
-func replaceImage(image string) string {
-	if image == "quay.io/redhat-appstudio/buildah:v1.28" {
-		return "quay.io/buildah/stable:v1.31"
-	}
-	return image
+	task.Spec.StepTemplate.Env = append(task.Spec.StepTemplate.Env, v1.EnvVar{Name: "BUILDER_IMAGE", Value: builderImage})
 }

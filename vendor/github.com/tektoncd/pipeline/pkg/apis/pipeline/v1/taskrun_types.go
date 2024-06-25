@@ -55,7 +55,6 @@ type TaskRunSpec struct {
 	// +optional
 	Retries int `json:"retries,omitempty"`
 	// Time after which one retry attempt times out. Defaults to 1 hour.
-	// Specified build timeout should be less than 24h.
 	// Refer Go's ParseDuration documentation for expected format: https://golang.org/pkg/time/#ParseDuration
 	// +optional
 	Timeout *metav1.Duration `json:"timeout,omitempty"`
@@ -103,11 +102,41 @@ const (
 	TaskRunCancelledByPipelineTimeoutMsg TaskRunSpecStatusMessage = "TaskRun cancelled as the PipelineRun it belongs to has timed out."
 )
 
+const (
+	// EnabledOnFailureBreakpoint is the value for TaskRunDebug.Breakpoints.OnFailure that means the breakpoint onFailure is enabled
+	EnabledOnFailureBreakpoint = "enabled"
+)
+
 // TaskRunDebug defines the breakpoint config for a particular TaskRun
 type TaskRunDebug struct {
 	// +optional
-	// +listType=atomic
-	Breakpoint []string `json:"breakpoint,omitempty"`
+	Breakpoints *TaskBreakpoints `json:"breakpoints,omitempty"`
+}
+
+// TaskBreakpoints defines the breakpoint config for a particular Task
+type TaskBreakpoints struct {
+	// if enabled, pause TaskRun on failure of a step
+	// failed step will not exit
+	// +optional
+	OnFailure string `json:"onFailure,omitempty"`
+}
+
+// NeedsDebugOnFailure return true if the TaskRun is configured to debug on failure
+func (trd *TaskRunDebug) NeedsDebugOnFailure() bool {
+	if trd.Breakpoints == nil {
+		return false
+	}
+	return trd.Breakpoints.OnFailure == EnabledOnFailureBreakpoint
+}
+
+// StepNeedsDebug return true if the step is configured to debug
+func (trd *TaskRunDebug) StepNeedsDebug(stepName string) bool {
+	return trd.NeedsDebugOnFailure()
+}
+
+// NeedsDebug return true if defined onfailure or have any before, after steps
+func (trd *TaskRunDebug) NeedsDebug() bool {
+	return trd.NeedsDebugOnFailure()
 }
 
 // TaskRunInputs holds the input values that this task was invoked with.
@@ -381,9 +410,14 @@ func (tr *TaskRun) HasStarted() bool {
 	return tr.Status.StartTime != nil && !tr.Status.StartTime.IsZero()
 }
 
-// IsSuccessful returns true if the TaskRun's status indicates that it is done.
+// IsSuccessful returns true if the TaskRun's status indicates that it has succeeded.
 func (tr *TaskRun) IsSuccessful() bool {
 	return tr != nil && tr.Status.GetCondition(apis.ConditionSucceeded).IsTrue()
+}
+
+// IsFailure returns true if the TaskRun's status indicates that it has failed.
+func (tr *TaskRun) IsFailure() bool {
+	return tr != nil && tr.Status.GetCondition(apis.ConditionSucceeded).IsFalse()
 }
 
 // IsCancelled returns true if the TaskRun's spec status is set to Cancelled state

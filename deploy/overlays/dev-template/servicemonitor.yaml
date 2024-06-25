@@ -1,0 +1,20 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    app: multi-platform-controller
+  name: multi-platform-controller-monitor
+  namespace: multi-platform-controller
+spec:
+  endpoints:
+    - honorLabels: true
+      interval: 10s
+      port: http-metrics
+      path: /metrics
+  jobLabel: app
+  namespaceSelector:
+    matchNames:
+      - multi-platform-controller
+  selector:
+    matchLabels:
+      app: multi-platform-controller

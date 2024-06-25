@@ -8,7 +8,7 @@ metadata:
     build.appstudio.redhat.com/commit_sha: 1879fa9159b28f63265dad2cd618c3d0ffd03e79
     build.appstudio.redhat.com/pipeline_name: docker-build
     build.appstudio.redhat.com/target_branch: main
-  generateName: devfile-sample-
+  generateName: pipeline-
   labels:
     appstudio.openshift.io/application: my-app
     appstudio.openshift.io/component: devfile-sample
@@ -35,20 +35,6 @@ spec:
     value: "true"
   pipelineSpec:
       finally:
-        - name: show-sbom
-          params:
-            - name: IMAGE_URL
-              value: $(tasks.build-container.results.IMAGE_URL)
-          taskRef:
-            kind: Task
-            params:
-              - name: name
-                value: show-sbom
-              - name: bundle
-                value: quay.io/redhat-appstudio-tekton-catalog/task-show-sbom:0.1@sha256:7db0af43dcebaeb33e34413148370e17078c30fd2fc78fb84c8941b444199f36
-              - name: kind
-                value: task
-            resolver: bundles
         - name: show-summary
           params:
             - name: pipelinerun-name
@@ -172,7 +158,7 @@ spec:
               - name: name
                 value: git-clone
               - name: bundle
-                value: quay.io/redhat-appstudio-tekton-catalog/task-git-clone:0.1@sha256:44260edd7da429a3bca3843be5049a15f05f658d1e9766521379e067e972c1e0
+                value: quay.io/redhat-appstudio-tekton-catalog/task-git-clone:0.1@sha256:d9e1ab10d72953e7a85dab69b8b96f5b41580a6d4026f77b6a5ba6f3ed227cc3
               - name: kind
                 value: task
             resolver: bundles
@@ -213,7 +199,7 @@ spec:
         - name: build-container
           params:
             - name: IMAGE
-              value: quay.io/sdouglas/multi-arch-resolver:ppc64le-build
+              value: quay.io/sdouglas/multi-arch-resolver:arm64-build
             - name: DOCKERFILE
               value: Dockerfile
             - name: CONTEXT
@@ -227,7 +213,7 @@ spec:
             - name: COMMIT_SHA
               value: $(tasks.clone-repository.results.commit)
             - name: PLATFORM
-              value: linux/arm64
+              value: linux/s390x
           runAfter:
             - prefetch-dependencies
           taskRef:
@@ -241,168 +227,6 @@ spec:
           workspaces:
             - name: source
               workspace: workspace
-        - name: inspect-image
-          params:
-            - name: IMAGE_URL
-              value: $(tasks.build-container.results.IMAGE_URL)
-            - name: IMAGE_DIGEST
-              value: $(tasks.build-container.results.IMAGE_DIGEST)
-          runAfter:
-            - build-container
-          taskRef:
-            kind: Task
-            params:
-              - name: name
-                value: inspect-image
-              - name: bundle
-                value: quay.io/redhat-appstudio-tekton-catalog/task-inspect-image:0.1@sha256:8b0b066c7d4adb5ffcb02cfbcb55393d741c9cddeda2099d7d1d7505c1e683ba
-              - name: kind
-                value: task
-              - name: arch
-                value: amd64
-            resolver: multi-arch-bundle
-          when:
-            - input: "true"
-              operator: in
-              values:
-                - "false"
-          workspaces:
-            - name: source
-              workspace: workspace
-        - name: label-check
-          runAfter:
-            - inspect-image
-          taskRef:
-            kind: Task
-            params:
-              - name: name
-                value: label-check
-              - name: bundle
-                value: quay.io/redhat-appstudio-tekton-catalog/task-label-check:0.1@sha256:0c0739fdda24cd1e3587bbab9b07d4493efc21884baac7723f4b446e95bf1fd3
-              - name: kind
-                value: task
-            resolver: bundles
-          when:
-            - input: "true"
-              operator: in
-              values:
-                - "false"
-          workspaces:
-            - name: workspace
-              workspace: workspace
-        - name: optional-label-check
-          params:
-            - name: POLICY_NAMESPACE
-              value: optional_checks
-          runAfter:
-            - inspect-image
-          taskRef:
-            kind: Task
-            params:
-              - name: name
-                value: label-check
-              - name: bundle
-                value: quay.io/redhat-appstudio-tekton-catalog/task-label-check:0.1@sha256:0c0739fdda24cd1e3587bbab9b07d4493efc21884baac7723f4b446e95bf1fd3
-              - name: kind
-                value: task
-            resolver: bundles
-          when:
-            - input: "true"
-              operator: in
-              values:
-                - "false"
-          workspaces:
-            - name: workspace
-              workspace: workspace
-        - name: deprecated-base-image-check
-          params:
-            - name: BASE_IMAGES_DIGESTS
-              value: $(tasks.build-container.results.BASE_IMAGES_DIGESTS)
-          taskRef:
-            kind: Task
-            params:
-              - name: name
-                value: deprecated-image-check
-              - name: bundle
-                value: quay.io/redhat-appstudio-tekton-catalog/task-deprecated-image-check:0.2@sha256:40856a6c6b4452361a2cdb17b927a35fd03edc3eec2e5bf94f96d211cc1d1d52
-              - name: kind
-                value: task
-            resolver: bundles
-          when:
-            - input: "true"
-              operator: in
-              values:
-                - "false"
-          workspaces:
-            - name: test-ws
-              workspace: workspace
-        - name: clair-scan
-          params:
-            - name: image-digest
-              value: $(tasks.build-container.results.IMAGE_DIGEST)
-            - name: image-url
-              value: $(tasks.build-container.results.IMAGE_URL)
-          runAfter:
-            - build-container
-          taskRef:
-            kind: Task
-            params:
-              - name: name
-                value: clair-scan
-              - name: bundle
-                value: quay.io/redhat-appstudio-tekton-catalog/task-clair-scan:0.1@sha256:2016d1d4a1fc02ed353d7aede4bc5f81c5a335f6bcf4a9a2c97d33364afc3210
-              - name: kind
-                value: task
-            resolver: bundles
-          when:
-            - input: "true"
-              operator: in
-              values:
-                - "false"
-        - name: sast-snyk-check
-          runAfter:
-            - clone-repository
-          taskRef:
-            kind: Task
-            params:
-              - name: name
-                value: sast-snyk-check
-              - name: bundle
-                value: quay.io/redhat-appstudio-tekton-catalog/task-sast-snyk-check:0.1@sha256:6e07c36a0792d6abdc0b59a6d8f8dc99c07b3810a8495f1903a32d8abb0fa004
-              - name: kind
-                value: task
-            resolver: bundles
-          when:
-            - input: "true"
-              operator: in
-              values:
-                - "false"
-          workspaces:
-            - name: workspace
-              workspace: workspace
-        - name: clamav-scan
-          params:
-            - name: image-digest
-              value: $(tasks.build-container.results.IMAGE_DIGEST)
-            - name: image-url
-              value: $(tasks.build-container.results.IMAGE_URL)
-          runAfter:
-            - build-container
-          taskRef:
-            kind: Task
-            params:
-              - name: name
-                value: clamav-scan
-              - name: bundle
-                value: quay.io/redhat-appstudio-tekton-catalog/task-clamav-scan:0.1@sha256:a666a7dd4fd633d268d1ba26eaaa5ca2dd848c76b7fb2f04b8b37b7ce1c65f9a
-              - name: kind
-                value: task
-            resolver: bundles
-          when:
-            - input: "true"
-              operator: in
-              values:
-                - "false"
         - name: sbom-json-check
           params:
             - name: IMAGE_URL
