@@ -5,12 +5,13 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"time"
+
 	"github.com/go-logr/logr"
-	"github.com/redhat-appstudio/multi-platform-controller/pkg/cloud"
-	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
+	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"time"
 )
 
 type DynamicHostPool struct {

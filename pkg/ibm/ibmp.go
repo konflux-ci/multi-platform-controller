@@ -14,7 +14,7 @@ import (
 	"github.com/IBM/go-sdk-core/v5/core"
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
-	"github.com/redhat-appstudio/multi-platform-controller/pkg/cloud"
+	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
 	v1 "k8s.io/api/core/v1"
 	types2 "k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"

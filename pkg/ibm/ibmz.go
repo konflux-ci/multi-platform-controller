@@ -5,20 +5,20 @@ import (
 	"crypto/md5" //#nosec
 	"encoding/base64"
 	"fmt"
-	"github.com/go-logr/logr"
-	"github.com/google/uuid"
-	"github.com/redhat-appstudio/multi-platform-controller/pkg/cloud"
-	v1 "k8s.io/api/core/v1"
-	types2 "k8s.io/apimachinery/pkg/types"
 	"net"
 	"os"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/IBM/go-sdk-core/v5/core"
 	"github.com/IBM/vpc-go-sdk/vpcv1"
+	"github.com/go-logr/logr"
+	"github.com/google/uuid"
+	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
+	v1 "k8s.io/api/core/v1"
+	types2 "k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func IBMZProvider(arch string, config map[string]string, systemNamespace string) cloud.CloudProvider {
