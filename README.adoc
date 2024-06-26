@@ -23,11 +23,25 @@ Other than that the `buildah-remote` task attempts to create the image in the sa
 
 The controllers job is to look for `TaskRun` objects with the appropriate labels that expect a `multi-platform-ssh-$(context.taskRun.name)`, and then create this secret so the task can execute.
 
-Currently, it maintains a hard coded list of hosts in a `ConfigMap`. When it observes a task it selects a host based on current utilisation, and then attempts to provision a new user to perform the build. This is done by running a Tekton task to create a new user and generate a new SSH key. Once this is complete this new unprivilidged SSH private key is put into the `multi-platform-ssh-$(context.taskRun.name)` secret, and the task starts executing.
+The controller has three different strategies that can be use to allocate hosts. Fixed pools, dynamic allocation and dynamic pooling. These strategies are configured on a platform basis, however in practice as the platform is an arbitrary string any number of platforms can be defined, allowing for different configurations of the same underlying platform.
 
-When the task is complete the user is deleted. A finaliser is used to ensure cleanup is done correctly.
+Fixed Pools:: Fixes pools are a fixed set of machines configured in the `host-config` `ConfigMap`. Each host is configured with its address, SSH Key and a concurrency limit as to how many jobs can run on the host at once. Allocation of jobs to hosts is done by selecting the host with the lowest number of running jobs. If all hosts are at their limit the job is queued.
 
+Dynamic:: Dynamic allocation will allocate a host from a selected cloud provider. Different cloud providers have different configuration options, and the multi platform controller tries to expose all relevant ones. Each dynamic allocator has a `max-instances` configuration option that limits the maximum number of concurrent instances. This setting is per cloud provider, as the limit is checked by counting the number of running instances. This means that multiple pools within the same cloud provider will share the same instance counts. If you want to avoid this behaviour you can set a pools `instance-tag`, which will mean that the controller only counts instances with this tag towards the limit. This was a deliberate decision to try and limit the possibility of a bug in the controller creating a catastrophic AWS bill.
 
+Dynamic Pools:: This is a combination of the above two. This has all of the config options of the first two, and a time to live. Hosts are only started on an as-needed basis, so the pool will scale to zero if there is no load. When a host is created it will join the pool, and will execute concurrent jobs up to the limit specified by the concurrency `param`. If all hosts are full another VM will be requested from the cloud provider, up to the `max-instances` limit. Once a host has reached its time-to-live it is no longer schedulable, and once all running jobs are completed it is shut down.
+
+Once a host has been allocated then it is provisioned by a Tekton task. This task will create a non-privileged user to run the build, and create an SSH key for that user. Once this key is created it is send to the OTP server to be consumed by the task, and a secret is created that contains the OTP password.
+
+=== The OTP Server
+
+The OTP server is a basic in-memory service that maps one time passwords to SSH keys. This means that  there is no way for an attacker to steal a SSH key from a secret, as the only place the key is seen is inside the task itself. If an attacker does steal a password and use it to retrieve the key then the original task will be unable to and will fail.
+
+Note that there is room to improve here, as if the server is restarted then all in memory passwords and keys are lost, which may cause tasks to fail. These could be written out to a PVC or database to allow for restarts, but care must be taken that this will not result in the possibility of a key being returned twice.
+
+=== Cleanup
+
+Finalizers are used to ensure all resources that were allocated can be cleaned up.
 
 
 
