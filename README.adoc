@@ -1,11 +1,10 @@
-== RHTAP Multi Platform Controller
+== Konflux Multi Platform Controller
 
 This controller orchestrates remote agents for RTHAP. It watches for `TaskRun` instances that need a secret that starts with `multi-platform-ssh-` prefix and have a PLATFORM parameter, and will then supply SSH credentials for a node of the requested platform. The `TaskRun` can then use this node to build using a different platform. When the `TaskRun` is done the controller deals with cleanup up the remote node.
 
 == Try It Out
 
-This is ready to use on RHTAP. An example of a Multi Platform Pull Request is located at: https://github.com/stuartwdouglas/multi-platform-test/pull/2
-
+This is ready to use on Konflux. An example of a Multi Platform Pull Request is located at: https://github.com/stuartwdouglas/multi-platform-test/pull/2
 
 == How it works
 
