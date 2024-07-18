@@ -7,10 +7,6 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
-# options for generating crds with controller-gen
-CONTROLLER_GEN="${GOBIN}/controller-gen"
-CRD_OPTIONS ?= "crd:trivialVersions=true,preserveUnknownFields=false"
-
 .EXPORT_ALL_VARIABLES:
 
 default: build
@@ -34,24 +30,11 @@ build-otp:
 clean:
 	rm -rf out
 
-generate-deepcopy-client:
-	hack/update-codegen.sh
-
-generate-crds:
-	hack/install-controller-gen.sh
-	"$(CONTROLLER_GEN)" "$(CRD_OPTIONS)" rbac:roleName=manager-role webhook paths=./pkg/apis/hostpool/v1alpha1 output:crd:artifacts:config=deploy/crds/
-
-generate: generate-crds generate-deepcopy-client
-
-verify-generate-deepcopy-client: generate-deepcopy-client
-	hack/verify-codegen.sh
-
 dev-image:
 	docker build . -t quay.io/$(QUAY_USERNAME)/multi-platform-controller:dev
 	docker push quay.io/$(QUAY_USERNAME)/multi-platform-controller:dev
 	docker build . -f Dockerfile.otp -t quay.io/$(QUAY_USERNAME)/multi-platform-otp:dev
 	docker push quay.io/$(QUAY_USERNAME)/multi-platform-otp:dev
-
 
 dev: dev-image
 	./deploy/development.sh
