@@ -540,7 +540,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 	//already exists
 	if tr.Status.CompletionTime != nil || tr.GetDeletionTimestamp() != nil {
 		selectedHost := tr.Labels[AssignedHost]
-		log.Info(fmt.Sprintf("unassigning host %s from task", AssignedHost))
+		log.Info(fmt.Sprintf("unassigning host %s from task", selectedHost))
 
 		platform, err := extracPlatform(tr)
 		if err != nil {
