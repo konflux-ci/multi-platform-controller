@@ -139,19 +139,15 @@ func (r *ReconcileTaskRun) Reconcile(ctx context.Context, request reconcile.Requ
 	}
 	if pr.Annotations != nil {
 		if pr.Annotations[CloudInstanceId] != "" {
-			log.WithValues(CloudInstanceId, pr.Annotations[CloudInstanceId])
+			log = log.WithValues(CloudInstanceId, pr.Annotations[CloudInstanceId])
 		}
 		if pr.Annotations[AssignedHost] != "" {
-			log.WithValues(AssignedHost, pr.Annotations[AssignedHost])
+			log = log.WithValues(AssignedHost, pr.Annotations[AssignedHost])
 		}
 	}
 	ctx = logr.NewContext(ctx, log)
-	switch {
-	case prerr == nil:
-		return r.handleTaskRunReceived(ctx, &pr)
-	}
 
-	return reconcile.Result{}, nil
+	return r.handleTaskRunReceived(ctx, &pr)
 }
 
 func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, tr *tektonapi.TaskRun) (reconcile.Result, error) {
