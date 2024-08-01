@@ -7,7 +7,8 @@ resources:
   - namespace.yaml
   - deployment.yaml
   - sa.yaml
-  - rbac.yaml
+  - role.yaml
+  - role-binding.yaml
   - provision-shared-host.yaml
   - clean-shared-host.yaml
   - openshift-specific-rbac.yaml

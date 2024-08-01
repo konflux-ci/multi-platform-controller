@@ -104,6 +104,14 @@ type PlatformMetrics struct {
 	hostAllocationFailures prometheus.Counter
 }
 
+//+kubebuilder:rbac:groups="tekton.dev",resources=taskruns,verbs=create;delete;deletecollection;get;list;patch;update;watch
+//+kubebuilder:rbac:groups="tekton.dev",resources=taskruns/status,verbs=create;delete;deletecollection;get;list;patch;update;watch
+//+kubebuilder:rbac:groups="apiextensions.k8s.io",resources=customresourcedefinitions,verbs=get
+//+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
+//+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;
+//+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+
 func newReconciler(mgr ctrl.Manager, operatorNamespace string) reconcile.Reconciler {
 	return &ReconcileTaskRun{
 		apiReader:         mgr.GetAPIReader(),
