@@ -20,6 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/strings/slices"
 	"knative.dev/pkg/apis"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -69,6 +70,7 @@ const (
 	ServiceAccountName = "multi-platform-controller"
 
 	PlatformParam          = "PLATFORM"
+	LocalPlatforms         = "local-platforms"
 	DynamicPlatforms       = "dynamic-platforms"
 	DynamicPoolPlatforms   = "dynamic-pool-platforms"
 	AllowedNamespaces      = "allowed-namespaces"
@@ -631,6 +633,11 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 	existing := r.platformConfig[targetPlatform]
 	if existing != nil {
 		return existing, nil
+	}
+
+	local := strings.Split(cm.Data[LocalPlatforms], ",")
+	if slices.Contains(local, targetPlatform) {
+		return Local{}, nil
 	}
 
 	dynamic := cm.Data[DynamicPlatforms]
