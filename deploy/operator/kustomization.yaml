@@ -14,3 +14,11 @@ resources:
   - openshift-specific-rbac.yaml
   - update-host.yaml
   - metricservice.yaml
+patches:
+  - target:
+      kind: ClusterRole
+      name: multi-platform-controller
+    patch: |-
+      - op: add
+        path: "/metadata/labels"
+        value: {"rbac.authorization.k8s.io/aggregate-to-edit": "true"}
