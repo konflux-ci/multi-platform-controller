@@ -48,6 +48,14 @@ func TestConfigMapParsing(t *testing.T) {
 	g.Expect(config.hosts["host1"].Platform).Should(Equal("linux/arm64"))
 }
 
+func TestConfigMapParsingForLocal(t *testing.T) {
+	g := NewGomegaWithT(t)
+	_, reconciler := setupClientAndReconciler(createLocalHostConfig())
+	configIface, err := reconciler.readConfiguration(context.Background(), "linux/arm64", userNamespace)
+	g.Expect(configIface).To(BeAssignableToTypeOf(Local{}))
+	g.Expect(err).ToNot(HaveOccurred())
+}
+
 func TestAllowedNamepsaces(t *testing.T) {
 	g := NewGomegaWithT(t)
 	_, reconciler := setupClientAndReconciler(createHostConfig())
@@ -107,6 +115,35 @@ func TestAllocateCloudHost(t *testing.T) {
 
 	g.Expect(cloudImpl.Addressses["multi-platform-builder-test"]).Should(BeEmpty())
 
+}
+
+func TestAllocateLocalHost(t *testing.T) {
+	g := NewGomegaWithT(t)
+	client, reconciler := setupClientAndReconciler(createLocalHostConfig())
+
+	tr := runUserPipeline(g, client, reconciler, "test")
+
+	ExpectNoProvisionTaskRun(g, client, tr)
+	secret := getSecret(g, client, tr)
+	g.Expect(secret.Data["error"]).To(BeEmpty())
+	g.Expect(secret.Data["host"]).To(Equal([]byte("localhost")))
+
+	// Set user task as complete - should probably factor this out from all
+	// tests to a nice function at some point
+	g.Expect(client.Get(context.Background(), types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)).Should(Succeed())
+	tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+	tr.Status.SetCondition(&apis.Condition{
+		Type:               apis.ConditionSucceeded,
+		Status:             "True",
+		LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now().Add(time.Hour * -2)}},
+	})
+	g.Expect(client.Update(context.Background(), tr)).Should(Succeed())
+
+	// Run reconciler once more to trigger cleanup
+	_, err := reconciler.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
+	g.Expect(err).ShouldNot(HaveOccurred())
+
+	assertNoSecret(g, client, tr)
 }
 
 func TestChangeHostConfig(t *testing.T) {
@@ -507,7 +544,7 @@ func TestNoHostWithOutPlatform(t *testing.T) {
 func getSecret(g *WithT, client runtimeclient.Client, tr *pipelinev1.TaskRun) *v1.Secret {
 	name := SecretPrefix + tr.Name
 	secret := v1.Secret{}
-	g.Expect(client.Get(context.Background(), types.NamespacedName{Namespace: tr.Namespace, Name: name}, &secret)).ToNot(HaveOccurred())
+	g.Expect(client.Get(context.Background(), types.NamespacedName{Namespace: tr.Namespace, Name: name}, &secret)).To(Succeed())
 	return &secret
 }
 
@@ -517,6 +554,7 @@ func assertNoSecret(g *WithT, client runtimeclient.Client, tr *pipelinev1.TaskRu
 	err := client.Get(context.Background(), types.NamespacedName{Namespace: tr.Namespace, Name: name}, &secret)
 	g.Expect(errors.IsNotFound(err)).To(BeTrue())
 }
+
 func runUserPipeline(g *WithT, client runtimeclient.Client, reconciler *ReconcileTaskRun, name string) *pipelinev1.TaskRun {
 	createUserTaskRun(g, client, name, "linux/arm64")
 	_, err := reconciler.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
@@ -550,6 +588,19 @@ func getProvisionTaskRun(g *WithT, client runtimeclient.Client, tr *pipelinev1.T
 	}
 	g.Expect("could not find task").Should(BeEmpty())
 	return nil
+}
+
+func ExpectNoProvisionTaskRun(g *WithT, client runtimeclient.Client, tr *pipelinev1.TaskRun) {
+	list := pipelinev1.TaskRunList{}
+	err := client.List(context.Background(), &list)
+	g.Expect(err).ToNot(HaveOccurred())
+	foundCount := 0
+	for i := range list.Items {
+		if list.Items[i].Labels[AssignedHost] == "" && list.Items[i].Labels[UserTaskName] == tr.Name {
+			foundCount++
+		}
+	}
+	g.Expect(foundCount).Should(BeNumerically("==", 0))
 }
 
 func getUserTaskRun(g *WithT, client runtimeclient.Client, name string) *pipelinev1.TaskRun {
@@ -648,6 +699,17 @@ func createDynamicPoolHostConfig() []runtimeclient.Object {
 	sec.Namespace = systemNamespace
 	sec.Labels = map[string]string{MultiPlatformSecretLabel: "true"}
 	return []runtimeclient.Object{&cm, &sec}
+}
+
+func createLocalHostConfig() []runtimeclient.Object {
+	cm := v1.ConfigMap{}
+	cm.Name = HostConfig
+	cm.Namespace = systemNamespace
+	cm.Labels = map[string]string{ConfigMapLabel: "hosts"}
+	cm.Data = map[string]string{
+		"local-platforms": "linux/arm64",
+	}
+	return []runtimeclient.Object{&cm}
 }
 
 type MockCloud struct {
