@@ -606,29 +606,6 @@ spec:
               operator: in
               values:
                 - "false"
-        - name: sbom-json-check
-          params:
-            - name: IMAGE_URL
-              value: $(tasks.build-container-multiarch.results.IMAGE_URL)
-            - name: IMAGE_DIGEST
-              value: $(tasks.build-container-multiarch.results.IMAGE_DIGEST)
-          runAfter:
-            - build-container-multiarch
-          taskRef:
-            kind: Task
-            params:
-              - name: name
-                value: sbom-json-check
-              - name: bundle
-                value: quay.io/redhat-appstudio-tekton-catalog/task-sbom-json-check:0.1@sha256:30829c02906bfb5761a2c3509ec00fa7b41a97ae1c931cdedcd007664fdbc292
-              - name: kind
-                value: task
-            resolver: bundles
-          when:
-            - input: "true"
-              operator: in
-              values:
-                - "false"
       workspaces:
         - name: workspace
         - name: git-auth
