@@ -56,7 +56,7 @@ spec:
         export USERNAME=u-$(echo "$TASKRUN_NAME$NAMESPACE" | md5sum | cut -b-28)
         
         cat >script.sh <<EOF
-        sudo dnf install podman -y
+        sudo dnf install podman buildah -y
         rm -f $USERNAME $USERNAME.pub
         sudo useradd -m $USERNAME -p $(openssl rand -base64 12)
         ssh-keygen -N '' -f $USERNAME
