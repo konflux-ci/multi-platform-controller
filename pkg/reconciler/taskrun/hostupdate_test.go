@@ -53,15 +53,21 @@ func TestTaskRunCreates(t *testing.T) {
 	// tested function call
 	UpdateHostPools(testNamespace, k8sClient, &log)
 
-	time.Sleep(3 * time.Second) //TODO: try to replace with g.Eventually()
-
 	// get list of all TaskRuns, as we cannot predict the name
 	createdList := v1.TaskRunList{}
+
+	time.Sleep(3 * time.Second) //TODO: try to replace with Eventually() as by example below
+
+	//Eventually(func(g Gomega) {
+	//	g.Expect(k8sClient.List(context.TODO(), &createdList, client.InNamespace(testNamespace))).To(Succeed())
+	//	g.Expect(len(createdList.Items)).To(Equal(1))
+	//}).Should(Succeed())
+
 	g.Expect(k8sClient.List(context.TODO(), &createdList, client.InNamespace(testNamespace))).To(Succeed())
 	g.Expect(len(createdList.Items)).To(Equal(1))
 
 	createdTR := createdList.Items[0]
 
 	g.Expect(createdTR.Labels).To(HaveKeyWithValue(TaskTypeLabel, TaskTypeUpdate))
-	//TODO: verify the rest of the important resulting TaskRun fields, ie. rest of labels, spec.params etc
+	//TODO: verify the rest of the important resulting TaskRun fields, ie. rest of labels, spec.params, workspaces etc
 }
