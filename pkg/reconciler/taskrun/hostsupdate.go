@@ -4,7 +4,7 @@ import (
 	"context"
 	"github.com/go-logr/logr"
 	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
-	v12 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -12,10 +12,10 @@ import (
 	"time"
 )
 
-// UpdateHostPools Run the host update task periodically
+// UpdateHostPools Run the update-host task periodically
 func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.Logger) {
 	log.Info("running pooled host update")
-	cm := v12.ConfigMap{}
+	cm := corev1.ConfigMap{}
 	err := client.Get(context.Background(), types.NamespacedName{Namespace: operatorNamespace, Name: HostConfig}, &cm)
 	if err != nil {
 		log.Error(err, "Failed to read config to update hosts", "audit", "true")
@@ -27,7 +27,7 @@ func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.L
 		if !strings.HasPrefix(k, "host.") {
 			continue
 		}
-		k = k[len("host."):]
+		k = strings.TrimPrefix(k, "host.")
 		pos := strings.LastIndex(k, ".")
 		if pos == -1 {
 			continue
@@ -36,9 +36,10 @@ func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.L
 		key := k[pos+1:]
 		host := hosts[name]
 		if host == nil {
-			host = &Host{}
+			host = &Host{
+				Name: name,
+			}
 			hosts[name] = host
-			host.Name = name
 		}
 		switch key {
 		case "address":
@@ -51,7 +52,7 @@ func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.L
 			host.Secret = v
 		case "concurrency":
 		default:
-			log.Info("unknown key", "key", key)
+			log.Info("unknown key", "name", name, "key", key)
 		}
 	}
 	delay := 0
@@ -67,16 +68,16 @@ func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.L
 			<-timer.C
 
 			log.Info("updating host", "host", realHostName)
-			provision := v1.TaskRun{}
-			provision.GenerateName = "update-task"
-			provision.Namespace = operatorNamespace
-			provision.Labels = map[string]string{TaskTypeLabel: TaskTypeUpdate, AssignedHost: realHostName}
-			provision.Spec.TaskRef = &v1.TaskRef{Name: "update-host"}
-			provision.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: host.Secret}}}
-			compute := map[v12.ResourceName]resource.Quantity{v12.ResourceCPU: resource.MustParse("100m"), v12.ResourceMemory: resource.MustParse("256Mi")}
-			provision.Spec.ComputeResources = &v12.ResourceRequirements{Requests: compute, Limits: compute}
-			provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
-			provision.Spec.Params = []v1.Param{
+			provisionTr := v1.TaskRun{}
+			provisionTr.GenerateName = "update-task"
+			provisionTr.Namespace = operatorNamespace
+			provisionTr.Labels = map[string]string{TaskTypeLabel: TaskTypeUpdate, AssignedHost: realHostName}
+			provisionTr.Spec.TaskRef = &v1.TaskRef{Name: "update-host"}
+			provisionTr.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &corev1.SecretVolumeSource{SecretName: host.Secret}}}
+			compute := map[corev1.ResourceName]resource.Quantity{corev1.ResourceCPU: resource.MustParse("100m"), corev1.ResourceMemory: resource.MustParse("256Mi")}
+			provisionTr.Spec.ComputeResources = &corev1.ResourceRequirements{Requests: compute, Limits: compute}
+			provisionTr.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
+			provisionTr.Spec.Params = []v1.Param{
 				{
 					Name:  "HOST",
 					Value: *v1.NewStructuredValues(host.Address),
@@ -86,7 +87,7 @@ func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.L
 					Value: *v1.NewStructuredValues(host.User),
 				},
 			}
-			err = client.Create(context.Background(), &provision)
+			err = client.Create(context.Background(), &provisionTr)
 		}()
 	}
 }

@@ -81,6 +81,8 @@ const (
 	ParamHost              = "HOST"
 	ParamUser              = "USER"
 	ParamSudoCommands      = "SUDO_COMMANDS"
+
+	DebugLevel = 1
 )
 
 type ReconcileTaskRun struct {
@@ -134,45 +136,41 @@ func (r *ReconcileTaskRun) Reconcile(ctx context.Context, request reconcile.Requ
 	defer cancel()
 	log := ctrl.Log.WithName("taskrun").WithValues("request", request.NamespacedName)
 
-	pr := tektonapi.TaskRun{}
-	prerr := r.client.Get(ctx, request.NamespacedName, &pr)
-	if prerr != nil {
-		if !errors.IsNotFound(prerr) {
-			log.Error(prerr, "Reconcile key %s as TaskRun unexpected error", request.NamespacedName.String())
-			return ctrl.Result{}, prerr
+	taskRun := tektonapi.TaskRun{}
+	err := r.client.Get(ctx, request.NamespacedName, &taskRun)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			log.V(DebugLevel).Info("Reconcile key received not found errors for TaskRuns (probably deleted): " + request.NamespacedName.String())
+			return ctrl.Result{}, nil
+		} else {
+			log.Error(err, "Reconcile key %s as TaskRun unexpected error", request.NamespacedName.String())
+			return ctrl.Result{}, err
 		}
 	}
-	if prerr != nil {
-		msg := "Reconcile key received not found errors for TaskRuns (probably deleted): " + request.NamespacedName.String()
-		log.Info(msg)
-		return ctrl.Result{}, nil
-	}
-	if pr.Annotations != nil {
-		if pr.Annotations[CloudInstanceId] != "" {
-			log = log.WithValues(CloudInstanceId, pr.Annotations[CloudInstanceId])
+	if taskRun.Annotations != nil {
+		if taskRun.Annotations[CloudInstanceId] != "" {
+			log = log.WithValues(CloudInstanceId, taskRun.Annotations[CloudInstanceId])
 		}
-		if pr.Annotations[AssignedHost] != "" {
-			log = log.WithValues(AssignedHost, pr.Annotations[AssignedHost])
+		if taskRun.Annotations[AssignedHost] != "" {
+			log = log.WithValues(AssignedHost, taskRun.Annotations[AssignedHost])
 		}
 	}
 	ctx = logr.NewContext(ctx, log)
 
-	return r.handleTaskRunReceived(ctx, &pr)
+	return r.handleTaskRunReceived(ctx, &taskRun)
 }
 
 func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, tr *tektonapi.TaskRun) (reconcile.Result, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	if tr.Labels != nil {
-		taskType := tr.Labels[TaskTypeLabel]
-		if taskType == TaskTypeClean {
+		switch tr.Labels[TaskTypeLabel] {
+		case TaskTypeClean:
 			log.Info("Reconciling cleanup task")
 			return r.handleCleanTask(ctx, tr)
-		}
-		if taskType == TaskTypeProvision {
+		case TaskTypeProvision:
 			log.Info("Reconciling provision task")
 			return r.handleProvisionTask(ctx, tr)
-		}
-		if taskType == TaskTypeUpdate {
+		case TaskTypeUpdate:
 			// We don't care about these
 			return reconcile.Result{}, nil
 		}
@@ -187,61 +185,25 @@ func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, tr *tekton
 	}
 	found := false
 	for _, i := range tr.Status.TaskSpec.Volumes {
-		if i.Secret != nil {
-			if strings.HasPrefix(i.Secret.SecretName, SecretPrefix) {
-				found = true
-			}
-		}
-	}
-	if !found {
-		//this is not something we need to be concerned with
-		return reconcile.Result{}, nil
-	}
-	found = false
-	for _, i := range tr.Spec.Params {
-		if i.Name == PlatformParam {
+		if i.Secret != nil && strings.HasPrefix(i.Secret.SecretName, SecretPrefix) {
 			found = true
+			break
 		}
 	}
+
 	if !found {
 		//this is not something we need to be concerned with
 		return reconcile.Result{}, nil
 	}
-	log.Info("Reconciling user task")
-
+	if _, err := extractPlatform(tr); err != nil {
+		//this is not something we need to be concerned with
+		return reconcile.Result{}, nil
+	}
 	if tr.Status.TaskSpec == nil || tr.Status.TaskSpec.Volumes == nil {
 		return reconcile.Result{}, nil
 	}
+	log.Info("Reconciling user task")
 	return r.handleUserTask(ctx, tr)
-}
-
-// called when a task has finished, we look for waiting tasks
-// and then potentially requeue one of them
-func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, platform string) (reconcile.Result, error) {
-
-	//try and requeue a waiting task if one exists
-	taskList := tektonapi.TaskRunList{}
-
-	err := r.client.List(ctx, &taskList, client.MatchingLabels{WaitingForPlatformLabel: platformLabel(platform)})
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-	var oldest *tektonapi.TaskRun
-	var oldestTs time.Time
-	for i := range taskList.Items {
-		tr := taskList.Items[i]
-		if oldest == nil || oldestTs.After(tr.CreationTimestamp.Time) {
-			oldestTs = tr.CreationTimestamp.Time
-			oldest = &tr
-		}
-	}
-	if oldest != nil {
-		//remove the waiting label, which will trigger a requeue
-		delete(oldest.Labels, WaitingForPlatformLabel)
-		return reconcile.Result{}, r.client.Update(ctx, oldest)
-	}
-	return reconcile.Result{}, nil
-
 }
 
 func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, tr *tektonapi.TaskRun) (reconcile.Result, error) {
@@ -283,21 +245,21 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 	tr.Annotations[ProvisionTaskProcessed] = "true"
 	secretName := ""
 	for _, i := range tr.Spec.Params {
-		if i.Name == "SECRET_NAME" {
+		if i.Name == ParamSecretName {
 			secretName = i.Value.StringVal
 			break
 		}
 	}
 	userNamespace := tr.Labels[UserTaskNamespace]
 	userTaskName := tr.Labels[UserTaskName]
-	assigned := tr.Labels[AssignedHost]
+	assignedHost := tr.Labels[AssignedHost]
 	log := logr.FromContextOrDiscard(ctx)
 	if !success {
 		r.handleMetrics(tr.Annotations[TaskTargetPlatformAnnotation], func(metrics *PlatformMetrics) {
 			metrics.provisionFailures.Inc()
 		})
-		log.Info(fmt.Sprintf("provision task for host %s for user task %s/%sfailed", assigned, userNamespace, userTaskName))
-		if assigned != "" {
+		log.Info(fmt.Sprintf("provision task for host %s for user task %s/%s failed", assignedHost, userNamespace, userTaskName))
+		if assignedHost != "" {
 			userTr := tektonapi.TaskRun{}
 			err := r.client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: userTaskName}, &userTr)
 			if err == nil {
@@ -310,7 +272,7 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 				if failed[0] == "" {
 					failed = []string{}
 				}
-				failed = append(failed, assigned)
+				failed = append(failed, assignedHost)
 				userTr.Annotations[FailedHosts] = strings.Join(failed, ",")
 				delete(userTr.Labels, AssignedHost)
 				err = r.client.Update(ctx, &userTr)
@@ -374,7 +336,7 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 				if pod.Annotations == nil {
 					pod.Annotations = map[string]string{}
 				}
-				pod.Annotations[AssignedHost] = assigned
+				pod.Annotations[AssignedHost] = assignedHost
 				err = r.client.Update(ctx, &pod)
 				if err != nil {
 					log.Error(err, "unable to annotate task pod")
@@ -436,7 +398,7 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *tektonapi.Tas
 			return reconcile.Result{}, nil
 		}
 
-		targetPlatform, err := extracPlatform(tr)
+		targetPlatform, err := extractPlatform(tr)
 		if err != nil {
 			err := r.createErrorSecret(ctx, tr, secretName, err.Error())
 			if err != nil {
@@ -458,7 +420,7 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *tektonapi.Tas
 	}
 }
 
-func extracPlatform(tr *tektonapi.TaskRun) (string, error) {
+func extractPlatform(tr *tektonapi.TaskRun) (string, error) {
 	for _, p := range tr.Spec.Params {
 		if p.Name == PlatformParam {
 			return p.Value.StringVal, nil
@@ -469,9 +431,7 @@ func extracPlatform(tr *tektonapi.TaskRun) (string, error) {
 
 func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektonapi.TaskRun, secretName string, targetPlatform string) (reconcile.Result, error) {
 	log := logr.FromContextOrDiscard(ctx)
-
-	log.Info("attempting to allocate host")
-
+	log.Info("attempting to allocate host for platform:" + targetPlatform)
 	if tr.Labels == nil {
 		tr.Labels = map[string]string{}
 	}
@@ -548,7 +508,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 		selectedHost := tr.Labels[AssignedHost]
 		log.Info(fmt.Sprintf("unassigning host %s from task", selectedHost))
 
-		platform, err := extracPlatform(tr)
+		platform, err := extractPlatform(tr)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -594,6 +554,35 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 		return r.handleWaitingTasks(ctx, platform)
 	}
 	return reconcile.Result{}, nil
+}
+
+// called when a task has finished, we look for waiting tasks
+// and then potentially requeue one of them
+func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, platform string) (reconcile.Result, error) {
+
+	//try and requeue a waiting task if one exists
+	taskList := tektonapi.TaskRunList{}
+
+	err := r.client.List(ctx, &taskList, client.MatchingLabels{WaitingForPlatformLabel: platformLabel(platform)})
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+	var oldest *tektonapi.TaskRun
+	var oldestTs time.Time
+	for i := range taskList.Items {
+		tr := taskList.Items[i]
+		if oldest == nil || oldestTs.After(tr.CreationTimestamp.Time) {
+			oldestTs = tr.CreationTimestamp.Time
+			oldest = &tr
+		}
+	}
+	if oldest != nil {
+		//remove the waiting label, which will trigger a requeue
+		delete(oldest.Labels, WaitingForPlatformLabel)
+		return reconcile.Result{}, r.client.Update(ctx, oldest)
+	}
+	return reconcile.Result{}, nil
+
 }
 
 func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform string, targetNamespace string) (PlatformConfig, error) {
