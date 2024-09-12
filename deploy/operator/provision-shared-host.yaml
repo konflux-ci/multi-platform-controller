@@ -58,7 +58,11 @@ spec:
         cat >script.sh <<EOF
         sudo dnf install podman -y
         rm -f $USERNAME $USERNAME.pub
-        sudo useradd -m $USERNAME -p $(openssl rand -base64 12)
+        # sometimes it hits  "useradd: cannot lock /etc/passwd; try again later" error, so need to repeat
+        for i in {10..1}; do
+          sudo useradd -m $USERNAME -p $(openssl rand -base64 12) && break
+          sleep 1
+        done
         ssh-keygen -N '' -f $USERNAME
         sudo su $USERNAME -c 'mkdir /home/$USERNAME/.ssh'
         sudo su $USERNAME -c 'mkdir /home/$USERNAME/build'
