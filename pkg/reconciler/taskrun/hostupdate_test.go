@@ -71,3 +71,5 @@ func TestTaskRunCreates(t *testing.T) {
 	g.Expect(createdTR.Labels).To(HaveKeyWithValue(TaskTypeLabel, TaskTypeUpdate))
 	//TODO: verify the rest of the important resulting TaskRun fields, ie. rest of labels, spec.params, workspaces etc
 }
+
+//TODO: try to find other scenarios to test
