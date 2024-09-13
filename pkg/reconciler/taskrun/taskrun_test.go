@@ -33,7 +33,7 @@ func setupClientAndReconciler(objs []runtimeclient.Object) (runtimeclient.Client
 	_ = v1.AddToScheme(scheme)
 	_ = appsv1.AddToScheme(scheme)
 	client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
-	reconciler := &ReconcileTaskRun{client: client, scheme: scheme, eventRecorder: &record.FakeRecorder{}, operatorNamespace: systemNamespace, cloudProviders: map[string]func(platform string, config map[string]string, systemnamespace string) cloud.CloudProvider{"mock": MockCloudSetup}, platformConfig: map[string]PlatformConfig{}, platformMetrics: platformMetrics}
+	reconciler := &ReconcileTaskRun{client: client, scheme: scheme, eventRecorder: &record.FakeRecorder{}, operatorNamespace: systemNamespace, cloudProviders: map[string]func(platform string, config map[string]string, systemnamespace string) cloud.CloudProvider{"mock": MockCloudSetup}, platformConfig: map[string]PlatformConfig{}}
 	return client, reconciler
 }
 
