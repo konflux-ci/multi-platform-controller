@@ -26,7 +26,6 @@ const systemNamespace = "multi-platform-controller"
 const userNamespace = "default"
 
 var cloudImpl MockCloud = MockCloud{Addressses: map[cloud.InstanceIdentifier]string{}}
-var platformMetrics = map[string]*PlatformMetrics{}
 
 func setupClientAndReconciler(objs []runtimeclient.Object) (runtimeclient.Client, *ReconcileTaskRun) {
 	scheme := runtime.NewScheme()
