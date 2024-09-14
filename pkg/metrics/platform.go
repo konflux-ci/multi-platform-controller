@@ -2,14 +2,14 @@ package mpcmetrics
 
 import (
 	"context"
-	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
-	"sync"
 )
 
 var (
-	platformMetrics sync.Map
+
+	// Map of metrics set. Holds pointers, so no real need to be thread-safe here as the values are never rewritten.
+	platformMetrics = map[string]*PlatformMetrics{}
 
 	smallBuckets = []float64{1, 2, 3, 4, 5, 10, 15, 20, 30, 60, 120, 300, 600, 1200}
 	bigBuckets   = []float64{20, 40, 60, 90, 120, 300, 600, 1200, 2400, 4800, 6000, 7200, 8400, 9600}
@@ -27,104 +27,100 @@ type PlatformMetrics struct {
 	HostAllocationFailures prometheus.Counter
 }
 
-func RegisterPlatformMetrics(ctx context.Context, platform string) error {
-	log := logr.FromContextOrDiscard(ctx)
-	if _, ok := platformMetrics.Load(platform); ok {
-		log.Info("Metrics already registered", "platform", platform)
+func RegisterPlatformMetrics(_ context.Context, platform string) error {
+	if platformMetrics[platform] != nil {
 		return nil
 	}
-	plfmetrics := PlatformMetrics{}
+	pmetrics := PlatformMetrics{}
 
-	plfmetrics.AllocationTime = prometheus.NewHistogram(prometheus.HistogramOpts{
+	pmetrics.AllocationTime = prometheus.NewHistogram(prometheus.HistogramOpts{
 		ConstLabels: map[string]string{"platform": platform},
 		Namespace:   MetricsNamespace,
 		Subsystem:   MetricsSubsystem,
 		Name:        "host_allocation_time",
 		Help:        "The time in seconds it takes to allocate a host, excluding wait time. In practice this is the amount of time it takes a cloud provider to start an instance",
 		Buckets:     smallBuckets})
-	if err := metrics.Registry.Register(plfmetrics.AllocationTime); err != nil {
+	if err := metrics.Registry.Register(pmetrics.AllocationTime); err != nil {
 		return err
 	}
 
-	plfmetrics.WaitTime = prometheus.NewHistogram(prometheus.HistogramOpts{
+	pmetrics.WaitTime = prometheus.NewHistogram(prometheus.HistogramOpts{
 		ConstLabels: map[string]string{"platform": platform},
 		Namespace:   MetricsNamespace,
 		Subsystem:   MetricsSubsystem,
 		Name:        "wait_time",
 		Help:        "The time in seconds a task has spent waiting for a host to become available, excluding the host allocation time",
 		Buckets:     smallBuckets})
-	if err := metrics.Registry.Register(plfmetrics.WaitTime); err != nil {
+	if err := metrics.Registry.Register(pmetrics.WaitTime); err != nil {
 		return err
 	}
 
-	plfmetrics.TaskRunTime = prometheus.NewHistogram(prometheus.HistogramOpts{
+	pmetrics.TaskRunTime = prometheus.NewHistogram(prometheus.HistogramOpts{
 		ConstLabels: map[string]string{"platform": platform},
 		Namespace:   MetricsNamespace,
 		Subsystem:   MetricsSubsystem,
 		Name:        "task_run_time",
 		Help:        "The total time taken by a task, including wait and allocation time",
 		Buckets:     bigBuckets})
-	if err := metrics.Registry.Register(plfmetrics.TaskRunTime); err != nil {
+	if err := metrics.Registry.Register(pmetrics.TaskRunTime); err != nil {
 		return err
 	}
 
-	plfmetrics.RunningTasks = prometheus.NewGauge(prometheus.GaugeOpts{
+	pmetrics.RunningTasks = prometheus.NewGauge(prometheus.GaugeOpts{
 		ConstLabels: map[string]string{"platform": platform},
 		Namespace:   MetricsNamespace,
 		Subsystem:   MetricsSubsystem,
 		Name:        "running_tasks",
 		Help:        "The number of currently running tasks on this platform"})
-	if err := metrics.Registry.Register(plfmetrics.RunningTasks); err != nil {
+	if err := metrics.Registry.Register(pmetrics.RunningTasks); err != nil {
 		return err
 	}
 
-	plfmetrics.WaitingTasks = prometheus.NewGauge(prometheus.GaugeOpts{
+	pmetrics.WaitingTasks = prometheus.NewGauge(prometheus.GaugeOpts{
 		ConstLabels: map[string]string{"platform": platform},
 		Namespace:   MetricsNamespace,
 		Subsystem:   MetricsSubsystem,
 		Name:        "waiting_tasks",
 		Help:        "The number of tasks waiting for an executor to be available to run"})
-	if err := metrics.Registry.Register(plfmetrics.WaitingTasks); err != nil {
+	if err := metrics.Registry.Register(pmetrics.WaitingTasks); err != nil {
 		return err
 	}
 
-	plfmetrics.ProvisionFailures = prometheus.NewCounter(prometheus.CounterOpts{
+	pmetrics.ProvisionFailures = prometheus.NewCounter(prometheus.CounterOpts{
 		ConstLabels: map[string]string{"platform": platform},
 		Namespace:   MetricsNamespace,
 		Subsystem:   MetricsSubsystem,
 		Name:        "provisioning_failures",
 		Help:        "The number of times a provisioning task has failed"})
-	if err := metrics.Registry.Register(plfmetrics.ProvisionFailures); err != nil {
+	if err := metrics.Registry.Register(pmetrics.ProvisionFailures); err != nil {
 		return err
 	}
 
-	plfmetrics.CleanupFailures = prometheus.NewCounter(prometheus.CounterOpts{
+	pmetrics.CleanupFailures = prometheus.NewCounter(prometheus.CounterOpts{
 		ConstLabels: map[string]string{"platform": platform},
 		Namespace:   MetricsNamespace,
 		Subsystem:   MetricsSubsystem,
 		Name:        "cleanup_failures",
 		Help:        "The number of times a cleanup task has failed"})
-	if err := metrics.Registry.Register(plfmetrics.CleanupFailures); err != nil {
+	if err := metrics.Registry.Register(pmetrics.CleanupFailures); err != nil {
 		return err
 	}
 
-	plfmetrics.HostAllocationFailures = prometheus.NewCounter(prometheus.CounterOpts{
+	pmetrics.HostAllocationFailures = prometheus.NewCounter(prometheus.CounterOpts{
 		ConstLabels: map[string]string{"platform": platform},
 		Namespace:   MetricsNamespace,
 		Subsystem:   MetricsSubsystem,
 		Name:        "host_allocation_failures",
 		Help:        "The number of times host allocation has failed"})
-	if err := metrics.Registry.Register(plfmetrics.HostAllocationFailures); err != nil {
+	if err := metrics.Registry.Register(pmetrics.HostAllocationFailures); err != nil {
 		return err
 	}
-	platformMetrics.Store(platform, &plfmetrics)
+	platformMetrics[platform] = &pmetrics
 	return nil
 }
 
 func HandleMetrics(platform string, f func(*PlatformMetrics)) {
-	plfmetrics, ok := platformMetrics.Load(platform)
-	if !ok {
-		return
+	if pmetrics := platformMetrics[platform]; pmetrics != nil {
+		f(pmetrics)
 	}
-	f(plfmetrics.(*PlatformMetrics))
 }
