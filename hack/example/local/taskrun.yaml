@@ -1,0 +1,37 @@
+apiVersion: tekton.dev/v1beta1
+kind: TaskRun
+metadata:
+  name: local-task
+  labels:
+    test-task-type: local-task
+spec:
+  taskSpec:
+    steps:
+    - name: print-remote-secret
+      image: registry.access.redhat.com/ubi9/ubi:9.4-1214
+      script: |-
+        #!/bin/bash
+        set -e
+        find /ssh \
+          -mindepth 1 \
+          -maxdepth 1 \
+          '!' -name ".*" \
+          -printf '%f\n' \
+          -exec bash -c 'cat {} | sed "s/^/  /"' ';'
+        echo
+      volumeMounts:
+      - mountPath: /ssh
+        name: ssh
+        readOnly: true
+    volumes:
+    - name: ssh
+      secret:
+        optional: false
+        secretName: multi-platform-ssh-$(context.taskRun.name)
+    params:
+    - description: The platform to build on
+      name: PLATFORM
+      type: string
+  params:
+  - name: PLATFORM
+    value: test-platform
