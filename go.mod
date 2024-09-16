@@ -10,19 +10,19 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.27.0
 	github.com/aws/aws-sdk-go-v2/config v1.27.16
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.160.0
-	github.com/go-logr/logr v1.4.1
+	github.com/go-logr/logr v1.4.2
 	github.com/google/uuid v1.6.0
 	github.com/onsi/gomega v1.33.1
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.19.0
-	github.com/tektoncd/pipeline v0.61.0
+	github.com/tektoncd/pipeline v0.62.0
 	go.uber.org/zap v1.27.0
 	k8s.io/api v0.29.6
 	k8s.io/apiextensions-apiserver v0.29.2
-	k8s.io/apimachinery v0.29.6
+	k8s.io/apimachinery v0.29.7
 	k8s.io/cli-runtime v0.24.3
 	k8s.io/client-go v0.29.6
-	k8s.io/code-generator v0.29.6
+	k8s.io/code-generator v0.29.7
 	k8s.io/klog/v2 v2.120.1
 	k8s.io/utils v0.0.0-20240102154912-e7106e64919e
 	knative.dev/pkg v0.0.0-20240416145024-0f34a8815650
