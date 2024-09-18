@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/IBM-Cloud/power-go-client/power/models"
 	"os"
 	"strconv"
 	"strings"
@@ -21,7 +22,7 @@ import (
 )
 
 func IBMPowerProvider(platform string, config map[string]string, systemNamespace string) cloud.CloudProvider {
-	mem, err := strconv.Atoi(config["dynamic."+platform+".memory"])
+	mem, err := strconv.ParseFloat(config["dynamic."+platform+".memory"], 64)
 	if err != nil {
 		mem = 2
 	}
@@ -29,6 +30,13 @@ func IBMPowerProvider(platform string, config map[string]string, systemNamespace
 	if err != nil {
 		cores = 0.25
 	}
+
+	userDataString := config["dynamic."+platform+".user-data"]
+	var base64userData = ""
+	if userDataString != "" {
+		base64userData = base64.StdEncoding.EncodeToString([]byte(userDataString))
+	}
+
 	return IBMPowerDynamicConfig{
 		Key:             config["dynamic."+platform+".key"],
 		Image:           config["dynamic."+platform+".image"],
@@ -40,6 +48,8 @@ func IBMPowerProvider(platform string, config map[string]string, systemNamespace
 		Cores:           cores,
 		Memory:          mem,
 		SystemNamespace: systemNamespace,
+		UserData:        base64userData,
+		ProcType:        "shared",
 	}
 }
 
@@ -53,7 +63,7 @@ func (r IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx cont
 	if err != nil {
 		return "", err
 	}
-	name := instanceTag + strings.Replace(strings.ToLower(base64.URLEncoding.EncodeToString(md5.New().Sum(binary))[0:20]), "_", "-", -1) + "x" //#nosec
+	name := instanceTag + "-" + strings.Replace(strings.ToLower(base64.URLEncoding.EncodeToString(md5.New().Sum(binary))[0:20]), "_", "-", -1) + "x" //#nosec
 	instance, err := r.createServerInstance(ctx, service, name)
 	if err != nil {
 		return "", err
@@ -63,42 +73,11 @@ func (r IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx cont
 }
 
 func (r IBMPowerDynamicConfig) CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error) {
-	service, err := r.authenticate(kubeClient, ctx)
+	instances, err := r.ListInstances(kubeClient, ctx, instanceTag)
 	if err != nil {
 		return 0, err
 	}
-	builder := core.NewRequestBuilder(core.GET)
-	builder = builder.WithContext(ctx)
-	builder.EnableGzipCompression = service.GetEnableGzipCompression()
-
-	pathParamsMap := map[string]string{
-		"cloud": r.pCloudId(),
-	}
-	_, err = builder.ResolveRequestURL(r.Url, `/pcloud/v1/cloud-instances/{cloud}/pvm-instances`, pathParamsMap)
-	if err != nil {
-		return 0, err
-	}
-	builder.AddHeader("CRN", r.CRN)
-	builder.AddHeader("Accept", "application/json")
-
-	request, err := builder.Build()
-	if err != nil {
-		return 0, err
-	}
-
-	var rawResponse map[string]json.RawMessage
-	_, err = service.Request(request, &rawResponse)
-	//println(response.String())
-	if err != nil {
-		return 0, err
-	}
-	instancesData := rawResponse["pvmInstances"]
-	instances := []json.RawMessage{}
-	err = json.Unmarshal(instancesData, &instances)
-	if err != nil {
-		return 0, err
-	}
-	return len(rawResponse), nil
+	return len(instances), nil
 }
 
 func (r IBMPowerDynamicConfig) authenticate(kubeClient client.Client, ctx context.Context) (*core.BaseService, error) {
@@ -140,7 +119,52 @@ func (r IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx 
 }
 
 func (r IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
-	return nil, fmt.Errorf("not impelemented")
+	log := logr.FromContextOrDiscard(ctx)
+	log.Info("Listing instances", "tag", instanceTag)
+	service, err := r.authenticate(kubeClient, ctx)
+	if err != nil {
+		return nil, err
+	}
+	builder := core.NewRequestBuilder(core.GET).WithContext(ctx)
+	builder.EnableGzipCompression = service.GetEnableGzipCompression()
+
+	pathParamsMap := map[string]string{
+		"cloud": r.pCloudId(),
+	}
+	_, err = builder.ResolveRequestURL(r.Url, `/pcloud/v1/cloud-instances/{cloud}/pvm-instances`, pathParamsMap)
+	if err != nil {
+		return nil, err
+	}
+	builder.AddHeader("CRN", r.CRN)
+	builder.AddHeader("Accept", "application/json")
+
+	request, err := builder.Build()
+	if err != nil {
+		return nil, err
+	}
+
+	instances := models.PVMInstances{}
+	_, err = service.Request(request, &instances)
+	if err != nil {
+		return nil, err
+	}
+
+	ret := make([]cloud.CloudVMInstance, 0, len(instances.PvmInstances))
+	for _, instance := range instances.PvmInstances {
+		if !strings.HasPrefix(*instance.ServerName, instanceTag) {
+			continue
+		}
+		identifier := cloud.InstanceIdentifier(*instance.PvmInstanceID)
+		createdAt := time.Time(instance.CreationDate)
+		addr, err := r.GetInstanceAddress(kubeClient, ctx, identifier)
+		if err != nil {
+			log.Error(err, "not listing instance as address cannot be assigned yet", "instance", identifier)
+		} else {
+			ret = append(ret, cloud.CloudVMInstance{InstanceId: identifier, Address: addr, StartTime: createdAt})
+		}
+	}
+	return ret, nil
+
 }
 func (r IBMPowerDynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
 	log := logr.FromContextOrDiscard(ctx)
@@ -158,7 +182,7 @@ func (r IBMPowerDynamicConfig) TerminateInstance(kubeClient client.Client, ctx c
 		}
 		for {
 			_, err := r.lookupInstance(ctx, service, string(instanceId))
-			if err == nil {
+			if err != nil {
 				//its gone, return
 				return
 			}
@@ -186,8 +210,10 @@ type IBMPowerDynamicConfig struct {
 	CRN             string
 	Network         string
 	Cores           float64
-	Memory          int
+	Memory          float64
 	System          string
+	UserData        string
+	ProcType        string
 }
 
 func (r IBMPowerDynamicConfig) pCloudId() string {
@@ -208,25 +234,18 @@ func (r IBMPowerDynamicConfig) createServerInstance(ctx context.Context, service
 	pathParamsMap := map[string]string{
 		"cloud": r.pCloudId(),
 	}
+
 	network := strings.Split(r.Network, ",")
-	body := struct {
-		ServerName  string   `json:"serverName"`
-		ImageId     string   `json:"imageId"`
-		Processors  float64  `json:"processors"`
-		ProcType    string   `json:"procType"`
-		Memory      int      `json:"memory"`
-		NetworkIDs  []string `json:"networkIDs"`
-		KeyPairName string   `json:"keyPairName"`
-		SysType     string   `json:"sysType"`
-	}{
-		ServerName:  name,
-		ImageId:     r.Image,
-		Processors:  r.Cores,
-		ProcType:    "shared",
-		Memory:      r.Memory,
+	body := models.PVMInstanceCreate{
+		ServerName:  &name,
+		ImageID:     &r.Image,
+		Processors:  &r.Cores,
+		ProcType:    &r.ProcType,
+		Memory:      &r.Memory,
 		NetworkIDs:  network,
 		KeyPairName: r.Key,
 		SysType:     r.System,
+		UserData:    r.UserData,
 	}
 	_, err := builder.ResolveRequestURL(r.Url, `/pcloud/v1/cloud-instances/{cloud}/pvm-instances`, pathParamsMap)
 	if err != nil {
@@ -263,40 +282,24 @@ func (r IBMPowerDynamicConfig) createServerInstance(ctx context.Context, service
 
 func (r IBMPowerDynamicConfig) lookupIp(ctx context.Context, service *core.BaseService, pvmId string) (string, error) {
 
-	rawResponse, err := r.lookupInstance(ctx, service, pvmId)
+	instance, err := r.lookupInstance(ctx, service, pvmId)
 	if err != nil {
 		return "", err
 	}
-	info := rawResponse["networks"]
-	nwList := []map[string]json.RawMessage{}
-	err = json.Unmarshal(info, &nwList)
-	if err != nil {
-		return "", err
+	if len(instance.Networks) == 0 {
+		return "", fmt.Errorf("no networks found for pvm %s", pvmId)
 	}
-	if len(nwList) == 0 {
-		return "", err
-	}
-
-	internal := string(nwList[0]["ipAddress"])
-	external := string(nwList[0]["externalIP"])
-
-	var ip string
-
-	if external != "" {
-		ip = external
-	} else if internal != "" {
-		ip = internal
+	network := instance.Networks[0]
+	if network.ExternalIP != "" {
+		return network.ExternalIP, nil
+	} else if network.IPAddress != "" {
+		return network.IPAddress, nil
 	} else {
 		return "", err
 	}
-
-	if ip[0] == '"' {
-		return ip[1 : len(ip)-1], nil
-	}
-	return ip, nil
 }
 
-func (r IBMPowerDynamicConfig) lookupInstance(ctx context.Context, service *core.BaseService, pvmId string) (map[string]json.RawMessage, error) {
+func (r IBMPowerDynamicConfig) lookupInstance(ctx context.Context, service *core.BaseService, pvmId string) (*models.PVMInstance, error) {
 	builder := core.NewRequestBuilder(core.GET)
 	builder = builder.WithContext(ctx)
 	builder.EnableGzipCompression = service.GetEnableGzipCompression()
@@ -317,13 +320,13 @@ func (r IBMPowerDynamicConfig) lookupInstance(ctx context.Context, service *core
 		return nil, err
 	}
 
-	var rawResponse map[string]json.RawMessage
-	_, err = service.Request(request, &rawResponse)
+	instance := models.PVMInstance{}
+	_, err = service.Request(request, &instance)
 	//println(response.String())
 	if err != nil {
 		return nil, err
 	}
-	return rawResponse, nil
+	return &instance, nil
 }
 
 func (r IBMPowerDynamicConfig) deleteServer(ctx context.Context, service *core.BaseService, pvmId string) error {
