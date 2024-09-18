@@ -28,7 +28,7 @@ type PlatformMetrics struct {
 }
 
 func RegisterPlatformMetrics(_ context.Context, platform string) error {
-	if platformMetrics[platform] != nil {
+	if _, ok := platformMetrics[platform]; ok {
 		return nil
 	}
 	pmetrics := PlatformMetrics{}
