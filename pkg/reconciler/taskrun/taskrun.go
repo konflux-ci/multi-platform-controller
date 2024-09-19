@@ -421,7 +421,7 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *tektonapi.Tas
 			return reconcile.Result{}, nil
 		}
 
-		targetPlatform, err := extracPlatform(tr)
+		targetPlatform, err := extractPlatform(tr)
 		if err != nil {
 			err := r.createErrorSecret(ctx, tr, secretName, err.Error())
 			if err != nil {
@@ -443,7 +443,7 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *tektonapi.Tas
 	}
 }
 
-func extracPlatform(tr *tektonapi.TaskRun) (string, error) {
+func extractPlatform(tr *tektonapi.TaskRun) (string, error) {
 	for _, p := range tr.Spec.Params {
 		if p.Name == PlatformParam {
 			return p.Value.StringVal, nil
@@ -454,9 +454,7 @@ func extracPlatform(tr *tektonapi.TaskRun) (string, error) {
 
 func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektonapi.TaskRun, secretName string, targetPlatform string) (reconcile.Result, error) {
 	log := logr.FromContextOrDiscard(ctx)
-
-	log.Info("attempting to allocate host")
-
+	log.Info("attempting to allocate host", "platform", targetPlatform)
 	if tr.Labels == nil {
 		tr.Labels = map[string]string{}
 	}
@@ -535,7 +533,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 		selectedHost := tr.Labels[AssignedHost]
 		log.Info(fmt.Sprintf("unassigning host %s from task", selectedHost))
 
-		platform, err := extracPlatform(tr)
+		platform, err := extractPlatform(tr)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
