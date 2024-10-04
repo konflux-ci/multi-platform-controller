@@ -48,12 +48,24 @@ func TestConfigMapParsing(t *testing.T) {
 	g.Expect(config.hosts["host1"].Platform).Should(Equal("linux/arm64"))
 }
 
-func TestConfigMapParsingForLocal(t *testing.T) {
+func TestConfigMapParsingForDynamic(t *testing.T) {
 	g := NewGomegaWithT(t)
-	_, reconciler := setupClientAndReconciler(createLocalHostConfig())
+	_, reconciler := setupClientAndReconciler(createDynamicHostConfig())
 	configIface, err := reconciler.readConfiguration(context.Background(), "linux/arm64", userNamespace)
-	g.Expect(configIface).To(BeAssignableToTypeOf(Local{}))
+	config := configIface.(DynamicResolver)
 	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("foo", "bar"))
+	g.Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("key", "value"))
+}
+
+func TestConfigMapParsingForDynamicPool(t *testing.T) {
+	g := NewGomegaWithT(t)
+	_, reconciler := setupClientAndReconciler(createDynamicPoolHostConfig())
+	configIface, err := reconciler.readConfiguration(context.Background(), "linux/arm64", userNamespace)
+	config := configIface.(DynamicHostPool)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("foo", "bar"))
+	g.Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("key", "value"))
 }
 
 func TestAllowedNamepsaces(t *testing.T) {
@@ -658,6 +670,7 @@ func createDynamicHostConfig() []runtimeclient.Object {
 	cm.Namespace = systemNamespace
 	cm.Labels = map[string]string{ConfigMapLabel: "hosts"}
 	cm.Data = map[string]string{
+		"additional-instance-tags":               "foo=bar,key=value",
 		"dynamic-platforms":                      "linux/arm64",
 		"dynamic.linux-arm64.type":               "mock",
 		"dynamic.linux-arm64.region":             "us-east-1",
@@ -682,6 +695,7 @@ func createDynamicPoolHostConfig() []runtimeclient.Object {
 	cm.Namespace = systemNamespace
 	cm.Labels = map[string]string{ConfigMapLabel: "hosts"}
 	cm.Data = map[string]string{
+		"additional-instance-tags":          "foo=bar,key=value",
 		"dynamic-pool-platforms":            "linux/arm64",
 		"dynamic.linux-arm64.type":          "mock",
 		"dynamic.linux-arm64.region":        "us-east-1",
@@ -736,7 +750,7 @@ func (m *MockCloud) SshUser() string {
 	return "root"
 }
 
-func (m *MockCloud) LaunchInstance(kubeClient runtimeclient.Client, ctx context.Context, name string, instanceTag string) (cloud.InstanceIdentifier, error) {
+func (m *MockCloud) LaunchInstance(kubeClient runtimeclient.Client, ctx context.Context, name string, instanceTag string, additionalTags map[string]string) (cloud.InstanceIdentifier, error) {
 	m.Running++
 	addr := string(name) + ".host.com"
 	identifier := cloud.InstanceIdentifier(name)

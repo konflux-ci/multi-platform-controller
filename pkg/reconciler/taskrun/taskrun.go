@@ -73,6 +73,8 @@ const (
 	LocalPlatforms         = "local-platforms"
 	DynamicPlatforms       = "dynamic-platforms"
 	DynamicPoolPlatforms   = "dynamic-pool-platforms"
+	DefaultInstanceTag     = "instance-tag"
+	AdditionalInstanceTags = "additional-instance-tags"
 	AllowedNamespaces      = "allowed-namespaces"
 	MultiPlatformSubsystem = "multi_platform_controller"
 	ParamNamespace         = "NAMESPACE"
@@ -633,6 +635,18 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 		return existing, nil
 	}
 
+	var additionalInstanceTags map[string]string
+	if val, ok := cm.Data[AdditionalInstanceTags]; !ok {
+		additionalInstanceTags = map[string]string{}
+	} else {
+		additionalTagsArray := strings.Split(val, ",")
+		additionalInstanceTags = make(map[string]string, len(additionalTagsArray))
+		for _, tag := range additionalTagsArray {
+			parts := strings.Split(tag, "=")
+			additionalInstanceTags[parts[0]] = parts[1]
+		}
+	}
+
 	local := strings.Split(cm.Data[LocalPlatforms], ",")
 	if slices.Contains(local, targetPlatform) {
 		return Local{}, nil
@@ -654,7 +668,7 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 			}
 			instanceTag := cm.Data["dynamic."+platformConfigName+".instance-tag"]
 			if instanceTag == "" {
-				instanceTag = cm.Data["instance-tag"]
+				instanceTag = cm.Data[DefaultInstanceTag]
 			}
 			timeoutSeconds := cm.Data["dynamic."+platformConfigName+".allocation-timeout"]
 			timeout := int64(600) //default to 10 minutes
@@ -667,13 +681,14 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 				}
 			}
 			ret := DynamicResolver{
-				CloudProvider: allocfunc(platformConfigName, cm.Data, r.operatorNamespace),
-				sshSecret:     cm.Data["dynamic."+platformConfigName+".ssh-secret"],
-				platform:      platform,
-				maxInstances:  maxInstances,
-				instanceTag:   instanceTag,
-				timeout:       timeout,
-				sudoCommands:  cm.Data["dynamic."+platformConfigName+".sudo-commands"],
+				CloudProvider:          allocfunc(platformConfigName, cm.Data, r.operatorNamespace),
+				sshSecret:              cm.Data["dynamic."+platformConfigName+".ssh-secret"],
+				platform:               platform,
+				maxInstances:           maxInstances,
+				instanceTag:            instanceTag,
+				timeout:                timeout,
+				sudoCommands:           cm.Data["dynamic."+platformConfigName+".sudo-commands"],
+				additionalInstanceTags: additionalInstanceTags,
 			}
 			r.platformConfig[targetPlatform] = ret
 			metrics, err := r.registerMetrics(targetPlatform)
@@ -713,13 +728,14 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 				instanceTag = cm.Data["instance-tag"]
 			}
 			ret := DynamicHostPool{
-				cloudProvider: allocfunc(platformConfigName, cm.Data, r.operatorNamespace),
-				sshSecret:     cm.Data["dynamic."+platformConfigName+".ssh-secret"],
-				platform:      platform,
-				maxInstances:  maxInstances,
-				maxAge:        time.Minute * time.Duration(maxAge),
-				concurrency:   concurrency,
-				instanceTag:   instanceTag,
+				cloudProvider:          allocfunc(platformConfigName, cm.Data, r.operatorNamespace),
+				sshSecret:              cm.Data["dynamic."+platformConfigName+".ssh-secret"],
+				platform:               platform,
+				maxInstances:           maxInstances,
+				maxAge:                 time.Minute * time.Duration(maxAge),
+				concurrency:            concurrency,
+				instanceTag:            instanceTag,
+				additionalInstanceTags: additionalInstanceTags,
 			}
 			r.platformConfig[targetPlatform] = ret
 			metrics, err := r.registerMetrics(targetPlatform)
