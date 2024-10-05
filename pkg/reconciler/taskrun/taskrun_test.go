@@ -48,6 +48,14 @@ func TestConfigMapParsing(t *testing.T) {
 	g.Expect(config.hosts["host1"].Platform).Should(Equal("linux/arm64"))
 }
 
+func TestConfigMapParsingForLocal(t *testing.T) {
+	g := NewGomegaWithT(t)
+	_, reconciler := setupClientAndReconciler(createLocalHostConfig())
+	configIface, err := reconciler.readConfiguration(context.Background(), "linux/arm64", userNamespace)
+	g.Expect(configIface).To(BeAssignableToTypeOf(Local{}))
+	g.Expect(err).ToNot(HaveOccurred())
+}
+
 func TestConfigMapParsingForDynamic(t *testing.T) {
 	g := NewGomegaWithT(t)
 	_, reconciler := setupClientAndReconciler(createDynamicHostConfig())
