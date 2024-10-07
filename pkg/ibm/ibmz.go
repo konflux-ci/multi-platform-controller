@@ -38,7 +38,7 @@ func IBMZProvider(arch string, config map[string]string, systemNamespace string)
 	}
 }
 
-func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunName string, instanceTag string) (cloud.InstanceIdentifier, error) {
+func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunName string, instanceTag string, _ map[string]string) (cloud.InstanceIdentifier, error) {
 	vpcService, err := r.authenticate(kubeClient, ctx)
 	if err != nil {
 		return "", err

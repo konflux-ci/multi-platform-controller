@@ -67,7 +67,7 @@ func Ec2Provider(platformName string, config map[string]string, systemNamespace 
 	}
 }
 
-func (r AwsDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, name string, instanceTag string) (cloud.InstanceIdentifier, error) {
+func (r AwsDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, name string, instanceTag string, additionalInstanceTags map[string]string) (cloud.InstanceIdentifier, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info(fmt.Sprintf("attempting to launch AWS instance for %s", name))
 	// Load AWS credentials and configuration
@@ -106,6 +106,16 @@ func (r AwsDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.C
 		}
 	}
 
+	instanceTags := []types.Tag{
+		{Key: aws.String(MultiPlatformManaged), Value: aws.String("true")},
+		{Key: aws.String(cloud.InstanceTag), Value: aws.String(instanceTag)},
+		{Key: aws.String("Name"), Value: aws.String("multi-platform-builder-" + name)},
+	}
+
+	for k, v := range additionalInstanceTags {
+		instanceTags = append(instanceTags, types.Tag{Key: aws.String(k), Value: aws.String(v)})
+	}
+
 	launchInput := &ec2.RunInstancesInput{
 		KeyName:            aws.String(r.KeyName),
 		ImageId:            aws.String(r.Ami), //ARM RHEL
@@ -124,7 +134,7 @@ func (r AwsDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.C
 			Ebs:         &types.EbsBlockDevice{DeleteOnTermination: aws.Bool(true), VolumeSize: aws.Int32(r.Disk), VolumeType: types.VolumeTypeGp3, Iops: r.Iops, Throughput: r.Throughput},
 		}},
 		InstanceInitiatedShutdownBehavior: types.ShutdownBehaviorTerminate,
-		TagSpecifications:                 []types.TagSpecification{{ResourceType: types.ResourceTypeInstance, Tags: []types.Tag{{Key: aws.String(MultiPlatformManaged), Value: aws.String("true")}, {Key: aws.String(cloud.InstanceTag), Value: aws.String(instanceTag)}, {Key: aws.String("Name"), Value: aws.String("multi-platform-builder-" + name)}}}},
+		TagSpecifications:                 []types.TagSpecification{{ResourceType: types.ResourceTypeInstance, Tags: instanceTags}},
 	}
 	spotInstanceRequested := r.SpotInstancePrice != ""
 	if spotInstanceRequested {
