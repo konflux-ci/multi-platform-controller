@@ -53,7 +53,7 @@ func IBMPowerProvider(platform string, config map[string]string, systemNamespace
 	}
 }
 
-func (r IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunName string, instanceTag string) (cloud.InstanceIdentifier, error) {
+func (r IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunName string, instanceTag string, _ map[string]string) (cloud.InstanceIdentifier, error) {
 	service, err := r.authenticate(kubeClient, ctx)
 	if err != nil {
 		return "", err

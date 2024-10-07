@@ -21,15 +21,6 @@ import (
 
 const MultiPlatformManaged = "MultiPlatformManaged"
 
-var defaultInstanceTags = []types.Tag{
-	{Key: aws.String("Project"), Value: aws.String("Konflux")},
-	{Key: aws.String("Owner"), Value: aws.String("konflux-infra@redhat.com")},
-	{Key: aws.String("ManagedBy"), Value: aws.String("Konflux Infra Team")},
-	{Key: aws.String("app-code"), Value: aws.String("ASSH-001")},
-	{Key: aws.String("service-phase"), Value: aws.String("Production")},
-	{Key: aws.String("cost-center"), Value: aws.String("670")},
-}
-
 func Ec2Provider(platformName string, config map[string]string, systemNamespace string) cloud.CloudProvider {
 	disk, err := strconv.Atoi(config["dynamic."+platformName+".disk"])
 	if err != nil {
@@ -76,7 +67,7 @@ func Ec2Provider(platformName string, config map[string]string, systemNamespace 
 	}
 }
 
-func (r AwsDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, name string, instanceTag string) (cloud.InstanceIdentifier, error) {
+func (r AwsDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, name string, instanceTag string, additionalInstanceTags map[string]string) (cloud.InstanceIdentifier, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info(fmt.Sprintf("attempting to launch AWS instance for %s", name))
 	// Load AWS credentials and configuration
@@ -121,6 +112,10 @@ func (r AwsDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.C
 		{Key: aws.String("Name"), Value: aws.String("multi-platform-builder-" + name)},
 	}
 
+	for k, v := range additionalInstanceTags {
+		instanceTags = append(instanceTags, types.Tag{Key: aws.String(k), Value: aws.String(v)})
+	}
+
 	launchInput := &ec2.RunInstancesInput{
 		KeyName:            aws.String(r.KeyName),
 		ImageId:            aws.String(r.Ami), //ARM RHEL
@@ -139,7 +134,7 @@ func (r AwsDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.C
 			Ebs:         &types.EbsBlockDevice{DeleteOnTermination: aws.Bool(true), VolumeSize: aws.Int32(r.Disk), VolumeType: types.VolumeTypeGp3, Iops: r.Iops, Throughput: r.Throughput},
 		}},
 		InstanceInitiatedShutdownBehavior: types.ShutdownBehaviorTerminate,
-		TagSpecifications:                 []types.TagSpecification{{ResourceType: types.ResourceTypeInstance, Tags: append(instanceTags, defaultInstanceTags...)}},
+		TagSpecifications:                 []types.TagSpecification{{ResourceType: types.ResourceTypeInstance, Tags: instanceTags}},
 	}
 	spotInstanceRequested := r.SpotInstancePrice != ""
 	if spotInstanceRequested {

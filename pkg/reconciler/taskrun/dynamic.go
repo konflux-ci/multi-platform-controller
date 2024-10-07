@@ -17,12 +17,13 @@ import (
 
 type DynamicResolver struct {
 	cloud.CloudProvider
-	sshSecret    string
-	platform     string
-	maxInstances int
-	instanceTag  string
-	timeout      int64
-	sudoCommands string
+	sshSecret              string
+	platform               string
+	maxInstances           int
+	instanceTag            string
+	timeout                int64
+	sudoCommands           string
+	additionalInstanceTags map[string]string
 }
 
 func (r DynamicResolver) Deallocate(taskRun *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string, selectedHost string) error {
@@ -160,7 +161,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 	tr.Annotations[AllocationStartTimeAnnotation] = strconv.FormatInt(startTime, 10)
 	log.Info(fmt.Sprintf("%d instances are running, creating a new instance", instanceCount))
 	log.Info("attempting to launch a new host for " + tr.Name)
-	instance, err := r.CloudProvider.LaunchInstance(taskRun.client, ctx, tr.Name, r.instanceTag)
+	instance, err := r.CloudProvider.LaunchInstance(taskRun.client, ctx, tr.Name, r.instanceTag, r.additionalInstanceTags)
 
 	if err != nil {
 		launchErr := err
