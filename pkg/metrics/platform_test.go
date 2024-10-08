@@ -2,201 +2,201 @@ package mpcmetrics
 
 import (
 	"context"
-	"github.com/stretchr/testify/assert"
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
+	"math/rand"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
-	"testing"
 )
 
-func TestRegisterPlatformMetricsGauges(t *testing.T) {
+var _ = Describe("PlatformMetrics", func() {
 
-	var platform = "ibm_p"
-
-	var tests = []struct {
-		name          string
-		resetFunc     func()
-		incrementFunc func()
-		metricName    string
-		want          int
-	}{
-		{"running_tasks", func() {
+	Describe("Gauges", func() {
+		var (
+			platform              = "ibm_p"
+			runTasksMetricName    = "redhat_appstudio_multi_platform_controller_running_tasks"
+			waitingTaskMetricName = "redhat_appstudio_multi_platform_controller_waiting_tasks"
+			expectedValue         = 1
+		)
+		BeforeEach(func() {
+			Expect(RegisterPlatformMetrics(context.TODO(), platform)).NotTo(HaveOccurred())
+			//resetting counters
 			HandleMetrics(platform, func(m *PlatformMetrics) {
 				m.RunningTasks.Set(0)
 			})
-		}, func() {
-			HandleMetrics(platform, func(m *PlatformMetrics) {
-				m.RunningTasks.Inc()
-			})
-		},
-			"redhat_appstudio_multi_platform_controller_running_tasks", 1},
-
-		{"waiting_tasks", func() {
 			HandleMetrics(platform, func(m *PlatformMetrics) {
 				m.WaitingTasks.Set(0)
 			})
-		}, func() {
-			HandleMetrics(platform, func(m *PlatformMetrics) {
-				m.WaitingTasks.Inc()
+
+		})
+		When("When appropriate condition happened", func() {
+			It("should increment running_tasks metric", func() {
+				HandleMetrics(platform, func(m *PlatformMetrics) {
+					m.RunningTasks.Inc()
+				})
+				result, err := getGaugeValue(platform, runTasksMetricName)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(expectedValue))
 			})
-		},
-			"redhat_appstudio_multi_platform_controller_waiting_tasks", 1},
+
+			It("should increment waiting_tasks metric", func() {
+				HandleMetrics(platform, func(m *PlatformMetrics) {
+					m.WaitingTasks.Inc()
+				})
+				result, err := getGaugeValue(platform, waitingTaskMetricName)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(expectedValue))
+			})
+		})
+
+	})
+
+	Describe("Counters", func() {
+		var (
+			platform                         = "ibm_z"
+			provisionFailuresMetricName      = "redhat_appstudio_multi_platform_controller_provisioning_failures"
+			cleanupFailuresMetricName        = "redhat_appstudio_multi_platform_controller_cleanup_failures"
+			hostAllocationFailuresMetricName = "redhat_appstudio_multi_platform_controller_host_allocation_failures"
+			expectedValue                    int
+		)
+		BeforeEach(func() {
+			Expect(RegisterPlatformMetrics(context.TODO(), platform)).NotTo(HaveOccurred())
+		})
+
+		When("When appropriate condition happened", func() {
+			It("should increment provisioning_failures metric", func() {
+				HandleMetrics(platform, func(m *PlatformMetrics) {
+					rnd := rand.Intn(100)
+					expectedValue = rnd
+					m.ProvisionFailures.Add(float64(rnd))
+				})
+				result, err := getCounterValue(platform, provisionFailuresMetricName)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(expectedValue))
+			})
+
+			It("should increment cleanup_failures metric", func() {
+				rnd := rand.Intn(100)
+				expectedValue = rnd
+				HandleMetrics(platform, func(m *PlatformMetrics) {
+					m.CleanupFailures.Add(float64(rnd))
+				})
+				result, err := getCounterValue(platform, cleanupFailuresMetricName)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(expectedValue))
+
+			})
+		})
+
+		It("should increment host_allocation metric", func() {
+			rnd := rand.Intn(100)
+			expectedValue = rnd
+			HandleMetrics(platform, func(m *PlatformMetrics) {
+				m.HostAllocationFailures.Add(float64(rnd))
+			})
+			result, err := getCounterValue(platform, hostAllocationFailuresMetricName)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(Equal(expectedValue))
+		})
+	})
+
+	Describe("Histograms", func() {
+		var (
+			platform                 = "ibm_x"
+			allocationTimeMetricName = "redhat_appstudio_multi_platform_controller_host_allocation_time"
+			waitTimeMetricName       = "redhat_appstudio_multi_platform_controller_wait_time"
+			taskRunMetricName        = "redhat_appstudio_multi_platform_controller_task_run_time"
+			expectedValue            float64
+		)
+		BeforeEach(func() {
+			Expect(RegisterPlatformMetrics(context.TODO(), platform)).NotTo(HaveOccurred())
+		})
+
+		When("When appropriate condition happened", func() {
+			It("should increment host_allocation metric", func() {
+				rnd := rand.Float64()
+				expectedValue = rnd
+				HandleMetrics(platform, func(m *PlatformMetrics) {
+					m.AllocationTime.Observe(rnd)
+				})
+				result, err := getHistogramValue(platform, allocationTimeMetricName)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(expectedValue))
+			})
+
+			It("should increment wait_time metric", func() {
+				rnd := rand.Float64()
+				expectedValue = rnd
+				HandleMetrics(platform, func(m *PlatformMetrics) {
+					m.WaitTime.Observe(rnd)
+				})
+				result, err := getHistogramValue(platform, waitTimeMetricName)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(expectedValue))
+			})
+
+			It("should increment task_run metric", func() {
+				rnd := rand.Float64()
+				expectedValue = rnd
+				HandleMetrics(platform, func(m *PlatformMetrics) {
+					m.TaskRunTime.Observe(rnd)
+				})
+				result, err := getHistogramValue(platform, taskRunMetricName)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(expectedValue))
+			})
+		})
+
+	})
+
+})
+
+func getGaugeValue(platform, metricName string) (int, error) {
+	mfs, err := metrics.Registry.Gather()
+	if err != nil {
+		return 0, err
 	}
-
-	// register metrics
-	assert.NoError(t, RegisterPlatformMetrics(context.TODO(), platform))
-
-	// The execution loop
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.resetFunc()
-			tt.incrementFunc()
-			mfs, err := metrics.Registry.Gather()
-			assert.NoError(t, err)
-			for _, mf := range mfs {
-				if mf.GetName() != tt.metricName {
-					continue
-				}
-				for _, m := range mf.GetMetric() {
-					if m.Gauge != nil && m.Label[0].GetValue() == platform {
-						assert.Equal(t, tt.want, int(m.Gauge.GetValue()))
-					}
+	for _, mf := range mfs {
+		if mf.GetName() == metricName {
+			for _, m := range mf.GetMetric() {
+				if m.Gauge != nil && m.Label[0].GetValue() == platform {
+					return int(m.Gauge.GetValue()), nil
 				}
 			}
-		})
+		}
 	}
+	return 0, err
 }
 
-func TestRegisterPlatformMetricsCounters(t *testing.T) {
-
-	var platform = "ibm_z"
-
-	var tests = []struct {
-		name          string
-		resetFunc     func()
-		incrementFunc func()
-		metricName    string
-		want          int
-	}{
-		{"provisioning_failures", func() {
-			HandleMetrics(platform, func(m *PlatformMetrics) {
-				//no way to reset counter
-			})
-		}, func() {
-			HandleMetrics(platform, func(m *PlatformMetrics) {
-				m.ProvisionFailures.Inc()
-			})
-		},
-			"redhat_appstudio_multi_platform_controller_provisioning_failures", 1},
-
-		{"cleanup_failures", func() {
-			HandleMetrics(platform, func(m *PlatformMetrics) {
-				//no way to reset counter
-			})
-		}, func() {
-			HandleMetrics(platform, func(m *PlatformMetrics) {
-				m.CleanupFailures.Inc()
-			})
-		},
-			"redhat_appstudio_multi_platform_controller_cleanup_failures", 1},
-
-		{"host_allocation_failures", func() {
-			HandleMetrics(platform, func(m *PlatformMetrics) {
-				//no way to reset counter
-			})
-		}, func() {
-			HandleMetrics(platform, func(m *PlatformMetrics) {
-				m.HostAllocationFailures.Inc()
-			})
-		},
-			"redhat_appstudio_multi_platform_controller_host_allocation_failures", 1},
+func getCounterValue(platform, metricName string) (int, error) {
+	mfs, err := metrics.Registry.Gather()
+	if err != nil {
+		return 0, err
 	}
-
-	assert.NoError(t, RegisterPlatformMetrics(context.TODO(), platform))
-
-	// The execution loop
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.resetFunc()
-			tt.incrementFunc()
-			mfs, err := metrics.Registry.Gather()
-			assert.NoError(t, err)
-			for _, mf := range mfs {
-				if mf.GetName() != tt.metricName {
-					continue
-				}
-				for _, m := range mf.GetMetric() {
-					if m.Counter != nil && m.Label[0].GetValue() == platform {
-						assert.Equal(t, tt.want, int(m.Counter.GetValue()))
-					}
+	for _, mf := range mfs {
+		if mf.GetName() == metricName {
+			for _, m := range mf.GetMetric() {
+				if m.Counter != nil && m.Label[0].GetValue() == platform {
+					return int(m.Counter.GetValue()), nil
 				}
 			}
-		})
+		}
 	}
+	return 0, err
 }
 
-func TestRegisterPlatformMetricsHistograms(t *testing.T) {
-
-	var platform = "ibm_x"
-
-	var tests = []struct {
-		name          string
-		resetFunc     func()
-		incrementFunc func()
-		metricName    string
-		want          float64
-	}{
-		{"host_allocation_time", func() {
-			HandleMetrics(platform, func(m *PlatformMetrics) {
-				//no way to reset histogram
-			})
-		}, func() {
-			HandleMetrics(platform, func(m *PlatformMetrics) {
-				m.AllocationTime.Observe(1.1)
-			})
-		},
-			"redhat_appstudio_multi_platform_controller_host_allocation_time", 1.1},
-
-		{"wait_time", func() {
-			HandleMetrics(platform, func(m *PlatformMetrics) {
-				//no way to reset histogram
-			})
-		}, func() {
-			HandleMetrics(platform, func(m *PlatformMetrics) {
-				m.WaitTime.Observe(2.2)
-			})
-		},
-			"redhat_appstudio_multi_platform_controller_wait_time", 2.2},
-
-		{"task_run_time", func() {
-			HandleMetrics(platform, func(m *PlatformMetrics) {
-				//no way to reset histogram
-			})
-		}, func() {
-			HandleMetrics(platform, func(m *PlatformMetrics) {
-				m.TaskRunTime.Observe(3.3)
-			})
-		},
-			"redhat_appstudio_multi_platform_controller_task_run_time", 3.3},
+func getHistogramValue(platform, metricName string) (float64, error) {
+	mfs, err := metrics.Registry.Gather()
+	if err != nil {
+		return 0, err
 	}
-
-	assert.NoError(t, RegisterPlatformMetrics(context.TODO(), platform))
-
-	// The execution loop
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.resetFunc()
-			tt.incrementFunc()
-			mfs, err := metrics.Registry.Gather()
-			assert.NoError(t, err)
-			for _, mf := range mfs {
-				if mf.GetName() != tt.metricName {
-					continue
-				}
-				for _, m := range mf.GetMetric() {
-					if m.Histogram != nil && m.Label[0].GetValue() == platform {
-						assert.Equal(t, tt.want, *m.Histogram.SampleSum)
-					}
+	for _, mf := range mfs {
+		if mf.GetName() == metricName {
+			for _, m := range mf.GetMetric() {
+				if m.Histogram != nil && m.Label[0].GetValue() == platform {
+					return *m.Histogram.SampleSum, nil
 				}
 			}
-		})
+		}
 	}
+	return 0, err
 }
