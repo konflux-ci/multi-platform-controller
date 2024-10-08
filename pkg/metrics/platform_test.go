@@ -83,20 +83,20 @@ var _ = Describe("PlatformMetrics", func() {
 				result, err := getCounterValue(platform, cleanupFailuresMetricName)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(result).To(Equal(expectedValue))
+			})
 
+			It("should increment host_allocation metric", func() {
+				rnd := rand.Intn(100)
+				expectedValue = rnd
+				HandleMetrics(platform, func(m *PlatformMetrics) {
+					m.HostAllocationFailures.Add(float64(rnd))
+				})
+				result, err := getCounterValue(platform, hostAllocationFailuresMetricName)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(expectedValue))
 			})
 		})
 
-		It("should increment host_allocation metric", func() {
-			rnd := rand.Intn(100)
-			expectedValue = rnd
-			HandleMetrics(platform, func(m *PlatformMetrics) {
-				m.HostAllocationFailures.Add(float64(rnd))
-			})
-			result, err := getCounterValue(platform, hostAllocationFailuresMetricName)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(result).To(Equal(expectedValue))
-		})
 	})
 
 	Describe("Histograms", func() {
