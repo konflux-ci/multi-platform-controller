@@ -35,7 +35,6 @@ func RegisterPlatformMetrics(_ context.Context, platform string) error {
 
 	pmetrics.AllocationTime = prometheus.NewHistogram(prometheus.HistogramOpts{
 		ConstLabels: map[string]string{"platform": platform},
-		Namespace:   MetricsNamespace,
 		Subsystem:   MetricsSubsystem,
 		Name:        "host_allocation_time",
 		Help:        "The time in seconds it takes to allocate a host, excluding wait time. In practice this is the amount of time it takes a cloud provider to start an instance",
@@ -46,7 +45,6 @@ func RegisterPlatformMetrics(_ context.Context, platform string) error {
 
 	pmetrics.WaitTime = prometheus.NewHistogram(prometheus.HistogramOpts{
 		ConstLabels: map[string]string{"platform": platform},
-		Namespace:   MetricsNamespace,
 		Subsystem:   MetricsSubsystem,
 		Name:        "wait_time",
 		Help:        "The time in seconds a task has spent waiting for a host to become available, excluding the host allocation time",
@@ -57,7 +55,6 @@ func RegisterPlatformMetrics(_ context.Context, platform string) error {
 
 	pmetrics.TaskRunTime = prometheus.NewHistogram(prometheus.HistogramOpts{
 		ConstLabels: map[string]string{"platform": platform},
-		Namespace:   MetricsNamespace,
 		Subsystem:   MetricsSubsystem,
 		Name:        "task_run_time",
 		Help:        "The total time taken by a task, including wait and allocation time",
@@ -68,7 +65,6 @@ func RegisterPlatformMetrics(_ context.Context, platform string) error {
 
 	pmetrics.RunningTasks = prometheus.NewGauge(prometheus.GaugeOpts{
 		ConstLabels: map[string]string{"platform": platform},
-		Namespace:   MetricsNamespace,
 		Subsystem:   MetricsSubsystem,
 		Name:        "running_tasks",
 		Help:        "The number of currently running tasks on this platform"})
@@ -78,7 +74,6 @@ func RegisterPlatformMetrics(_ context.Context, platform string) error {
 
 	pmetrics.WaitingTasks = prometheus.NewGauge(prometheus.GaugeOpts{
 		ConstLabels: map[string]string{"platform": platform},
-		Namespace:   MetricsNamespace,
 		Subsystem:   MetricsSubsystem,
 		Name:        "waiting_tasks",
 		Help:        "The number of tasks waiting for an executor to be available to run"})
@@ -88,7 +83,6 @@ func RegisterPlatformMetrics(_ context.Context, platform string) error {
 
 	pmetrics.ProvisionFailures = prometheus.NewCounter(prometheus.CounterOpts{
 		ConstLabels: map[string]string{"platform": platform},
-		Namespace:   MetricsNamespace,
 		Subsystem:   MetricsSubsystem,
 		Name:        "provisioning_failures",
 		Help:        "The number of times a provisioning task has failed"})
@@ -98,7 +92,6 @@ func RegisterPlatformMetrics(_ context.Context, platform string) error {
 
 	pmetrics.CleanupFailures = prometheus.NewCounter(prometheus.CounterOpts{
 		ConstLabels: map[string]string{"platform": platform},
-		Namespace:   MetricsNamespace,
 		Subsystem:   MetricsSubsystem,
 		Name:        "cleanup_failures",
 		Help:        "The number of times a cleanup task has failed"})
@@ -108,7 +101,6 @@ func RegisterPlatformMetrics(_ context.Context, platform string) error {
 
 	pmetrics.HostAllocationFailures = prometheus.NewCounter(prometheus.CounterOpts{
 		ConstLabels: map[string]string{"platform": platform},
-		Namespace:   MetricsNamespace,
 		Subsystem:   MetricsSubsystem,
 		Name:        "host_allocation_failures",
 		Help:        "The number of times host allocation has failed"})

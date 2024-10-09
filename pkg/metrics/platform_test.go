@@ -13,8 +13,8 @@ var _ = Describe("PlatformMetrics", func() {
 	Describe("Gauges", func() {
 		var (
 			platform              = "ibm_p"
-			runTasksMetricName    = "redhat_appstudio_multi_platform_controller_running_tasks"
-			waitingTaskMetricName = "redhat_appstudio_multi_platform_controller_waiting_tasks"
+			runTasksMetricName    = "multi_platform_controller_running_tasks"
+			waitingTaskMetricName = "multi_platform_controller_waiting_tasks"
 			expectedValue         = 1
 		)
 		BeforeEach(func() {
@@ -53,9 +53,9 @@ var _ = Describe("PlatformMetrics", func() {
 	Describe("Counters", func() {
 		var (
 			platform                         = "ibm_z"
-			provisionFailuresMetricName      = "redhat_appstudio_multi_platform_controller_provisioning_failures"
-			cleanupFailuresMetricName        = "redhat_appstudio_multi_platform_controller_cleanup_failures"
-			hostAllocationFailuresMetricName = "redhat_appstudio_multi_platform_controller_host_allocation_failures"
+			provisionFailuresMetricName      = "multi_platform_controller_provisioning_failures"
+			cleanupFailuresMetricName        = "multi_platform_controller_cleanup_failures"
+			hostAllocationFailuresMetricName = "multi_platform_controller_host_allocation_failures"
 			expectedValue                    int
 		)
 		BeforeEach(func() {
@@ -102,9 +102,9 @@ var _ = Describe("PlatformMetrics", func() {
 	Describe("Histograms", func() {
 		var (
 			platform                 = "ibm_x"
-			allocationTimeMetricName = "redhat_appstudio_multi_platform_controller_host_allocation_time"
-			waitTimeMetricName       = "redhat_appstudio_multi_platform_controller_wait_time"
-			taskRunMetricName        = "redhat_appstudio_multi_platform_controller_task_run_time"
+			allocationTimeMetricName = "multi_platform_controller_host_allocation_time"
+			waitTimeMetricName       = "multi_platform_controller_wait_time"
+			taskRunMetricName        = "multi_platform_controller_task_run_time"
 			expectedValue            float64
 		)
 		BeforeEach(func() {
