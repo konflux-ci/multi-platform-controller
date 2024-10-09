@@ -12,7 +12,7 @@ This is ready to use on Konflux. An example of a Multi Platform Pull Request is 
 
 The `buildah-remote` task runs the container build step of the existing buildah task via ssh on a remote host. This task is currently created programatically by `cmd/taskgen/main.go`. The task has the following differences from the standard buildah task:
 
-- It has an `PLATFORM` parameter that is used by the controller to decide which host to provision for the build.
+- It has a `PLATFORM` parameter that is used by the controller to decide which host to provision for the build.
 - The `build-container` step has been modified to be run remotely over SSH. The workspace is copied to the remote host, the build is done via podman, and then the image copied back. The commands run on the remote host are largely the same as the existing buildah task, just executed via podman.
 - It expects the creation of a secret with the name `multi-platform-ssh-$(context.taskRun.name)` to be created by the controller. This secret will have an `id_rsa` private key, and the name of the host to connect to. If no host is available it contains an error message so the task does not wait forever.
 
