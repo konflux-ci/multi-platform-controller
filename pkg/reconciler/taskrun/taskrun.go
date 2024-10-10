@@ -283,6 +283,7 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 		mpcmetrics.HandleMetrics(tr.Annotations[TaskTargetPlatformAnnotation], func(metrics *mpcmetrics.PlatformMetrics) {
 			metrics.ProvisionFailures.Inc()
 		})
+		mpcmetrics.CountAvailabilityError(tr.Annotations[TaskTargetPlatformAnnotation])
 		log.Info(fmt.Sprintf("provision task for host %s for user task %s/%sfailed", assigned, userNamespace, userTaskName))
 		if assigned != "" {
 			userTr := tektonapi.TaskRun{}
@@ -313,6 +314,7 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 		}
 	} else {
 		log.Info("provision task succeeded")
+		mpcmetrics.CountAvailabilitySuccess(tr.Annotations[TaskTargetPlatformAnnotation])
 		//verify we ended up with a secret
 		secret := kubecore.Secret{}
 		err := r.client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: secretName}, &secret)
