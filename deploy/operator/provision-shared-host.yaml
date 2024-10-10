@@ -56,7 +56,7 @@ spec:
         export USERNAME=u-$(echo "$TASKRUN_NAME$NAMESPACE" | md5sum | cut -b-28)
         
         cat >script.sh <<EOF
-        sudo dnf install podman -y
+        sudo dnf install podman buildah -y
         rm -f $USERNAME $USERNAME.pub
         # sometimes it hits  "useradd: cannot lock /etc/passwd; try again later" error, so need to repeat
         for i in {10..1}; do
