@@ -1,4 +1,29 @@
-# Prometheus Monitor Service (Metrics)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: metrics-reader
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: metrics-reader
+  annotations:
+    kubernetes.io/service-account.name: metrics-reader
+type: kubernetes.io/service-account-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: multi-platform-controller-metrics-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: metrics-reader
+subjects:
+  - kind: ServiceAccount
+    name: metrics-reader
+    namespace: multi-platform-controller
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -8,9 +33,14 @@ spec:
     - path: /metrics
       port: https
       scheme: https
-      bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+      bearerTokenSecret:
+        name: "metrics-reader"
+        key: token
       tlsConfig:
         insecureSkipVerify: true
+  namespaceSelector:
+    matchNames:
+      - multi-platform-controller
   selector:
     matchLabels:
-        app: multi-platform-controller
+      control-plane: controller-manager
