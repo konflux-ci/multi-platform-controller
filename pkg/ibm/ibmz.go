@@ -87,6 +87,19 @@ func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.
 					},
 				},
 			},
+			NetworkAttachments: []vpcv1.InstanceNetworkAttachmentPrototype{
+				{
+					VirtualNetworkInterface: &vpcv1.InstanceNetworkAttachmentPrototypeVirtualNetworkInterfaceVirtualNetworkInterfacePrototypeInstanceNetworkAttachmentContext{
+						AllowIPSpoofing:         new(bool),
+						AutoDelete:              &truebool,
+						EnableInfrastructureNat: &truebool,
+						Ips:                     []vpcv1.VirtualNetworkInterfaceIPPrototypeIntf{&vpcv1.VirtualNetworkInterfaceIPPrototypeReservedIPPrototypeVirtualNetworkInterfaceIPsContext{AutoDelete: &truebool}},
+						PrimaryIP:               &vpcv1.VirtualNetworkInterfacePrimaryIPPrototypeReservedIPPrototypeVirtualNetworkInterfacePrimaryIPContext{AutoDelete: &truebool},
+						Subnet:                  &vpcv1.SubnetIdentityByID{ID: subnet.ID},
+						SecurityGroups:          []vpcv1.SecurityGroupIdentityIntf{&vpcv1.SecurityGroupIdentityByID{ID: vpc.DefaultSecurityGroup.ID}},
+					},
+				},
+			},
 			PrimaryNetworkInterface: &vpcv1.NetworkInterfacePrototype{
 				Name:            ptr("eth0"),
 				PrimaryIP:       &vpcv1.NetworkInterfaceIPPrototype{AutoDelete: &truebool},
