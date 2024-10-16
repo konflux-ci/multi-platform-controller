@@ -57,4 +57,4 @@ spec:
                 - "ALL"
       securityContext:
         runAsNonRoot: true
-      serviceAccountName: controller-manager
+      serviceAccountName: multi-platform-controller-controller-manager
