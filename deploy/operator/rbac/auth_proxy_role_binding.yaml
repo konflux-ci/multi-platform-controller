@@ -8,5 +8,5 @@ roleRef:
   name: proxy-role
 subjects:
 - kind: ServiceAccount
-  name: multi-platform-controller
-  namespace: multi-platform-controller
+  name: controller-manager
+  namespace: system
