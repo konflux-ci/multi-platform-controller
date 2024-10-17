@@ -71,7 +71,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = mpcmetrics.RegisterCommonMetrics(metrics.Registry); err != nil {
+	if err = mpcmetrics.RegisterCommonMetrics(ctx, metrics.Registry); err != nil {
 		mainLog.Error(err, "failed to register common metrics")
 		os.Exit(1)
 	}
