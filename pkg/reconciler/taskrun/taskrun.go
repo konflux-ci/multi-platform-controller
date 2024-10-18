@@ -66,7 +66,7 @@ const (
 	TaskTypeUpdate               = "update"
 	TaskTypeClean                = "clean"
 
-	ServiceAccountName = "multi-platform-controller"
+	ServiceAccountName = "multi-platform-controller-controller-manager"
 
 	PlatformParam          = "PLATFORM"
 	LocalPlatforms         = "local-platforms"
