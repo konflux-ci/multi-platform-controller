@@ -89,16 +89,23 @@ func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.
 			},
 			NetworkAttachments: []vpcv1.InstanceNetworkAttachmentPrototype{
 				{
-					VirtualNetworkInterface: &vpcv1.InstanceNetworkAttachmentPrototypeVirtualNetworkInterfaceVirtualNetworkInterfacePrototypeInstanceNetworkAttachmentContext{
+					VirtualNetworkInterface: &vpcv1.InstanceNetworkAttachmentPrototypeVirtualNetworkInterface{
 						AllowIPSpoofing:         new(bool),
 						AutoDelete:              &truebool,
 						EnableInfrastructureNat: &truebool,
-						Ips:                     []vpcv1.VirtualNetworkInterfaceIPPrototypeIntf{&vpcv1.VirtualNetworkInterfaceIPPrototypeReservedIPPrototypeVirtualNetworkInterfaceIPsContext{AutoDelete: &truebool}},
-						PrimaryIP:               &vpcv1.VirtualNetworkInterfacePrimaryIPPrototypeReservedIPPrototypeVirtualNetworkInterfacePrimaryIPContext{AutoDelete: &truebool},
+						Ips:                     []vpcv1.VirtualNetworkInterfaceIPPrototypeIntf{&vpcv1.VirtualNetworkInterfaceIPPrototype{AutoDelete: &truebool}},
+						PrimaryIP:               &vpcv1.VirtualNetworkInterfacePrimaryIPPrototype{AutoDelete: &truebool},
 						Subnet:                  &vpcv1.SubnetIdentityByID{ID: subnet.ID},
 						SecurityGroups:          []vpcv1.SecurityGroupIdentityIntf{&vpcv1.SecurityGroupIdentityByID{ID: vpc.DefaultSecurityGroup.ID}},
 					},
 				},
+			},
+			PrimaryNetworkInterface: &vpcv1.NetworkInterfacePrototype{
+				Name:            ptr("eth0"),
+				PrimaryIP:       &vpcv1.NetworkInterfaceIPPrototype{AutoDelete: &truebool},
+				AllowIPSpoofing: new(bool),
+				Subnet:          &vpcv1.SubnetIdentityByID{ID: subnet.ID},
+				SecurityGroups:  []vpcv1.SecurityGroupIdentityIntf{&vpcv1.SecurityGroupIdentityByID{ID: vpc.DefaultSecurityGroup.ID}},
 			},
 			AvailabilityPolicy: &vpcv1.InstanceAvailabilityPolicyPrototype{HostFailure: ptr("stop")},
 			Image:              &vpcv1.ImageIdentityByID{ID: &image},
@@ -219,8 +226,8 @@ func (r IBMZDynamicConfig) lookupVpc(vpcService *vpcv1.VpcV1) (*vpcv1.VPC, error
 	return vpc, nil
 }
 
-func ptr(s string) *string {
-	return &s
+func ptr[T any](d T) *T {
+	return &d
 }
 
 func (r IBMZDynamicConfig) authenticate(kubeClient client.Client, ctx context.Context) (*vpcv1.VpcV1, error) {
