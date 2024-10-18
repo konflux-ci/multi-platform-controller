@@ -11,10 +11,6 @@ spec:
     - IPv4
   ipFamilyPolicy: SingleStack
   ports:
-    - name: http-metrics
-      port: 8080
-      protocol: TCP
-      targetPort: 8080
     - name: probes
       port: 8081
       protocol: TCP

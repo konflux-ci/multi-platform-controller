@@ -18,7 +18,7 @@ vet: ## Run go vet against code.
 	go vet ./cmd/... ./pkg/...
 
 manifests: controller-gen
-	$(CONTROLLER_GEN) rbac:roleName=multi-platform-controller paths="./..." output:rbac:dir=deploy/operator
+	$(CONTROLLER_GEN) rbac:roleName=manager-role paths="./..." output:rbac:dir=deploy/operator/rbac
 
 .PHONY: test
 test: fmt vet ## Run tests.
