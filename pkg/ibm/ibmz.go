@@ -100,13 +100,6 @@ func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.
 					},
 				},
 			},
-			PrimaryNetworkInterface: &vpcv1.NetworkInterfacePrototype{
-				Name:            ptr("eth0"),
-				PrimaryIP:       &vpcv1.NetworkInterfaceIPPrototype{AutoDelete: &truebool},
-				AllowIPSpoofing: new(bool),
-				Subnet:          &vpcv1.SubnetIdentityByID{ID: subnet.ID},
-				SecurityGroups:  []vpcv1.SecurityGroupIdentityIntf{&vpcv1.SecurityGroupIdentityByID{ID: vpc.DefaultSecurityGroup.ID}},
-			},
 			AvailabilityPolicy: &vpcv1.InstanceAvailabilityPolicyPrototype{HostFailure: ptr("stop")},
 			Image:              &vpcv1.ImageIdentityByID{ID: &image},
 		},
