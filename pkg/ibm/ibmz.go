@@ -226,8 +226,8 @@ func (r IBMZDynamicConfig) lookupVpc(vpcService *vpcv1.VpcV1) (*vpcv1.VPC, error
 	return vpc, nil
 }
 
-func ptr[T any](d T) *T {
-	return &d
+func ptr(s string) *string {
+	return &s
 }
 
 func (r IBMZDynamicConfig) authenticate(kubeClient client.Client, ctx context.Context) (*vpcv1.VpcV1, error) {
