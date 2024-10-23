@@ -285,6 +285,9 @@ func (r IBMZDynamicConfig) instanceIP(ctx context.Context, instance *vpcv1.Insta
 	}
 
 	vpcService, err := r.authenticatedService(ctx, kubeClient)
+	if err != nil {
+		return "", err
+	}
 	ips, _, err := vpcService.ListInstanceNetworkInterfaceFloatingIps(&vpcv1.ListInstanceNetworkInterfaceFloatingIpsOptions{InstanceID: instance.ID, NetworkInterfaceID: instance.PrimaryNetworkInterface.ID})
 	if err != nil {
 		return "", nil //not permanent, this can take a while to appear
