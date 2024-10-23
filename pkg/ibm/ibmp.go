@@ -54,7 +54,7 @@ func IBMPowerProvider(platform string, config map[string]string, systemNamespace
 }
 
 func (r IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunName string, instanceTag string, _ map[string]string) (cloud.InstanceIdentifier, error) {
-	service, err := r.authenticate(kubeClient, ctx)
+	service, err := r.authenticatedService(ctx, kubeClient)
 	if err != nil {
 		return "", err
 	}
@@ -80,7 +80,7 @@ func (r IBMPowerDynamicConfig) CountInstances(kubeClient client.Client, ctx cont
 	return len(instances), nil
 }
 
-func (r IBMPowerDynamicConfig) authenticate(kubeClient client.Client, ctx context.Context) (*core.BaseService, error) {
+func (r IBMPowerDynamicConfig) authenticatedService(ctx context.Context, kubeClient client.Client) (*core.BaseService, error) {
 	apiKey := ""
 	if kubeClient == nil {
 		apiKey = os.Getenv("IBM_CLOUD_API_KEY")
@@ -107,21 +107,24 @@ func (r IBMPowerDynamicConfig) authenticate(kubeClient client.Client, ctx contex
 }
 
 func (r IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
-	service, err := r.authenticate(kubeClient, ctx)
+	service, err := r.authenticatedService(ctx, kubeClient)
 	if err != nil {
 		return "", err
 	}
 	ip, err := r.lookupIp(ctx, service, string(instanceId))
 	if err != nil {
-		return "", nil //todo: check for permanent errors
+		return "", err //todo: check for permanent errors
 	}
-	return checkAddressLive(ctx, ip), err
+	if err = checkAddressLive(ctx, ip); err != nil {
+		return "", err
+	}
+	return ip, nil
 }
 
 func (r IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info("Listing instances", "tag", instanceTag)
-	service, err := r.authenticate(kubeClient, ctx)
+	service, err := r.authenticatedService(ctx, kubeClient)
 	if err != nil {
 		return nil, err
 	}
@@ -156,12 +159,14 @@ func (r IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx conte
 		}
 		identifier := cloud.InstanceIdentifier(*instance.PvmInstanceID)
 		createdAt := time.Time(instance.CreationDate)
-		addr, err := r.GetInstanceAddress(kubeClient, ctx, identifier)
+		ip, err := r.instanceIP(instance)
 		if err != nil {
 			log.Error(err, "not listing instance as address cannot be assigned yet", "instance", identifier)
-		} else {
-			ret = append(ret, cloud.CloudVMInstance{InstanceId: identifier, Address: addr, StartTime: createdAt})
+			continue
 		}
+
+		ret = append(ret, cloud.CloudVMInstance{InstanceId: identifier, Address: ip, StartTime: createdAt})
+
 	}
 	return ret, nil
 
@@ -169,14 +174,14 @@ func (r IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx conte
 func (r IBMPowerDynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info("attempting to terminate power server %s", "instance", instanceId)
-	service, err := r.authenticate(kubeClient, ctx)
+	service, err := r.authenticatedService(ctx, kubeClient)
 	if err != nil {
 		return err
 	}
 	_ = r.deleteServer(ctx, service, string(instanceId))
 	timeout := time.Now().Add(time.Minute * 10)
 	go func() {
-		service, err := r.authenticate(kubeClient, context.Background())
+		service, err := r.authenticatedService(context.Background(), kubeClient)
 		if err != nil {
 			return
 		}
@@ -281,13 +286,16 @@ func (r IBMPowerDynamicConfig) createServerInstance(ctx context.Context, service
 }
 
 func (r IBMPowerDynamicConfig) lookupIp(ctx context.Context, service *core.BaseService, pvmId string) (string, error) {
-
 	instance, err := r.lookupInstance(ctx, service, pvmId)
 	if err != nil {
 		return "", err
 	}
+	return r.instanceIP(instance)
+}
+
+func (r IBMPowerDynamicConfig) instanceIP(instance *models.PVMInstanceReference) (string, error) {
 	if len(instance.Networks) == 0 {
-		return "", fmt.Errorf("no networks found for pvm %s", pvmId)
+		return "", fmt.Errorf("no networks found for pvm %s", *instance.PvmInstanceID)
 	}
 	network := instance.Networks[0]
 	if network.ExternalIP != "" {
@@ -295,11 +303,11 @@ func (r IBMPowerDynamicConfig) lookupIp(ctx context.Context, service *core.BaseS
 	} else if network.IPAddress != "" {
 		return network.IPAddress, nil
 	} else {
-		return "", err
+		return "", fmt.Errorf("no IP address found for pvm %s", *instance.PvmInstanceID)
 	}
 }
 
-func (r IBMPowerDynamicConfig) lookupInstance(ctx context.Context, service *core.BaseService, pvmId string) (*models.PVMInstance, error) {
+func (r IBMPowerDynamicConfig) lookupInstance(ctx context.Context, service *core.BaseService, pvmId string) (*models.PVMInstanceReference, error) {
 	builder := core.NewRequestBuilder(core.GET)
 	builder = builder.WithContext(ctx)
 	builder.EnableGzipCompression = service.GetEnableGzipCompression()
@@ -320,7 +328,7 @@ func (r IBMPowerDynamicConfig) lookupInstance(ctx context.Context, service *core
 		return nil, err
 	}
 
-	instance := models.PVMInstance{}
+	instance := models.PVMInstanceReference{}
 	_, err = service.Request(request, &instance)
 	//println(response.String())
 	if err != nil {
