@@ -50,7 +50,7 @@ func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.
 	}
 	name := instanceTag + "-" + strings.Replace(strings.ToLower(base64.URLEncoding.EncodeToString(md5.New().Sum(binary))[0:20]), "_", "-", -1) + "x" //#nosec
 	truebool := true
-	size := int64(20)
+	size := int64(100)
 
 	vpc, err := r.lookupVpc(vpcService)
 	if err != nil {
