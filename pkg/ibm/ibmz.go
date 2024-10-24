@@ -267,7 +267,7 @@ func (r IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx cont
 	}
 	if ip != "" {
 		if err = checkAddressLive(ctx, ip); err != nil {
-			return "", err
+			return "", nil
 		}
 	}
 	return ip, nil
@@ -351,11 +351,11 @@ func checkAddressLive(ctx context.Context, addr string) error {
 	log.Info(fmt.Sprintf("checking if address %s is live", addr))
 	server, _ := net.ResolveTCPAddr("tcp", addr+":22")
 	conn, err := net.DialTCP("tcp", nil, server)
+	defer conn.Close()
 	if err != nil {
 		log.Info("failed to connect to IBM host " + addr)
 		return err
 	}
-	_ = conn.Close()
 	return nil
 
 }

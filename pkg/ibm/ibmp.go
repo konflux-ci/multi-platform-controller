@@ -116,7 +116,7 @@ func (r IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx 
 		return "", err //todo: check for permanent errors
 	}
 	if err = checkAddressLive(ctx, ip); err != nil {
-		return "", err
+		return "", nil
 	}
 	return ip, nil
 }
