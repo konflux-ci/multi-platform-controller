@@ -351,11 +351,11 @@ func checkAddressLive(ctx context.Context, addr string) error {
 	log.Info(fmt.Sprintf("checking if address %s is live", addr))
 	server, _ := net.ResolveTCPAddr("tcp", addr+":22")
 	conn, err := net.DialTCP("tcp", nil, server)
-	defer conn.Close()
 	if err != nil {
 		log.Info("failed to connect to IBM host " + addr)
 		return err
 	}
+	defer conn.Close()
 	return nil
 
 }
