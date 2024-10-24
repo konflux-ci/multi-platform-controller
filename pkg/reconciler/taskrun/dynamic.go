@@ -146,15 +146,18 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 			log.Error(err, "Failed to count existing cloud instances")
 			return reconcile.Result{}, err
 		}
+		log.Info("Too many running cloud tasks, waiting for existing tasks to finish")
 		if tr.Labels[WaitingForPlatformLabel] == platformLabel(r.platform) {
 			//we are already in a waiting state
-			return reconcile.Result{}, nil
+			return reconcile.Result{RequeueAfter: time.Minute}, nil
 		}
-		log.Info("Too many running cloud tasks, waiting for existing tasks to finish")
 		//no host available
 		//add the waiting label
 		tr.Labels[WaitingForPlatformLabel] = platformLabel(r.platform)
-		return reconcile.Result{RequeueAfter: time.Minute}, taskRun.client.Update(ctx, tr)
+		if err := taskRun.client.Update(ctx, tr); err != nil {
+			log.Error(err, "Failed to update task with waiting label. Will retry.")
+		}
+		return reconcile.Result{RequeueAfter: time.Minute}, nil
 	}
 	delete(tr.Labels, WaitingForPlatformLabel)
 	startTime := time.Now().Unix()

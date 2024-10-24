@@ -107,15 +107,18 @@ func (r IBMPowerDynamicConfig) authenticatedService(ctx context.Context, kubeCli
 }
 
 func (r IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
+	log := logr.FromContextOrDiscard(ctx)
 	service, err := r.authenticatedService(ctx, kubeClient)
 	if err != nil {
 		return "", err
 	}
 	ip, err := r.lookupIp(ctx, service, string(instanceId))
 	if err != nil {
-		return "", err //todo: check for permanent errors
+		log.Error(err, "Failed to lookup IP", "instanceId", instanceId, "error", err.Error())
+		return "", nil //todo: check for permanent errors
 	}
 	if err = checkAddressLive(ctx, ip); err != nil {
+		log.Error(err, "Failed to check address", "instanceId", instanceId, "error", err.Error())
 		return "", nil
 	}
 	return ip, nil
@@ -123,7 +126,7 @@ func (r IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx 
 
 func (r IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
 	log := logr.FromContextOrDiscard(ctx)
-	log.Info("Listing instances", "tag", instanceTag)
+	log.Info("Listing ppc instances", "tag", instanceTag)
 	service, err := r.authenticatedService(ctx, kubeClient)
 	if err != nil {
 		return nil, err
@@ -149,6 +152,7 @@ func (r IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx conte
 	instances := models.PVMInstances{}
 	_, err = service.Request(request, &instances)
 	if err != nil {
+		log.Error(err, "Failed to request instances")
 		return nil, err
 	}
 
@@ -168,6 +172,7 @@ func (r IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx conte
 		ret = append(ret, cloud.CloudVMInstance{InstanceId: identifier, Address: ip, StartTime: createdAt})
 
 	}
+	log.Info("Listing ppc instances done.", "count", len(ret))
 	return ret, nil
 
 }

@@ -252,6 +252,7 @@ func (r IBMZDynamicConfig) authenticatedService(ctx context.Context, kubeClient 
 }
 
 func (r IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
+	log := logr.FromContextOrDiscard(ctx)
 	vpcService, err := r.authenticatedService(ctx, kubeClient)
 	if err != nil {
 		return "", err
@@ -263,6 +264,7 @@ func (r IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx cont
 
 	ip, err := r.instanceIP(ctx, instance, kubeClient)
 	if err != nil {
+		log.Error(err, "Failed to lookup IP", "instanceId", instanceId, "error", err.Error())
 		return "", err
 	}
 	if ip != "" {
