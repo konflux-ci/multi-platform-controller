@@ -178,7 +178,7 @@ func (r IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx conte
 }
 func (r IBMPowerDynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
 	log := logr.FromContextOrDiscard(ctx)
-	log.Info("attempting to terminate power server %s", "instance", instanceId)
+	log.Info("attempting to terminate power server", "instance", instanceId)
 	service, err := r.authenticatedService(ctx, kubeClient)
 	if err != nil {
 		return err
@@ -200,7 +200,7 @@ func (r IBMPowerDynamicConfig) TerminateInstance(kubeClient client.Client, ctx c
 			//so we just try in a loop
 			err = r.deleteServer(ctx, service, string(instanceId))
 			if err != nil {
-				log.Error(err, "failed to delete system z instance")
+				log.Error(err, "failed to delete system power vm instance")
 			}
 			if timeout.Before(time.Now()) {
 				return
