@@ -39,7 +39,7 @@ func IBMZProvider(arch string, config map[string]string, systemNamespace string)
 }
 
 func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunName string, instanceTag string, _ map[string]string) (cloud.InstanceIdentifier, error) {
-	vpcService, err := r.authenticate(kubeClient, ctx)
+	vpcService, err := r.authenticatedService(ctx, kubeClient)
 	if err != nil {
 		return "", err
 	}
@@ -120,7 +120,7 @@ func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.
 }
 
 func (r IBMZDynamicConfig) CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error) {
-	vpcService, err := r.authenticate(kubeClient, ctx)
+	vpcService, err := r.authenticatedService(ctx, kubeClient)
 	if err != nil {
 		return 0, err
 	}
@@ -143,7 +143,7 @@ func (r IBMZDynamicConfig) CountInstances(kubeClient client.Client, ctx context.
 }
 
 func (r IBMZDynamicConfig) ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
-	vpcService, err := r.authenticate(kubeClient, ctx)
+	vpcService, err := r.authenticatedService(ctx, kubeClient)
 	if err != nil {
 		return nil, err
 	}
@@ -157,16 +157,19 @@ func (r IBMZDynamicConfig) ListInstances(kubeClient client.Client, ctx context.C
 		return nil, err
 	}
 	ret := []cloud.CloudVMInstance{}
+	log := logr.FromContextOrDiscard(ctx)
 	for _, instance := range instances.Instances {
 		if strings.HasPrefix(*instance.Name, instanceTag) {
-			identifier := cloud.InstanceIdentifier(*instance.ID)
-			addr, err := r.GetInstanceAddress(kubeClient, ctx, identifier)
+			addr, err := r.instanceIP(ctx, &instance, kubeClient)
 			if err != nil {
-				log := logr.FromContextOrDiscard(ctx)
 				log.Error(err, "not listing instance as address cannot be assigned yet", "instance", *instance.ID)
-			} else {
-				ret = append(ret, cloud.CloudVMInstance{InstanceId: identifier, Address: addr, StartTime: time.Time(*instance.CreatedAt)})
+				continue
 			}
+			if err := checkAddressLive(ctx, addr); err != nil {
+				log.Error(err, "not listing instance as address cannot be accessed yet", "instance", *instance.ID)
+				continue
+			}
+			ret = append(ret, cloud.CloudVMInstance{InstanceId: cloud.InstanceIdentifier(*instance.ID), Address: addr, StartTime: time.Time(*instance.CreatedAt)})
 		}
 	}
 	return ret, nil
@@ -230,7 +233,7 @@ func ptr(s string) *string {
 	return &s
 }
 
-func (r IBMZDynamicConfig) authenticate(kubeClient client.Client, ctx context.Context) (*vpcv1.VpcV1, error) {
+func (r IBMZDynamicConfig) authenticatedService(ctx context.Context, kubeClient client.Client) (*vpcv1.VpcV1, error) {
 	apiKey := ""
 	if kubeClient == nil {
 		apiKey = os.Getenv("IBM_CLOUD_API_KEY")
@@ -244,7 +247,7 @@ func (r IBMZDynamicConfig) authenticate(kubeClient client.Client, ctx context.Co
 	}
 	// Instantiate the service with an API key based IAM authenticator
 	vpcService, err := vpcv1.NewVpcV1(&vpcv1.VpcV1Options{
-		URL: "https://us-east.iaas.cloud.ibm.com/v1",
+		URL: r.Url,
 		Authenticator: &core.IamAuthenticator{
 			ApiKey: apiKey,
 		},
@@ -253,7 +256,8 @@ func (r IBMZDynamicConfig) authenticate(kubeClient client.Client, ctx context.Co
 }
 
 func (r IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
-	vpcService, err := r.authenticate(kubeClient, ctx)
+	log := logr.FromContextOrDiscard(ctx)
+	vpcService, err := r.authenticatedService(ctx, kubeClient)
 	if err != nil {
 		return "", err
 	}
@@ -261,25 +265,41 @@ func (r IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx cont
 	if err != nil {
 		return "", nil //not permanent, this can take a while to appear
 	}
+
+	ip, err := r.instanceIP(ctx, instance, kubeClient)
+	if err != nil {
+		log.Error(err, "Failed to lookup IP", "instanceId", instanceId, "error", err.Error())
+		return "", err
+	}
+	if ip != "" {
+		if err = checkAddressLive(ctx, ip); err != nil {
+			return "", nil
+		}
+	}
+	return ip, nil
+}
+
+func (r IBMZDynamicConfig) instanceIP(ctx context.Context, instance *vpcv1.Instance, kubeClient client.Client) (string, error) {
+
 	if r.PrivateIP {
 		for _, i := range instance.NetworkInterfaces {
 			if i.PrimaryIP != nil && i.PrimaryIP.Address != nil && *i.PrimaryIP.Address != "0.0.0.0" {
-				addr := checkAddressLive(ctx, *i.PrimaryIP.Address)
-				if addr != "" {
-					return addr, nil
-				}
-
+				return *i.PrimaryIP.Address, nil
 			}
 		}
 		return "", nil
 	}
-	ips, _, err := vpcService.ListInstanceNetworkInterfaceFloatingIps(&vpcv1.ListInstanceNetworkInterfaceFloatingIpsOptions{InstanceID: instance.ID, NetworkInterfaceID: instance.PrimaryNetworkInterface.ID})
 
+	vpcService, err := r.authenticatedService(ctx, kubeClient)
+	if err != nil {
+		return "", err
+	}
+	ips, _, err := vpcService.ListInstanceNetworkInterfaceFloatingIps(&vpcv1.ListInstanceNetworkInterfaceFloatingIpsOptions{InstanceID: instance.ID, NetworkInterfaceID: instance.PrimaryNetworkInterface.ID})
 	if err != nil {
 		return "", nil //not permanent, this can take a while to appear
 	}
 	if len(ips.FloatingIps) > 0 {
-		return checkAddressLive(ctx, *ips.FloatingIps[0].Address), nil
+		return *ips.FloatingIps[0].Address, nil
 	}
 	switch *instance.Status {
 	case vpcv1.InstanceStatusDeletingConst:
@@ -311,7 +331,7 @@ func (r IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx cont
 			if err != nil {
 				return "", err
 			}
-			return checkAddressLive(ctx, *ip.Address), nil
+			return *ip.Address, nil
 		}
 
 	}
@@ -329,20 +349,20 @@ func (r IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx cont
 	if err != nil {
 		return "", err
 	}
-	return checkAddressLive(ctx, *ip.Address), nil
+	return *ip.Address, nil
 }
 
-func checkAddressLive(ctx context.Context, addr string) string {
+func checkAddressLive(ctx context.Context, addr string) error {
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info(fmt.Sprintf("checking if address %s is live", addr))
 	server, _ := net.ResolveTCPAddr("tcp", addr+":22")
 	conn, err := net.DialTCP("tcp", nil, server)
 	if err != nil {
 		log.Info("failed to connect to IBM host " + addr)
-		return ""
+		return err
 	}
-	_ = conn.Close()
-	return addr
+	defer conn.Close()
+	return nil
 
 }
 
@@ -350,7 +370,7 @@ func (r IBMZDynamicConfig) TerminateInstance(kubeClient client.Client, ctx conte
 
 	timeout := time.Now().Add(time.Minute * 10)
 	go func() {
-		vpcService, err := r.authenticate(kubeClient, context.Background())
+		vpcService, err := r.authenticatedService(context.Background(), kubeClient)
 		if err != nil {
 			return
 		}
