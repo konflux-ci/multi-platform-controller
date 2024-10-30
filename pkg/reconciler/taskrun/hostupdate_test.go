@@ -62,13 +62,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 	})
 
 	DescribeTable("Creating taskruns for updating static hosts in a pool",
-		func(hostConfigData map[string]string, hostUpdateTaskRunCreated bool,
-			oneTaskRunCreated bool, labelFieldsCorrectlyFilled bool,
-			addressParamCorrect bool,
-			secretParamCorrect bool,
-			concurrencyParamCorrect bool,
-			userParamCorrect bool,
-			platformParamCorrect bool) {
+		func(hostConfigData map[string]string, shouldFail bool) {
 
 			hostConfig.Data = hostConfigData
 
@@ -85,87 +79,80 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 			Eventually(func(g Gomega) {
 				// TaskRun successfully created
 				g.Expect(k8sClient.List(context.TODO(), &createdList, client.InNamespace(testNamespace))).To(Succeed())
-				// Only one TaskRun was created
-				g.Expect(len(createdList.Items)).To(Equal(1))
-				// set label field filled correctly
-				Expect(createdList.Items[0].Labels).To(HaveKeyWithValue(TaskTypeLabel, TaskTypeUpdate))
 			}).Should(Succeed())
 
-			// extract TaskRun data to begin testing individual fields were correctly filled
-			updatedHostData := hostDataFromTRSpec(createdList.Items[0].Spec.Params)
+			// Only one TaskRun was created == hostConfigData was good data
+			Expect(len(createdList.Items) == 0).To(Equal(shouldFail))
 
-			// validate each field is exactly as it's expected to be
-			Expect(updatedHostData["address"]).To(Equal(hostConfigData["address"]))
-			Expect(updatedHostData["secret"]).To(Equal(hostConfigData["secret"]))
-			Expect(updatedHostData["concurrency"]).To(Equal(hostConfigData["concurrency"]))
-			Expect(updatedHostData["user"]).To(Equal(hostConfigData["user"]))
-			Expect(updatedHostData["platform"]).To(Equal(hostConfigData["platform"]))
+			if !shouldFail {
+				// set label field filled correctly
+				Expect(createdList.Items[0].Labels).To(HaveKeyWithValue(TaskTypeLabel, TaskTypeUpdate))
+
+				// extract TaskRun data to begin testing individual fields were correctly filled
+				updatedHostData := hostDataFromTRSpec(createdList.Items[0].Spec.Params)
+
+				// validate each field is exactly as it's expected to be
+				Expect(updatedHostData["address"]).To(Equal(hostConfigData["address"]))
+				Expect(updatedHostData["secret"]).To(Equal(hostConfigData["secret"]))
+				Expect(updatedHostData["concurrency"]).To(Equal(hostConfigData["concurrency"]))
+				Expect(updatedHostData["user"]).To(Equal(hostConfigData["user"]))
+				Expect(updatedHostData["platform"]).To(Equal(hostConfigData["platform"]))
+			}
 		},
 		Entry("Positive test", map[string]string{
 			"host.koko-hazamar-prod-1.address":     "10.130.75.23",
 			"host.koko-hazamar-prod-1.secret":      "internal-prod-ibm-ssh-key",
 			"host.koko-hazamar-prod-1.concurrency": "1",
 			"host.koko-hazamar-prod-1.user":        "koko_hazamar",
-			"host.koko-hazamar-prod-1.platform":    "linux/ppc64le"},
-			true, true, true, true, true, true, true, true),
-		// Entry("Positive test - ", map[string]string{}),
-		Entry("Negative test - empty data map", map[string]string{},
-			true, true, true, false, false, false, false, false),
+			"host.koko-hazamar-prod-1.platform":    "linux/ppc64le"}, false),
+		Entry("Negative test - empty data map", map[string]string{}, true),
 		Entry("Negative test - dynamic host keys", map[string]string{
 			"dynamic.moshe-kipod-prod-1.address":     "10.130.75.23",
 			"dynamic.moshe-kipod-prod-1.secret":      "internal-prod-ibm-ssh-key",
 			"dynamic.moshe-kipod-prod-1.concurrency": "1",
 			"dynamic.moshe-kipod-prod-1.user":        "koko_hazamar",
-			"dynamic.moshe-kipod-prod-1.platform":    "linux/ppc64le"},
-			false, false, false, false, false, false, false, false),
+			"dynamic.moshe-kipod-prod-1.platform":    "linux/ppc64le"}, true),
 		Entry("Negative test - bad key format", map[string]string{
 			"host.address":     "10.130.75.23",
 			"host.secret":      "internal-prod-ibm-ssh-key",
 			"host.concurrency": "1",
 			"host.user":        "root",
-			"host.platform":    "linux/ppc64le"},
-			false, false, false, false, false, false, false, false),
+			"host.platform":    "linux/ppc64le"}, true),
 		Entry("Negative test - bad address field", map[string]string{
 			"host.koko-hazamar-prod-1.address":     "10.130",
 			"host.koko-hazamar-prod-1.secret":      "internal-prod-ibm-ssh-key",
 			"host.koko-hazamar-prod-1.concurrency": "1",
 			"host.koko-hazamar-prod-1.user":        "koko_hazamar",
-			"host.koko-hazamar-prod-1.platform":    "linux/ppc64le"},
-			false, false, false, false, false, false, false, false),
+			"host.koko-hazamar-prod-1.platform":    "linux/ppc64le"}, true),
 		Entry("Negative test - bad secret field", map[string]string{
 			"host.koko-hazamar-prod-1.address":     "10.130.75.23",
 			"host.koko-hazamar-prod-1.secret":      "",
 			"host.koko-hazamar-prod-1.concurrency": "1",
 			"host.koko-hazamar-prod-1.user":        "koko_hazamar",
-			"host.koko-hazamar-prod-1.platform":    "linux/ppc64le"},
-			false, false, false, false, false, false, false, false),
+			"host.koko-hazamar-prod-1.platform":    "linux/ppc64le"}, true),
 		Entry("Negative test - bad concurrency part I", map[string]string{
 			"host.koko-hazamar-prod-1.address":     "10.130.75.23",
 			"host.koko-hazamar-prod-1.secret":      "internal-prod-ibm-ssh-key",
 			"host.koko-hazamar-prod-1.concurrency": "-1",
 			"host.user":                            "koko_hazamar",
-			"host.koko-hazamar-prod-1.platform":    "linux/ppc64le"},
-			false, false, false, false, false, false, false, false),
+			"host.koko-hazamar-prod-1.platform":    "linux/ppc64le"}, true),
 		Entry("Negative test - bad concurrency part II", map[string]string{
 			"host.koko-hazamar-prod-1.address":     "10.130.75.23",
 			"host.koko-hazamar-prod-1.secret":      "internal-prod-ibm-ssh-key",
 			"host.koko-hazamar-prod-1.concurrency": "1234567890",
 			"host.user":                            "koko_hazamar",
-			"host.koko-hazamar-prod-1.platform":    "linux/ppc64le"},
-			false, false, false, false, false, false, false, false),
+			"host.koko-hazamar-prod-1.platform":    "linux/ppc64le"}, true),
 		Entry("Negative test - bad user", map[string]string{
 			"host.koko-hazamar-prod-1.address":     "10.130.75.23",
 			"host.koko-hazamar-prod-1.secret":      "internal-prod-ibm-ssh-key",
 			"host.koko-hazamar-prod-1.concurrency": "1",
 			"host.koko-hazamar-prod-1.user":        "root",
-			"host.koko-hazamar-prod-1.platform":    "linux/ppc64le"},
-			false, false, false, false, false, false, false, false),
+			"host.koko-hazamar-prod-1.platform":    "linux/ppc64le"}, true),
 		Entry("Negative test - bad platform", map[string]string{
 			"host.koko-hazamar-prod-1.address":     "10.130.75.23",
 			"host.koko-hazamar-prod-1.secret":      "internal-prod-ibm-ssh-key",
 			"host.koko-hazamar-prod-1.concurrency": "1",
 			"host.koko-hazamar-prod-1.user":        "koko_hazamar",
-			"host.koko-hazamar-prod-1.platform":    "linux/moshe_kipod555"},
-			false, false, false, false, false, false, false, false),
+			"host.koko-hazamar-prod-1.platform":    "linux/moshe_kipod555"}, true),
 	)
 })
