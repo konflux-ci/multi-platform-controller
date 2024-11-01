@@ -356,7 +356,7 @@ func checkAddressLive(ctx context.Context, addr string) error {
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info(fmt.Sprintf("checking if address %s is live", addr))
 	server, _ := net.ResolveTCPAddr("tcp", addr+":22")
-	conn, err := net.DialTCP("tcp", nil, server)
+	conn, err := net.DialTimeout(server.Network(), server.String(), 5*time.Second)
 	if err != nil {
 		log.Info("failed to connect to IBM host " + addr)
 		return err
