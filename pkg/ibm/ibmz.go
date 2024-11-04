@@ -87,25 +87,17 @@ func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.
 					},
 				},
 			},
-			NetworkAttachments: []vpcv1.InstanceNetworkAttachmentPrototype{
-				{
-					VirtualNetworkInterface: &vpcv1.InstanceNetworkAttachmentPrototypeVirtualNetworkInterface{
-						AllowIPSpoofing:         new(bool),
-						AutoDelete:              &truebool,
-						EnableInfrastructureNat: &truebool,
-						Ips:                     []vpcv1.VirtualNetworkInterfaceIPPrototypeIntf{&vpcv1.VirtualNetworkInterfaceIPPrototype{AutoDelete: &truebool}},
-						PrimaryIP:               &vpcv1.VirtualNetworkInterfacePrimaryIPPrototype{AutoDelete: &truebool},
-						Subnet:                  &vpcv1.SubnetIdentityByID{ID: subnet.ID},
-						SecurityGroups:          []vpcv1.SecurityGroupIdentityIntf{&vpcv1.SecurityGroupIdentityByID{ID: vpc.DefaultSecurityGroup.ID}},
-					},
+			PrimaryNetworkAttachment: &vpcv1.InstanceNetworkAttachmentPrototype{
+				Name: ptr("eth0"),
+				VirtualNetworkInterface: &vpcv1.InstanceNetworkAttachmentPrototypeVirtualNetworkInterface{
+					AllowIPSpoofing:         new(bool),
+					AutoDelete:              &truebool,
+					EnableInfrastructureNat: &truebool,
+					Ips:                     []vpcv1.VirtualNetworkInterfaceIPPrototypeIntf{&vpcv1.VirtualNetworkInterfaceIPPrototype{AutoDelete: &truebool}},
+					PrimaryIP:               &vpcv1.VirtualNetworkInterfacePrimaryIPPrototype{AutoDelete: &truebool},
+					Subnet:                  &vpcv1.SubnetIdentityByID{ID: subnet.ID},
+					SecurityGroups:          []vpcv1.SecurityGroupIdentityIntf{&vpcv1.SecurityGroupIdentityByID{ID: vpc.DefaultSecurityGroup.ID}},
 				},
-			},
-			PrimaryNetworkInterface: &vpcv1.NetworkInterfacePrototype{
-				Name:            ptr("eth0"),
-				PrimaryIP:       &vpcv1.NetworkInterfaceIPPrototype{AutoDelete: &truebool},
-				AllowIPSpoofing: new(bool),
-				Subnet:          &vpcv1.SubnetIdentityByID{ID: subnet.ID},
-				SecurityGroups:  []vpcv1.SecurityGroupIdentityIntf{&vpcv1.SecurityGroupIdentityByID{ID: vpc.DefaultSecurityGroup.ID}},
 			},
 			AvailabilityPolicy: &vpcv1.InstanceAvailabilityPolicyPrototype{HostFailure: ptr("stop")},
 			Image:              &vpcv1.ImageIdentityByID{ID: &image},
