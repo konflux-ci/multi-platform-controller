@@ -6,16 +6,17 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"context"
 	"strconv"
 
-	strfmt "github.com/go-openapi/strfmt"
-
 	"github.com/go-openapi/errors"
+	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 	"github.com/go-openapi/validate"
 )
 
 // CloudConnection cloud connection
+//
 // swagger:model CloudConnection
 type CloudConnection struct {
 
@@ -25,6 +26,9 @@ type CloudConnection struct {
 	// cloud connection ID
 	// Required: true
 	CloudConnectionID *string `json:"cloudConnectionID"`
+
+	// type of service the gateway is attached to
+	ConnectionMode string `json:"connectionMode,omitempty"`
 
 	// creation date
 	// Required: true
@@ -133,7 +137,6 @@ func (m *CloudConnection) Validate(formats strfmt.Registry) error {
 }
 
 func (m *CloudConnection) validateClassic(formats strfmt.Registry) error {
-
 	if swag.IsZero(m.Classic) { // not required
 		return nil
 	}
@@ -142,6 +145,8 @@ func (m *CloudConnection) validateClassic(formats strfmt.Registry) error {
 		if err := m.Classic.Validate(formats); err != nil {
 			if ve, ok := err.(*errors.Validation); ok {
 				return ve.ValidateName("classic")
+			} else if ce, ok := err.(*errors.CompositeError); ok {
+				return ce.ValidateName("classic")
 			}
 			return err
 		}
@@ -218,7 +223,6 @@ func (m *CloudConnection) validateName(formats strfmt.Registry) error {
 }
 
 func (m *CloudConnection) validateNetworks(formats strfmt.Registry) error {
-
 	if swag.IsZero(m.Networks) { // not required
 		return nil
 	}
@@ -232,6 +236,8 @@ func (m *CloudConnection) validateNetworks(formats strfmt.Registry) error {
 			if err := m.Networks[i].Validate(formats); err != nil {
 				if ve, ok := err.(*errors.Validation); ok {
 					return ve.ValidateName("networks" + "." + strconv.Itoa(i))
+				} else if ce, ok := err.(*errors.CompositeError); ok {
+					return ce.ValidateName("networks" + "." + strconv.Itoa(i))
 				}
 				return err
 			}
@@ -270,7 +276,6 @@ func (m *CloudConnection) validateUserIPAddress(formats strfmt.Registry) error {
 }
 
 func (m *CloudConnection) validateVpc(formats strfmt.Registry) error {
-
 	if swag.IsZero(m.Vpc) { // not required
 		return nil
 	}
@@ -279,6 +284,97 @@ func (m *CloudConnection) validateVpc(formats strfmt.Registry) error {
 		if err := m.Vpc.Validate(formats); err != nil {
 			if ve, ok := err.(*errors.Validation); ok {
 				return ve.ValidateName("vpc")
+			} else if ce, ok := err.(*errors.CompositeError); ok {
+				return ce.ValidateName("vpc")
+			}
+			return err
+		}
+	}
+
+	return nil
+}
+
+// ContextValidate validate this cloud connection based on the context it is used
+func (m *CloudConnection) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
+	var res []error
+
+	if err := m.contextValidateClassic(ctx, formats); err != nil {
+		res = append(res, err)
+	}
+
+	if err := m.contextValidateNetworks(ctx, formats); err != nil {
+		res = append(res, err)
+	}
+
+	if err := m.contextValidateVpc(ctx, formats); err != nil {
+		res = append(res, err)
+	}
+
+	if len(res) > 0 {
+		return errors.CompositeValidationError(res...)
+	}
+	return nil
+}
+
+func (m *CloudConnection) contextValidateClassic(ctx context.Context, formats strfmt.Registry) error {
+
+	if m.Classic != nil {
+
+		if swag.IsZero(m.Classic) { // not required
+			return nil
+		}
+
+		if err := m.Classic.ContextValidate(ctx, formats); err != nil {
+			if ve, ok := err.(*errors.Validation); ok {
+				return ve.ValidateName("classic")
+			} else if ce, ok := err.(*errors.CompositeError); ok {
+				return ce.ValidateName("classic")
+			}
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (m *CloudConnection) contextValidateNetworks(ctx context.Context, formats strfmt.Registry) error {
+
+	for i := 0; i < len(m.Networks); i++ {
+
+		if m.Networks[i] != nil {
+
+			if swag.IsZero(m.Networks[i]) { // not required
+				return nil
+			}
+
+			if err := m.Networks[i].ContextValidate(ctx, formats); err != nil {
+				if ve, ok := err.(*errors.Validation); ok {
+					return ve.ValidateName("networks" + "." + strconv.Itoa(i))
+				} else if ce, ok := err.(*errors.CompositeError); ok {
+					return ce.ValidateName("networks" + "." + strconv.Itoa(i))
+				}
+				return err
+			}
+		}
+
+	}
+
+	return nil
+}
+
+func (m *CloudConnection) contextValidateVpc(ctx context.Context, formats strfmt.Registry) error {
+
+	if m.Vpc != nil {
+
+		if swag.IsZero(m.Vpc) { // not required
+			return nil
+		}
+
+		if err := m.Vpc.ContextValidate(ctx, formats); err != nil {
+			if ve, ok := err.(*errors.Validation); ok {
+				return ve.ValidateName("vpc")
+			} else if ce, ok := err.(*errors.CompositeError); ok {
+				return ce.ValidateName("vpc")
 			}
 			return err
 		}

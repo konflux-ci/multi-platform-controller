@@ -6,16 +6,24 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	strfmt "github.com/go-openapi/strfmt"
+	"context"
 
 	"github.com/go-openapi/errors"
+	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 	"github.com/go-openapi/validate"
 )
 
 // System system
+//
 // swagger:model System
 type System struct {
+
+	// The host available Processor units
+	AvailableCores float64 `json:"availableCores,omitempty"`
+
+	// The host available RAM memory in GiB
+	AvailableMemory int64 `json:"availableMemory,omitempty"`
 
 	// The host available Processor units
 	// Required: true
@@ -24,9 +32,21 @@ type System struct {
 	// The host identifier
 	ID int64 `json:"id,omitempty"`
 
-	// The host available RAM memory in GiB
+	// The host total RAM memory in GiB
 	// Required: true
 	Memory *int64 `json:"memory"`
+
+	// The host total usable Processor units
+	TotalCores float64 `json:"totalCores,omitempty"`
+
+	// The host total usable RAM memory in GiB
+	TotalMemory int64 `json:"totalMemory,omitempty"`
+
+	// Total number of physical cores in the Pod
+	TotalPhysCores float64 `json:"totalPhysCores,omitempty"`
+
+	// Total amount of physical memory in the Pod (GB)
+	TotalPhysMemory int64 `json:"totalPhysMemory,omitempty"`
 }
 
 // Validate validates this system
@@ -62,6 +82,11 @@ func (m *System) validateMemory(formats strfmt.Registry) error {
 		return err
 	}
 
+	return nil
+}
+
+// ContextValidate validates this system based on context it is used
+func (m *System) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

@@ -6,16 +6,17 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"context"
 	"encoding/json"
 
-	strfmt "github.com/go-openapi/strfmt"
-
 	"github.com/go-openapi/errors"
+	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 	"github.com/go-openapi/validate"
 )
 
 // CreateImage create image
+//
 // swagger:model CreateImage
 type CreateImage struct {
 
@@ -25,7 +26,7 @@ type CreateImage struct {
 	// Cloud Storage bucket name; bucket-name[/optional/folder]; required for import image
 	BucketName string `json:"bucketName,omitempty"`
 
-	// Type of Disk; will be ignored if storagePool or affinityPolicy is provided; Used only when importing an image from cloud storage.
+	// Type of Disk; if diskType is not provided the disk type will default to 'tier3'. Used only when importing an image from cloud storage.
 	DiskType string `json:"diskType,omitempty"`
 
 	// Cloud Storage image filename; required for import image
@@ -41,7 +42,7 @@ type CreateImage struct {
 	ImagePath string `json:"imagePath,omitempty"`
 
 	// Image OS Type, required if importing a raw image; raw images can only be imported using the command line interface
-	// Enum: [aix ibmi rhel sles]
+	// Enum: ["aix","ibmi","rhel","sles"]
 	OsType string `json:"osType,omitempty"`
 
 	// Cloud Storage Region; only required to access IBM Cloud Storage
@@ -51,14 +52,16 @@ type CreateImage struct {
 	SecretKey string `json:"secretKey,omitempty"`
 
 	// Source of the image
+	// >*Note*: url option is deprecated, this option is supported till Oct 2022
+	//
 	// Required: true
-	// Enum: [root-project url]
+	// Enum: ["root-project","url"]
 	Source *string `json:"source"`
 
 	// The storage affinity data; ignored if storagePool is provided; Used only when importing an image from cloud storage.
 	StorageAffinity *StorageAffinity `json:"storageAffinity,omitempty"`
 
-	// Storage pool where the image will be loaded; if provided then storageAffinity and diskType will be ignored; Used only when importing an image from cloud storage.
+	// Storage pool where the image will be loaded; if provided then storageAffinity will be ignored; Used only when importing an image from cloud storage.
 	StoragePool string `json:"storagePool,omitempty"`
 }
 
@@ -113,14 +116,13 @@ const (
 
 // prop value enum
 func (m *CreateImage) validateOsTypeEnum(path, location string, value string) error {
-	if err := validate.Enum(path, location, value, createImageTypeOsTypePropEnum); err != nil {
+	if err := validate.EnumCase(path, location, value, createImageTypeOsTypePropEnum, true); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (m *CreateImage) validateOsType(formats strfmt.Registry) error {
-
 	if swag.IsZero(m.OsType) { // not required
 		return nil
 	}
@@ -147,8 +149,8 @@ func init() {
 
 const (
 
-	// CreateImageSourceRootProject captures enum value "root-project"
-	CreateImageSourceRootProject string = "root-project"
+	// CreateImageSourceRootDashProject captures enum value "root-project"
+	CreateImageSourceRootDashProject string = "root-project"
 
 	// CreateImageSourceURL captures enum value "url"
 	CreateImageSourceURL string = "url"
@@ -156,7 +158,7 @@ const (
 
 // prop value enum
 func (m *CreateImage) validateSourceEnum(path, location string, value string) error {
-	if err := validate.Enum(path, location, value, createImageTypeSourcePropEnum); err != nil {
+	if err := validate.EnumCase(path, location, value, createImageTypeSourcePropEnum, true); err != nil {
 		return err
 	}
 	return nil
@@ -177,7 +179,6 @@ func (m *CreateImage) validateSource(formats strfmt.Registry) error {
 }
 
 func (m *CreateImage) validateStorageAffinity(formats strfmt.Registry) error {
-
 	if swag.IsZero(m.StorageAffinity) { // not required
 		return nil
 	}
@@ -186,6 +187,43 @@ func (m *CreateImage) validateStorageAffinity(formats strfmt.Registry) error {
 		if err := m.StorageAffinity.Validate(formats); err != nil {
 			if ve, ok := err.(*errors.Validation); ok {
 				return ve.ValidateName("storageAffinity")
+			} else if ce, ok := err.(*errors.CompositeError); ok {
+				return ce.ValidateName("storageAffinity")
+			}
+			return err
+		}
+	}
+
+	return nil
+}
+
+// ContextValidate validate this create image based on the context it is used
+func (m *CreateImage) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
+	var res []error
+
+	if err := m.contextValidateStorageAffinity(ctx, formats); err != nil {
+		res = append(res, err)
+	}
+
+	if len(res) > 0 {
+		return errors.CompositeValidationError(res...)
+	}
+	return nil
+}
+
+func (m *CreateImage) contextValidateStorageAffinity(ctx context.Context, formats strfmt.Registry) error {
+
+	if m.StorageAffinity != nil {
+
+		if swag.IsZero(m.StorageAffinity) { // not required
+			return nil
+		}
+
+		if err := m.StorageAffinity.ContextValidate(ctx, formats); err != nil {
+			if ve, ok := err.(*errors.Validation); ok {
+				return ve.ValidateName("storageAffinity")
+			} else if ce, ok := err.(*errors.CompositeError); ok {
+				return ce.ValidateName("storageAffinity")
 			}
 			return err
 		}

@@ -6,14 +6,16 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	strfmt "github.com/go-openapi/strfmt"
+	"context"
 
 	"github.com/go-openapi/errors"
+	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 	"github.com/go-openapi/validate"
 )
 
 // ExportImage export image
+//
 // swagger:model ExportImage
 type ExportImage struct {
 
@@ -24,6 +26,9 @@ type ExportImage struct {
 	// Cloud Object Storage Bucket name
 	// Required: true
 	BucketName *string `json:"bucketName"`
+
+	// Create a checksum filename
+	Checksum bool `json:"checksum,omitempty"`
 
 	// Cloud Object Storage Region; required for IBM COS
 	Region string `json:"region,omitempty"`
@@ -65,6 +70,11 @@ func (m *ExportImage) validateBucketName(formats strfmt.Registry) error {
 		return err
 	}
 
+	return nil
+}
+
+// ContextValidate validates this export image based on context it is used
+func (m *ExportImage) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

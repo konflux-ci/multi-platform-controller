@@ -4,8 +4,8 @@ contrib.go.opencensus.io/exporter/ocagent
 # contrib.go.opencensus.io/exporter/prometheus v0.4.2
 ## explicit; go 1.13
 contrib.go.opencensus.io/exporter/prometheus
-# github.com/IBM-Cloud/power-go-client v1.0.83
-## explicit; go 1.13
+# github.com/IBM-Cloud/power-go-client v1.7.0
+## explicit; go 1.22
 github.com/IBM-Cloud/power-go-client/power/models
 # github.com/IBM/go-sdk-core/v5 v5.17.3
 ## explicit; go 1.20

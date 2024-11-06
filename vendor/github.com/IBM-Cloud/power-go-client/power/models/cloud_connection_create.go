@@ -6,16 +6,17 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"context"
 	"encoding/json"
 
-	strfmt "github.com/go-openapi/strfmt"
-
 	"github.com/go-openapi/errors"
+	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 	"github.com/go-openapi/validate"
 )
 
 // CloudConnectionCreate cloud connection create
+//
 // swagger:model CloudConnectionCreate
 type CloudConnectionCreate struct {
 
@@ -34,11 +35,14 @@ type CloudConnectionCreate struct {
 
 	// speed of the cloud connection (speed in megabits per second)
 	// Required: true
-	// Enum: [50 100 200 500 1000 2000 5000 10000]
+	// Enum: [50,100,200,500,1000,2000,5000,10000]
 	Speed *int64 `json:"speed"`
 
 	// list of subnets to attach to cloud connection
 	Subnets []string `json:"subnets"`
+
+	// enable transit gateway for this cloud connection (default=false)
+	TransitEnabled bool `json:"transitEnabled,omitempty"`
 
 	// vpc
 	Vpc *CloudConnectionEndpointVPC `json:"vpc,omitempty"`
@@ -71,7 +75,6 @@ func (m *CloudConnectionCreate) Validate(formats strfmt.Registry) error {
 }
 
 func (m *CloudConnectionCreate) validateClassic(formats strfmt.Registry) error {
-
 	if swag.IsZero(m.Classic) { // not required
 		return nil
 	}
@@ -80,6 +83,8 @@ func (m *CloudConnectionCreate) validateClassic(formats strfmt.Registry) error {
 		if err := m.Classic.Validate(formats); err != nil {
 			if ve, ok := err.(*errors.Validation); ok {
 				return ve.ValidateName("classic")
+			} else if ce, ok := err.(*errors.CompositeError); ok {
+				return ce.ValidateName("classic")
 			}
 			return err
 		}
@@ -111,7 +116,7 @@ func init() {
 
 // prop value enum
 func (m *CloudConnectionCreate) validateSpeedEnum(path, location string, value int64) error {
-	if err := validate.Enum(path, location, value, cloudConnectionCreateTypeSpeedPropEnum); err != nil {
+	if err := validate.EnumCase(path, location, value, cloudConnectionCreateTypeSpeedPropEnum, true); err != nil {
 		return err
 	}
 	return nil
@@ -132,7 +137,6 @@ func (m *CloudConnectionCreate) validateSpeed(formats strfmt.Registry) error {
 }
 
 func (m *CloudConnectionCreate) validateVpc(formats strfmt.Registry) error {
-
 	if swag.IsZero(m.Vpc) { // not required
 		return nil
 	}
@@ -141,6 +145,68 @@ func (m *CloudConnectionCreate) validateVpc(formats strfmt.Registry) error {
 		if err := m.Vpc.Validate(formats); err != nil {
 			if ve, ok := err.(*errors.Validation); ok {
 				return ve.ValidateName("vpc")
+			} else if ce, ok := err.(*errors.CompositeError); ok {
+				return ce.ValidateName("vpc")
+			}
+			return err
+		}
+	}
+
+	return nil
+}
+
+// ContextValidate validate this cloud connection create based on the context it is used
+func (m *CloudConnectionCreate) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
+	var res []error
+
+	if err := m.contextValidateClassic(ctx, formats); err != nil {
+		res = append(res, err)
+	}
+
+	if err := m.contextValidateVpc(ctx, formats); err != nil {
+		res = append(res, err)
+	}
+
+	if len(res) > 0 {
+		return errors.CompositeValidationError(res...)
+	}
+	return nil
+}
+
+func (m *CloudConnectionCreate) contextValidateClassic(ctx context.Context, formats strfmt.Registry) error {
+
+	if m.Classic != nil {
+
+		if swag.IsZero(m.Classic) { // not required
+			return nil
+		}
+
+		if err := m.Classic.ContextValidate(ctx, formats); err != nil {
+			if ve, ok := err.(*errors.Validation); ok {
+				return ve.ValidateName("classic")
+			} else if ce, ok := err.(*errors.CompositeError); ok {
+				return ce.ValidateName("classic")
+			}
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (m *CloudConnectionCreate) contextValidateVpc(ctx context.Context, formats strfmt.Registry) error {
+
+	if m.Vpc != nil {
+
+		if swag.IsZero(m.Vpc) { // not required
+			return nil
+		}
+
+		if err := m.Vpc.ContextValidate(ctx, formats); err != nil {
+			if ve, ok := err.(*errors.Validation); ok {
+				return ve.ValidateName("vpc")
+			} else if ce, ok := err.(*errors.CompositeError); ok {
+				return ce.ValidateName("vpc")
 			}
 			return err
 		}

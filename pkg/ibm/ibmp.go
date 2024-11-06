@@ -271,7 +271,7 @@ func (r IBMPowerDynamicConfig) createServerInstance(ctx context.Context, service
 		Processors:  &r.Cores,
 		ProcType:    &r.ProcType,
 		Memory:      &r.Memory,
-		NetworkIds:  network,
+		NetworkIDs:  network,
 		KeyPairName: r.Key,
 		SysType:     r.System,
 		UserData:    r.UserData,
