@@ -6,16 +6,14 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
+	strfmt "github.com/go-openapi/strfmt"
 
 	"github.com/go-openapi/errors"
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 	"github.com/go-openapi/validate"
 )
 
 // SnapshotCreate snapshot create
-//
 // swagger:model SnapshotCreate
 type SnapshotCreate struct {
 
@@ -27,7 +25,7 @@ type SnapshotCreate struct {
 	Name *string `json:"name"`
 
 	// List of volumes to include in the PVM instance snapshot
-	VolumeIDs []string `json:"volumeIDs"`
+	VolumeIds []string `json:"volumeIDs"`
 }
 
 // Validate validates this snapshot create
@@ -50,11 +48,6 @@ func (m *SnapshotCreate) validateName(formats strfmt.Registry) error {
 		return err
 	}
 
-	return nil
-}
-
-// ContextValidate validates this snapshot create based on context it is used
-func (m *SnapshotCreate) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

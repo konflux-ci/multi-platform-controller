@@ -6,30 +6,29 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
 	"encoding/json"
 
+	strfmt "github.com/go-openapi/strfmt"
+
 	"github.com/go-openapi/errors"
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 	"github.com/go-openapi/validate"
 )
 
 // Operations operations
-//
 // swagger:model Operations
 type Operations struct {
 
 	// Name of the server boot mode a(Boot from disk using copy A), b(Boot from disk using copy B), c(Reserved for IBM lab use only), d(Boot from media/drives)
-	// Enum: ["a","b","c","d"]
+	// Enum: [a b c d]
 	BootMode string `json:"bootMode,omitempty"`
 
 	// Name of the server operating mode
-	// Enum: ["normal","manual"]
+	// Enum: [normal manual]
 	OperatingMode string `json:"operatingMode,omitempty"`
 
 	// Name of the job task to execute
-	// Enum: ["dston","retrydump","consoleservice","iopreset","remotedstoff","remotedston","iopdump","dumprestart"]
+	// Enum: [dston retrydump consoleservice iopreset remotedstoff remotedston iopdump dumprestart]
 	Task string `json:"task,omitempty"`
 }
 
@@ -84,13 +83,14 @@ const (
 
 // prop value enum
 func (m *Operations) validateBootModeEnum(path, location string, value string) error {
-	if err := validate.EnumCase(path, location, value, operationsTypeBootModePropEnum, true); err != nil {
+	if err := validate.Enum(path, location, value, operationsTypeBootModePropEnum); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (m *Operations) validateBootMode(formats strfmt.Registry) error {
+
 	if swag.IsZero(m.BootMode) { // not required
 		return nil
 	}
@@ -126,13 +126,14 @@ const (
 
 // prop value enum
 func (m *Operations) validateOperatingModeEnum(path, location string, value string) error {
-	if err := validate.EnumCase(path, location, value, operationsTypeOperatingModePropEnum, true); err != nil {
+	if err := validate.Enum(path, location, value, operationsTypeOperatingModePropEnum); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (m *Operations) validateOperatingMode(formats strfmt.Registry) error {
+
 	if swag.IsZero(m.OperatingMode) { // not required
 		return nil
 	}
@@ -186,13 +187,14 @@ const (
 
 // prop value enum
 func (m *Operations) validateTaskEnum(path, location string, value string) error {
-	if err := validate.EnumCase(path, location, value, operationsTypeTaskPropEnum, true); err != nil {
+	if err := validate.Enum(path, location, value, operationsTypeTaskPropEnum); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (m *Operations) validateTask(formats strfmt.Registry) error {
+
 	if swag.IsZero(m.Task) { // not required
 		return nil
 	}
@@ -202,11 +204,6 @@ func (m *Operations) validateTask(formats strfmt.Registry) error {
 		return err
 	}
 
-	return nil
-}
-
-// ContextValidate validates this operations based on context it is used
-func (m *Operations) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

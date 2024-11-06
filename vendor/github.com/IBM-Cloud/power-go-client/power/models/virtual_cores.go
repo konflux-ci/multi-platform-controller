@@ -6,16 +6,14 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
+	strfmt "github.com/go-openapi/strfmt"
 
 	"github.com/go-openapi/errors"
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 	"github.com/go-openapi/validate"
 )
 
 // VirtualCores virtual cores
-//
 // swagger:model VirtualCores
 type VirtualCores struct {
 
@@ -51,15 +49,10 @@ func (m *VirtualCores) validateAssigned(formats strfmt.Registry) error {
 		return err
 	}
 
-	if err := validate.MinimumInt("assigned", "body", *m.Assigned, 1, false); err != nil {
+	if err := validate.MinimumInt("assigned", "body", int64(*m.Assigned), 1, false); err != nil {
 		return err
 	}
 
-	return nil
-}
-
-// ContextValidate validates this virtual cores based on context it is used
-func (m *VirtualCores) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

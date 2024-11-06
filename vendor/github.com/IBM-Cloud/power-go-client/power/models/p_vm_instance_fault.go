@@ -6,16 +6,14 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
+	strfmt "github.com/go-openapi/strfmt"
 
 	"github.com/go-openapi/errors"
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 	"github.com/go-openapi/validate"
 )
 
 // PVMInstanceFault Fault information (if occurred)
-//
 // swagger:model PVMInstanceFault
 type PVMInstanceFault struct {
 
@@ -48,6 +46,7 @@ func (m *PVMInstanceFault) Validate(formats strfmt.Registry) error {
 }
 
 func (m *PVMInstanceFault) validateCreated(formats strfmt.Registry) error {
+
 	if swag.IsZero(m.Created) { // not required
 		return nil
 	}
@@ -56,11 +55,6 @@ func (m *PVMInstanceFault) validateCreated(formats strfmt.Registry) error {
 		return err
 	}
 
-	return nil
-}
-
-// ContextValidate validates this p VM instance fault based on context it is used
-func (m *PVMInstanceFault) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

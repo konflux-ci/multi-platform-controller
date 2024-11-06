@@ -6,23 +6,19 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
 	"encoding/json"
 	"strconv"
 
+	strfmt "github.com/go-openapi/strfmt"
+
 	"github.com/go-openapi/errors"
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 	"github.com/go-openapi/validate"
 )
 
 // Network network
-//
 // swagger:model Network
 type Network struct {
-
-	// access config
-	AccessConfig AccessConfig `json:"accessConfig,omitempty"`
 
 	// Network in CIDR notation (192.168.0.0/24)
 	// Required: true
@@ -49,13 +45,9 @@ type Network struct {
 	// Required: true
 	IPAddressRanges []*IPAddressRange `json:"ipAddressRanges"`
 
-	// (deprecated - replaced by mtu) Enable MTU Jumbo Network (for multi-zone locations only)
-	Jumbo bool `json:"jumbo,omitempty"`
-
-	// Maximum transmission unit
-	// Maximum: 9000
-	// Minimum: 1450
-	Mtu *int64 `json:"mtu,omitempty"`
+	// MTU Jumbo Network enabled
+	// Required: true
+	Jumbo *bool `json:"jumbo"`
 
 	// Network Name
 	// Required: true
@@ -68,9 +60,9 @@ type Network struct {
 	// Public IP Address Ranges (for pub-vlan networks)
 	PublicIPAddressRanges []*IPAddressRange `json:"publicIPAddressRanges,omitempty"`
 
-	// Type of Network - 'vlan' (private network) 'pub-vlan' (public network) 'dhcp-vlan' (for satellite locations only)
+	// Type of Network {vlan, pub-vlan}
 	// Required: true
-	// Enum: ["vlan","pub-vlan","dhcp-vlan"]
+	// Enum: [vlan pub-vlan]
 	Type *string `json:"type"`
 
 	// VLAN ID
@@ -81,10 +73,6 @@ type Network struct {
 // Validate validates this network
 func (m *Network) Validate(formats strfmt.Registry) error {
 	var res []error
-
-	if err := m.validateAccessConfig(formats); err != nil {
-		res = append(res, err)
-	}
 
 	if err := m.validateCidr(formats); err != nil {
 		res = append(res, err)
@@ -106,7 +94,7 @@ func (m *Network) Validate(formats strfmt.Registry) error {
 		res = append(res, err)
 	}
 
-	if err := m.validateMtu(formats); err != nil {
+	if err := m.validateJumbo(formats); err != nil {
 		res = append(res, err)
 	}
 
@@ -136,23 +124,6 @@ func (m *Network) Validate(formats strfmt.Registry) error {
 	return nil
 }
 
-func (m *Network) validateAccessConfig(formats strfmt.Registry) error {
-	if swag.IsZero(m.AccessConfig) { // not required
-		return nil
-	}
-
-	if err := m.AccessConfig.Validate(formats); err != nil {
-		if ve, ok := err.(*errors.Validation); ok {
-			return ve.ValidateName("accessConfig")
-		} else if ce, ok := err.(*errors.CompositeError); ok {
-			return ce.ValidateName("accessConfig")
-		}
-		return err
-	}
-
-	return nil
-}
-
 func (m *Network) validateCidr(formats strfmt.Registry) error {
 
 	if err := validate.Required("cidr", "body", m.Cidr); err != nil {
@@ -163,6 +134,7 @@ func (m *Network) validateCidr(formats strfmt.Registry) error {
 }
 
 func (m *Network) validateCloudConnections(formats strfmt.Registry) error {
+
 	if swag.IsZero(m.CloudConnections) { // not required
 		return nil
 	}
@@ -176,8 +148,6 @@ func (m *Network) validateCloudConnections(formats strfmt.Registry) error {
 			if err := m.CloudConnections[i].Validate(formats); err != nil {
 				if ve, ok := err.(*errors.Validation); ok {
 					return ve.ValidateName("cloudConnections" + "." + strconv.Itoa(i))
-				} else if ce, ok := err.(*errors.CompositeError); ok {
-					return ce.ValidateName("cloudConnections" + "." + strconv.Itoa(i))
 				}
 				return err
 			}
@@ -207,8 +177,6 @@ func (m *Network) validateIPAddressMetrics(formats strfmt.Registry) error {
 		if err := m.IPAddressMetrics.Validate(formats); err != nil {
 			if ve, ok := err.(*errors.Validation); ok {
 				return ve.ValidateName("ipAddressMetrics")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("ipAddressMetrics")
 			}
 			return err
 		}
@@ -232,8 +200,6 @@ func (m *Network) validateIPAddressRanges(formats strfmt.Registry) error {
 			if err := m.IPAddressRanges[i].Validate(formats); err != nil {
 				if ve, ok := err.(*errors.Validation); ok {
 					return ve.ValidateName("ipAddressRanges" + "." + strconv.Itoa(i))
-				} else if ce, ok := err.(*errors.CompositeError); ok {
-					return ce.ValidateName("ipAddressRanges" + "." + strconv.Itoa(i))
 				}
 				return err
 			}
@@ -244,16 +210,9 @@ func (m *Network) validateIPAddressRanges(formats strfmt.Registry) error {
 	return nil
 }
 
-func (m *Network) validateMtu(formats strfmt.Registry) error {
-	if swag.IsZero(m.Mtu) { // not required
-		return nil
-	}
+func (m *Network) validateJumbo(formats strfmt.Registry) error {
 
-	if err := validate.MinimumInt("mtu", "body", *m.Mtu, 1450, false); err != nil {
-		return err
-	}
-
-	if err := validate.MaximumInt("mtu", "body", *m.Mtu, 9000, false); err != nil {
+	if err := validate.Required("jumbo", "body", m.Jumbo); err != nil {
 		return err
 	}
 
@@ -279,6 +238,7 @@ func (m *Network) validateNetworkID(formats strfmt.Registry) error {
 }
 
 func (m *Network) validatePublicIPAddressRanges(formats strfmt.Registry) error {
+
 	if swag.IsZero(m.PublicIPAddressRanges) { // not required
 		return nil
 	}
@@ -292,8 +252,6 @@ func (m *Network) validatePublicIPAddressRanges(formats strfmt.Registry) error {
 			if err := m.PublicIPAddressRanges[i].Validate(formats); err != nil {
 				if ve, ok := err.(*errors.Validation); ok {
 					return ve.ValidateName("publicIPAddressRanges" + "." + strconv.Itoa(i))
-				} else if ce, ok := err.(*errors.CompositeError); ok {
-					return ce.ValidateName("publicIPAddressRanges" + "." + strconv.Itoa(i))
 				}
 				return err
 			}
@@ -308,7 +266,7 @@ var networkTypeTypePropEnum []interface{}
 
 func init() {
 	var res []string
-	if err := json.Unmarshal([]byte(`["vlan","pub-vlan","dhcp-vlan"]`), &res); err != nil {
+	if err := json.Unmarshal([]byte(`["vlan","pub-vlan"]`), &res); err != nil {
 		panic(err)
 	}
 	for _, v := range res {
@@ -321,16 +279,13 @@ const (
 	// NetworkTypeVlan captures enum value "vlan"
 	NetworkTypeVlan string = "vlan"
 
-	// NetworkTypePubDashVlan captures enum value "pub-vlan"
-	NetworkTypePubDashVlan string = "pub-vlan"
-
-	// NetworkTypeDhcpDashVlan captures enum value "dhcp-vlan"
-	NetworkTypeDhcpDashVlan string = "dhcp-vlan"
+	// NetworkTypePubVlan captures enum value "pub-vlan"
+	NetworkTypePubVlan string = "pub-vlan"
 )
 
 // prop value enum
 func (m *Network) validateTypeEnum(path, location string, value string) error {
-	if err := validate.EnumCase(path, location, value, networkTypeTypePropEnum, true); err != nil {
+	if err := validate.Enum(path, location, value, networkTypeTypePropEnum); err != nil {
 		return err
 	}
 	return nil
@@ -359,146 +314,6 @@ func (m *Network) validateVlanID(formats strfmt.Registry) error {
 	return nil
 }
 
-// ContextValidate validate this network based on the context it is used
-func (m *Network) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
-	var res []error
-
-	if err := m.contextValidateAccessConfig(ctx, formats); err != nil {
-		res = append(res, err)
-	}
-
-	if err := m.contextValidateCloudConnections(ctx, formats); err != nil {
-		res = append(res, err)
-	}
-
-	if err := m.contextValidateIPAddressMetrics(ctx, formats); err != nil {
-		res = append(res, err)
-	}
-
-	if err := m.contextValidateIPAddressRanges(ctx, formats); err != nil {
-		res = append(res, err)
-	}
-
-	if err := m.contextValidatePublicIPAddressRanges(ctx, formats); err != nil {
-		res = append(res, err)
-	}
-
-	if len(res) > 0 {
-		return errors.CompositeValidationError(res...)
-	}
-	return nil
-}
-
-func (m *Network) contextValidateAccessConfig(ctx context.Context, formats strfmt.Registry) error {
-
-	if swag.IsZero(m.AccessConfig) { // not required
-		return nil
-	}
-
-	if err := m.AccessConfig.ContextValidate(ctx, formats); err != nil {
-		if ve, ok := err.(*errors.Validation); ok {
-			return ve.ValidateName("accessConfig")
-		} else if ce, ok := err.(*errors.CompositeError); ok {
-			return ce.ValidateName("accessConfig")
-		}
-		return err
-	}
-
-	return nil
-}
-
-func (m *Network) contextValidateCloudConnections(ctx context.Context, formats strfmt.Registry) error {
-
-	for i := 0; i < len(m.CloudConnections); i++ {
-
-		if m.CloudConnections[i] != nil {
-
-			if swag.IsZero(m.CloudConnections[i]) { // not required
-				return nil
-			}
-
-			if err := m.CloudConnections[i].ContextValidate(ctx, formats); err != nil {
-				if ve, ok := err.(*errors.Validation); ok {
-					return ve.ValidateName("cloudConnections" + "." + strconv.Itoa(i))
-				} else if ce, ok := err.(*errors.CompositeError); ok {
-					return ce.ValidateName("cloudConnections" + "." + strconv.Itoa(i))
-				}
-				return err
-			}
-		}
-
-	}
-
-	return nil
-}
-
-func (m *Network) contextValidateIPAddressMetrics(ctx context.Context, formats strfmt.Registry) error {
-
-	if m.IPAddressMetrics != nil {
-
-		if err := m.IPAddressMetrics.ContextValidate(ctx, formats); err != nil {
-			if ve, ok := err.(*errors.Validation); ok {
-				return ve.ValidateName("ipAddressMetrics")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("ipAddressMetrics")
-			}
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (m *Network) contextValidateIPAddressRanges(ctx context.Context, formats strfmt.Registry) error {
-
-	for i := 0; i < len(m.IPAddressRanges); i++ {
-
-		if m.IPAddressRanges[i] != nil {
-
-			if swag.IsZero(m.IPAddressRanges[i]) { // not required
-				return nil
-			}
-
-			if err := m.IPAddressRanges[i].ContextValidate(ctx, formats); err != nil {
-				if ve, ok := err.(*errors.Validation); ok {
-					return ve.ValidateName("ipAddressRanges" + "." + strconv.Itoa(i))
-				} else if ce, ok := err.(*errors.CompositeError); ok {
-					return ce.ValidateName("ipAddressRanges" + "." + strconv.Itoa(i))
-				}
-				return err
-			}
-		}
-
-	}
-
-	return nil
-}
-
-func (m *Network) contextValidatePublicIPAddressRanges(ctx context.Context, formats strfmt.Registry) error {
-
-	for i := 0; i < len(m.PublicIPAddressRanges); i++ {
-
-		if m.PublicIPAddressRanges[i] != nil {
-
-			if swag.IsZero(m.PublicIPAddressRanges[i]) { // not required
-				return nil
-			}
-
-			if err := m.PublicIPAddressRanges[i].ContextValidate(ctx, formats); err != nil {
-				if ve, ok := err.(*errors.Validation); ok {
-					return ve.ValidateName("publicIPAddressRanges" + "." + strconv.Itoa(i))
-				} else if ce, ok := err.(*errors.CompositeError); ok {
-					return ce.ValidateName("publicIPAddressRanges" + "." + strconv.Itoa(i))
-				}
-				return err
-			}
-		}
-
-	}
-
-	return nil
-}
-
 // MarshalBinary interface implementation
 func (m *Network) MarshalBinary() ([]byte, error) {
 	if m == nil {
@@ -518,7 +333,6 @@ func (m *Network) UnmarshalBinary(b []byte) error {
 }
 
 // NetworkCloudConnectionsItems0 network cloud connections items0
-//
 // swagger:model NetworkCloudConnectionsItems0
 type NetworkCloudConnectionsItems0 struct {
 
@@ -531,11 +345,6 @@ type NetworkCloudConnectionsItems0 struct {
 
 // Validate validates this network cloud connections items0
 func (m *NetworkCloudConnectionsItems0) Validate(formats strfmt.Registry) error {
-	return nil
-}
-
-// ContextValidate validates this network cloud connections items0 based on context it is used
-func (m *NetworkCloudConnectionsItems0) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 
@@ -558,7 +367,6 @@ func (m *NetworkCloudConnectionsItems0) UnmarshalBinary(b []byte) error {
 }
 
 // NetworkIPAddressMetrics IP Address Metrics
-//
 // swagger:model NetworkIPAddressMetrics
 type NetworkIPAddressMetrics struct {
 
@@ -638,11 +446,6 @@ func (m *NetworkIPAddressMetrics) validateUtilization(formats strfmt.Registry) e
 		return err
 	}
 
-	return nil
-}
-
-// ContextValidate validates this network IP address metrics based on context it is used
-func (m *NetworkIPAddressMetrics) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

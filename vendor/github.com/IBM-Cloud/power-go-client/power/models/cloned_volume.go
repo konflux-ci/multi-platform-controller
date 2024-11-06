@@ -6,14 +6,12 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
+	strfmt "github.com/go-openapi/strfmt"
 
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 )
 
 // ClonedVolume cloned volume
-//
 // swagger:model ClonedVolume
 type ClonedVolume struct {
 
@@ -26,11 +24,6 @@ type ClonedVolume struct {
 
 // Validate validates this cloned volume
 func (m *ClonedVolume) Validate(formats strfmt.Registry) error {
-	return nil
-}
-
-// ContextValidate validates this cloned volume based on context it is used
-func (m *ClonedVolume) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

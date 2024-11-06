@@ -6,16 +6,14 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
+	strfmt "github.com/go-openapi/strfmt"
 
 	"github.com/go-openapi/errors"
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 	"github.com/go-openapi/validate"
 )
 
 // MaximumStorageAllocation Maximum storage allocation
-//
 // swagger:model MaximumStorageAllocation
 type MaximumStorageAllocation struct {
 
@@ -78,11 +76,6 @@ func (m *MaximumStorageAllocation) validateStorageType(formats strfmt.Registry) 
 		return err
 	}
 
-	return nil
-}
-
-// ContextValidate validates this maximum storage allocation based on context it is used
-func (m *MaximumStorageAllocation) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

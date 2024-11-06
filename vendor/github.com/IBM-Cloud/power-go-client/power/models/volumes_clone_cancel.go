@@ -6,14 +6,12 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
+	strfmt "github.com/go-openapi/strfmt"
 
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 )
 
 // VolumesCloneCancel volumes clone cancel
-//
 // swagger:model VolumesCloneCancel
 type VolumesCloneCancel struct {
 
@@ -25,11 +23,6 @@ type VolumesCloneCancel struct {
 
 // Validate validates this volumes clone cancel
 func (m *VolumesCloneCancel) Validate(formats strfmt.Registry) error {
-	return nil
-}
-
-// ContextValidate validates this volumes clone cancel based on context it is used
-func (m *VolumesCloneCancel) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

@@ -6,15 +6,13 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
+	strfmt "github.com/go-openapi/strfmt"
 
 	"github.com/go-openapi/errors"
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 )
 
 // CloudConnectionCreateResponse cloud connection create response
-//
 // swagger:model CloudConnectionCreateResponse
 type CloudConnectionCreateResponse struct {
 	CloudConnection
@@ -88,6 +86,7 @@ func (m *CloudConnectionCreateResponse) Validate(formats strfmt.Registry) error 
 }
 
 func (m *CloudConnectionCreateResponse) validateJobRef(formats strfmt.Registry) error {
+
 	if swag.IsZero(m.JobRef) { // not required
 		return nil
 	}
@@ -96,48 +95,6 @@ func (m *CloudConnectionCreateResponse) validateJobRef(formats strfmt.Registry) 
 		if err := m.JobRef.Validate(formats); err != nil {
 			if ve, ok := err.(*errors.Validation); ok {
 				return ve.ValidateName("jobRef")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("jobRef")
-			}
-			return err
-		}
-	}
-
-	return nil
-}
-
-// ContextValidate validate this cloud connection create response based on the context it is used
-func (m *CloudConnectionCreateResponse) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
-	var res []error
-
-	// validation for a type composition with CloudConnection
-	if err := m.CloudConnection.ContextValidate(ctx, formats); err != nil {
-		res = append(res, err)
-	}
-
-	if err := m.contextValidateJobRef(ctx, formats); err != nil {
-		res = append(res, err)
-	}
-
-	if len(res) > 0 {
-		return errors.CompositeValidationError(res...)
-	}
-	return nil
-}
-
-func (m *CloudConnectionCreateResponse) contextValidateJobRef(ctx context.Context, formats strfmt.Registry) error {
-
-	if m.JobRef != nil {
-
-		if swag.IsZero(m.JobRef) { // not required
-			return nil
-		}
-
-		if err := m.JobRef.ContextValidate(ctx, formats); err != nil {
-			if ve, ok := err.(*errors.Validation); ok {
-				return ve.ValidateName("jobRef")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("jobRef")
 			}
 			return err
 		}

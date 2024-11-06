@@ -6,15 +6,13 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
+	strfmt "github.com/go-openapi/strfmt"
 
 	"github.com/go-openapi/errors"
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 )
 
 // SchemasObject schemas object
-//
 // swagger:model SchemasObject
 type SchemasObject struct {
 
@@ -44,6 +42,7 @@ func (m *SchemasObject) Validate(formats strfmt.Registry) error {
 }
 
 func (m *SchemasObject) validateServiceBinding(formats strfmt.Registry) error {
+
 	if swag.IsZero(m.ServiceBinding) { // not required
 		return nil
 	}
@@ -52,8 +51,6 @@ func (m *SchemasObject) validateServiceBinding(formats strfmt.Registry) error {
 		if err := m.ServiceBinding.Validate(formats); err != nil {
 			if ve, ok := err.(*errors.Validation); ok {
 				return ve.ValidateName("service_binding")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("service_binding")
 			}
 			return err
 		}
@@ -63,6 +60,7 @@ func (m *SchemasObject) validateServiceBinding(formats strfmt.Registry) error {
 }
 
 func (m *SchemasObject) validateServiceInstance(formats strfmt.Registry) error {
+
 	if swag.IsZero(m.ServiceInstance) { // not required
 		return nil
 	}
@@ -71,68 +69,6 @@ func (m *SchemasObject) validateServiceInstance(formats strfmt.Registry) error {
 		if err := m.ServiceInstance.Validate(formats); err != nil {
 			if ve, ok := err.(*errors.Validation); ok {
 				return ve.ValidateName("service_instance")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("service_instance")
-			}
-			return err
-		}
-	}
-
-	return nil
-}
-
-// ContextValidate validate this schemas object based on the context it is used
-func (m *SchemasObject) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
-	var res []error
-
-	if err := m.contextValidateServiceBinding(ctx, formats); err != nil {
-		res = append(res, err)
-	}
-
-	if err := m.contextValidateServiceInstance(ctx, formats); err != nil {
-		res = append(res, err)
-	}
-
-	if len(res) > 0 {
-		return errors.CompositeValidationError(res...)
-	}
-	return nil
-}
-
-func (m *SchemasObject) contextValidateServiceBinding(ctx context.Context, formats strfmt.Registry) error {
-
-	if m.ServiceBinding != nil {
-
-		if swag.IsZero(m.ServiceBinding) { // not required
-			return nil
-		}
-
-		if err := m.ServiceBinding.ContextValidate(ctx, formats); err != nil {
-			if ve, ok := err.(*errors.Validation); ok {
-				return ve.ValidateName("service_binding")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("service_binding")
-			}
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (m *SchemasObject) contextValidateServiceInstance(ctx context.Context, formats strfmt.Registry) error {
-
-	if m.ServiceInstance != nil {
-
-		if swag.IsZero(m.ServiceInstance) { // not required
-			return nil
-		}
-
-		if err := m.ServiceInstance.ContextValidate(ctx, formats); err != nil {
-			if ve, ok := err.(*errors.Validation); ok {
-				return ve.ValidateName("service_instance")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("service_instance")
 			}
 			return err
 		}

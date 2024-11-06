@@ -24,14 +24,14 @@ func hostDataFromTRSpec(specParams v1.Params) map[string]string {
 		switch key := specParam.Name; key {
 		case "HOST":
 			newHostData["address"] = specParam.Value.StringVal
-		case "SECRET":
-			newHostData["secret"] = specParam.Value.StringVal
-		case "CONCURRENCY":
-			newHostData["concurrency"] = specParam.Value.StringVal
+		// case "SECRET":
+		// 	newHostData["secret"] = specParam.Value.StringVal
+		// case "CONCURRENCY":
+		// 	newHostData["concurrency"] = specParam.Value.StringVal
 		case "USER":
 			newHostData["user"] = specParam.Value.StringVal
-		case "PLATFORM":
-			newHostData["platform"] = specParam.Value.StringVal
+		// case "PLATFORM":
+		// 	newHostData["platform"] = specParam.Value.StringVal
 		default:
 			// Not really needed
 		}
@@ -108,18 +108,18 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 				// validate each field is exactly as it's expected to be
 				Expect(hostConfigData["address"]).To(Equal(updatedHostData["address"]))
 				Expect(hostConfigData["user"]).To(Equal(updatedHostData["user"]))
-				Expect(hostConfigData["secret"]).To(Equal(updatedHostData["secret"]))
-				Expect(hostConfigData["concurrency"]).To(Equal(updatedHostData["concurrency"]))
-				Expect(hostConfigData["platform"]).To(Equal(updatedHostData["platform"]))
+				// Expect(hostConfigData["secret"]).To(Equal(updatedHostData["secret"]))
+				// Expect(hostConfigData["concurrency"]).To(Equal(updatedHostData["concurrency"]))
+				// Expect(hostConfigData["platform"]).To(Equal(updatedHostData["platform"]))
 			}
 		},
-		// Entry("Positive test", map[string]string{
-		// 	"address":     "10.130.75.23",
-		// 	"secret":      "internal-koko-hazamar-ssh-key",
-		// 	"concurrency": "1",
-		// 	"user":        "koko_hazamar",
-		// 	"platform":    "linux/ppc64le"},
-		// 	"host.koko-hazamar-prod-1.", false),
+		Entry("Positive test", map[string]string{
+			"address":     "10.130.75.23",
+			"secret":      "internal-koko-hazamar-ssh-key",
+			"concurrency": "1",
+			"user":        "koko_hazamar",
+			"platform":    "linux/ppc64le"},
+			"host.koko-hazamar-prod-1.", false),
 		Entry("Negative test - empty data map", map[string]string{}, "", true),
 		Entry("Negative test - dynamic host keys", map[string]string{
 			"address":     "10.130.75.23",

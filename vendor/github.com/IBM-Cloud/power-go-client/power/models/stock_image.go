@@ -6,14 +6,12 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
+	strfmt "github.com/go-openapi/strfmt"
 
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 )
 
 // StockImage Stock image detail
-//
 // swagger:model StockImage
 type StockImage struct {
 
@@ -29,11 +27,6 @@ type StockImage struct {
 
 // Validate validates this stock image
 func (m *StockImage) Validate(formats strfmt.Registry) error {
-	return nil
-}
-
-// ContextValidate validates this stock image based on context it is used
-func (m *StockImage) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

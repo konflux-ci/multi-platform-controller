@@ -6,14 +6,12 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
+	strfmt "github.com/go-openapi/strfmt"
 
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 )
 
 // PVMInstanceHealth PVM's health status details
-//
 // swagger:model PVMInstanceHealth
 type PVMInstanceHealth struct {
 
@@ -29,11 +27,6 @@ type PVMInstanceHealth struct {
 
 // Validate validates this p VM instance health
 func (m *PVMInstanceHealth) Validate(formats strfmt.Registry) error {
-	return nil
-}
-
-// ContextValidate validates this p VM instance health based on context it is used
-func (m *PVMInstanceHealth) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

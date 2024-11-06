@@ -6,14 +6,12 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
+	strfmt "github.com/go-openapi/strfmt"
 
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 )
 
 // SnapshotUpdate snapshot update
-//
 // swagger:model SnapshotUpdate
 type SnapshotUpdate struct {
 
@@ -26,11 +24,6 @@ type SnapshotUpdate struct {
 
 // Validate validates this snapshot update
 func (m *SnapshotUpdate) Validate(formats strfmt.Registry) error {
-	return nil
-}
-
-// ContextValidate validates this snapshot update based on context it is used
-func (m *SnapshotUpdate) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

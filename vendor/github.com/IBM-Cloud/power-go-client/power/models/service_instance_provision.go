@@ -6,14 +6,12 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
+	strfmt "github.com/go-openapi/strfmt"
 
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 )
 
 // ServiceInstanceProvision service instance provision
-//
 // swagger:model ServiceInstanceProvision
 type ServiceInstanceProvision struct {
 
@@ -23,11 +21,6 @@ type ServiceInstanceProvision struct {
 
 // Validate validates this service instance provision
 func (m *ServiceInstanceProvision) Validate(formats strfmt.Registry) error {
-	return nil
-}
-
-// ContextValidate validates this service instance provision based on context it is used
-func (m *ServiceInstanceProvision) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

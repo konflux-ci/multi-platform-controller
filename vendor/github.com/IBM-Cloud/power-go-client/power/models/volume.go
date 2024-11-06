@@ -6,25 +6,16 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
-	"encoding/json"
+	strfmt "github.com/go-openapi/strfmt"
 
 	"github.com/go-openapi/errors"
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 	"github.com/go-openapi/validate"
 )
 
 // Volume volume
-//
 // swagger:model Volume
 type Volume struct {
-
-	// Auxiliary volume name at storage host level
-	AuxVolumeName string `json:"auxVolumeName,omitempty"`
-
-	// true if volume is auxiliary otherwise false
-	Auxiliary *bool `json:"auxiliary,omitempty"`
 
 	// Indicates if the volume is the server's boot volume
 	BootVolume *bool `json:"bootVolume,omitempty"`
@@ -49,45 +40,23 @@ type Volume struct {
 	// Volume Group ID
 	GroupID string `json:"groupID,omitempty"`
 
-	// Amount of iops assigned to the volume
-	IoThrottleRate string `json:"ioThrottleRate,omitempty"`
-
 	// Last Update Date
 	// Required: true
 	// Format: date-time
 	LastUpdateDate *strfmt.DateTime `json:"lastUpdateDate"`
 
-	// Master volume name at storage host level
-	MasterVolumeName string `json:"masterVolumeName,omitempty"`
-
-	// Mirroring state for replication enabled volume
+	// mirroring state for replication enabled volume
 	MirroringState string `json:"mirroringState,omitempty"`
 
 	// Volume Name
 	// Required: true
 	Name *string `json:"name"`
 
-	// true if volume does not exist on storage controller, as volume has been deleted by deleting its paired volume from the mapped replication site.
-	OutOfBandDeleted bool `json:"outOfBandDeleted,omitempty"`
-
-	// indicates whether master/aux volume is playing the primary role
-	// Enum: ["master","aux"]
-	PrimaryRole string `json:"primaryRole,omitempty"`
-
 	// List of PCloud PVM Instance attached to the volume
-	PvmInstanceIDs []string `json:"pvmInstanceIDs"`
+	PvmInstanceIds []string `json:"pvmInstanceIDs"`
 
-	// True if volume is replication enabled otherwise false
-	ReplicationEnabled *bool `json:"replicationEnabled,omitempty"`
-
-	// List of replication sites for volume replication
-	ReplicationSite []string `json:"replicationSite,omitempty"`
-
-	// Replication status of a volume
+	// shows the replication status of a volume
 	ReplicationStatus string `json:"replicationStatus,omitempty"`
-
-	// type of replication(metro,global)
-	ReplicationType string `json:"replicationType,omitempty"`
 
 	// Indicates if the volume is shareable between VMs
 	Shareable *bool `json:"shareable,omitempty"`
@@ -126,10 +95,6 @@ func (m *Volume) Validate(formats strfmt.Registry) error {
 	}
 
 	if err := m.validateName(formats); err != nil {
-		res = append(res, err)
-	}
-
-	if err := m.validatePrimaryRole(formats); err != nil {
 		res = append(res, err)
 	}
 
@@ -182,48 +147,6 @@ func (m *Volume) validateName(formats strfmt.Registry) error {
 	return nil
 }
 
-var volumeTypePrimaryRolePropEnum []interface{}
-
-func init() {
-	var res []string
-	if err := json.Unmarshal([]byte(`["master","aux"]`), &res); err != nil {
-		panic(err)
-	}
-	for _, v := range res {
-		volumeTypePrimaryRolePropEnum = append(volumeTypePrimaryRolePropEnum, v)
-	}
-}
-
-const (
-
-	// VolumePrimaryRoleMaster captures enum value "master"
-	VolumePrimaryRoleMaster string = "master"
-
-	// VolumePrimaryRoleAux captures enum value "aux"
-	VolumePrimaryRoleAux string = "aux"
-)
-
-// prop value enum
-func (m *Volume) validatePrimaryRoleEnum(path, location string, value string) error {
-	if err := validate.EnumCase(path, location, value, volumeTypePrimaryRolePropEnum, true); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (m *Volume) validatePrimaryRole(formats strfmt.Registry) error {
-	if swag.IsZero(m.PrimaryRole) { // not required
-		return nil
-	}
-
-	// value enum
-	if err := m.validatePrimaryRoleEnum("primaryRole", "body", m.PrimaryRole); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (m *Volume) validateSize(formats strfmt.Registry) error {
 
 	if err := validate.Required("size", "body", m.Size); err != nil {
@@ -239,11 +162,6 @@ func (m *Volume) validateVolumeID(formats strfmt.Registry) error {
 		return err
 	}
 
-	return nil
-}
-
-// ContextValidate validates this volume based on context it is used
-func (m *Volume) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

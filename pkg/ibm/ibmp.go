@@ -6,11 +6,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/IBM-Cloud/power-go-client/power/models"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/IBM-Cloud/power-go-client/power/models"
 
 	"github.com/IBM/go-sdk-core/v5/core"
 	"github.com/go-logr/logr"
@@ -270,7 +271,7 @@ func (r IBMPowerDynamicConfig) createServerInstance(ctx context.Context, service
 		Processors:  &r.Cores,
 		ProcType:    &r.ProcType,
 		Memory:      &r.Memory,
-		NetworkIDs:  network,
+		NetworkIds:  network,
 		KeyPairName: r.Key,
 		SysType:     r.System,
 		UserData:    r.UserData,

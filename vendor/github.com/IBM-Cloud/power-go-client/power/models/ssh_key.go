@@ -6,16 +6,14 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
+	strfmt "github.com/go-openapi/strfmt"
 
 	"github.com/go-openapi/errors"
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 	"github.com/go-openapi/validate"
 )
 
 // SSHKey SSH key
-//
 // swagger:model SSHKey
 type SSHKey struct {
 
@@ -55,6 +53,7 @@ func (m *SSHKey) Validate(formats strfmt.Registry) error {
 }
 
 func (m *SSHKey) validateCreationDate(formats strfmt.Registry) error {
+
 	if swag.IsZero(m.CreationDate) { // not required
 		return nil
 	}
@@ -81,11 +80,6 @@ func (m *SSHKey) validateSSHKey(formats strfmt.Registry) error {
 		return err
 	}
 
-	return nil
-}
-
-// ContextValidate validates this SSH key based on context it is used
-func (m *SSHKey) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

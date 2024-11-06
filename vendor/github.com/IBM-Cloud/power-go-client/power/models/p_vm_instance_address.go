@@ -6,15 +6,12 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
+	strfmt "github.com/go-openapi/strfmt"
 
-	"github.com/go-openapi/errors"
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 )
 
 // PVMInstanceAddress deprecated - replaced by PVMInstanceNetwork
-//
 // swagger:model PVMInstanceAddress
 type PVMInstanceAddress struct {
 	PVMInstanceNetwork
@@ -41,35 +38,29 @@ func (m PVMInstanceAddress) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	_parts = append(_parts, aO0)
+
 	return swag.ConcatJSON(_parts...), nil
 }
 
 // Validate validates this p VM instance address
 func (m *PVMInstanceAddress) Validate(formats strfmt.Registry) error {
-	var res []error
-
-	// validation for a type composition with PVMInstanceNetwork
-	if err := m.PVMInstanceNetwork.Validate(formats); err != nil {
-		res = append(res, err)
-	}
-
-	if len(res) > 0 {
-		return errors.CompositeValidationError(res...)
-	}
 	return nil
 }
 
-// ContextValidate validate this p VM instance address based on the context it is used
-func (m *PVMInstanceAddress) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
-	var res []error
-
-	// validation for a type composition with PVMInstanceNetwork
-	if err := m.PVMInstanceNetwork.ContextValidate(ctx, formats); err != nil {
-		res = append(res, err)
+// MarshalBinary interface implementation
+func (m *PVMInstanceAddress) MarshalBinary() ([]byte, error) {
+	if m == nil {
+		return nil, nil
 	}
+	return swag.WriteJSON(m)
+}
 
-	if len(res) > 0 {
-		return errors.CompositeValidationError(res...)
+// UnmarshalBinary interface implementation
+func (m *PVMInstanceAddress) UnmarshalBinary(b []byte) error {
+	var res PVMInstanceAddress
+	if err := swag.ReadJSON(b, &res); err != nil {
+		return err
 	}
+	*m = res
 	return nil
 }

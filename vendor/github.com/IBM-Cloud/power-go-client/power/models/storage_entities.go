@@ -6,14 +6,12 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
+	strfmt "github.com/go-openapi/strfmt"
 
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 )
 
 // StorageEntities storage entities
-//
 // swagger:model StorageEntities
 type StorageEntities struct {
 
@@ -26,11 +24,6 @@ type StorageEntities struct {
 
 // Validate validates this storage entities
 func (m *StorageEntities) Validate(formats strfmt.Registry) error {
-	return nil
-}
-
-// ContextValidate validates this storage entities based on context it is used
-func (m *StorageEntities) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

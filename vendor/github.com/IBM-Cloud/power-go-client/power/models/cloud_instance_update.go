@@ -6,14 +6,12 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
+	strfmt "github.com/go-openapi/strfmt"
 
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 )
 
 // CloudInstanceUpdate cloud instance update
-//
 // swagger:model CloudInstanceUpdate
 type CloudInstanceUpdate struct {
 
@@ -35,11 +33,6 @@ type CloudInstanceUpdate struct {
 
 // Validate validates this cloud instance update
 func (m *CloudInstanceUpdate) Validate(formats strfmt.Registry) error {
-	return nil
-}
-
-// ContextValidate validates this cloud instance update based on context it is used
-func (m *CloudInstanceUpdate) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

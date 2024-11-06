@@ -6,21 +6,16 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
+	strfmt "github.com/go-openapi/strfmt"
 
 	"github.com/go-openapi/errors"
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 	"github.com/go-openapi/validate"
 )
 
 // StoragePoolCapacity Storage pool capacity
-//
 // swagger:model StoragePoolCapacity
 type StoragePoolCapacity struct {
-
-	// Available/Unused pool capacity (GB)
-	AvailableCapacity int64 `json:"availableCapacity,omitempty"`
 
 	// Maximum allocation storage size (GB)
 	// Required: true
@@ -28,12 +23,6 @@ type StoragePoolCapacity struct {
 
 	// Pool name
 	PoolName string `json:"poolName,omitempty"`
-
-	// true if storage-pool is replication enabled and can be used to manage replication enabled volumes
-	ReplicationEnabled *bool `json:"replicationEnabled,omitempty"`
-
-	// Storage host/controller for this storage pool
-	StorageHost string `json:"storageHost,omitempty"`
 
 	// Storage type of the storage pool
 	StorageType string `json:"storageType,omitempty"`
@@ -62,11 +51,6 @@ func (m *StoragePoolCapacity) validateMaxAllocationSize(formats strfmt.Registry)
 		return err
 	}
 
-	return nil
-}
-
-// ContextValidate validates this storage pool capacity based on context it is used
-func (m *StoragePoolCapacity) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

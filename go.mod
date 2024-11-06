@@ -5,15 +5,14 @@ go 1.22
 toolchain go1.22.7
 
 require (
-	github.com/IBM-Cloud/power-go-client v1.7.0
-	github.com/IBM/go-sdk-core/v5 v5.17.3
-	github.com/IBM/vpc-go-sdk v0.50.0
+	github.com/IBM-Cloud/power-go-client v1.0.83
+	github.com/IBM/go-sdk-core/v5 v5.18.1
+	github.com/IBM/vpc-go-sdk v0.61.0
 	github.com/aws/aws-sdk-go-v2 v1.27.0
 	github.com/aws/aws-sdk-go-v2/config v1.27.16
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.160.0
 	github.com/go-logr/logr v1.4.2
 	github.com/google/uuid v1.6.0
-	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/ginkgo/v2 v2.20.2
 	github.com/onsi/gomega v1.34.1
 	github.com/pkg/errors v0.9.1
@@ -23,7 +22,7 @@ require (
 	k8s.io/api v0.29.6
 	k8s.io/apiextensions-apiserver v0.29.2
 	k8s.io/apimachinery v0.29.7
-	k8s.io/cli-runtime v0.24.3
+	k8s.io/cli-runtime v0.23.18-rc.0
 	k8s.io/client-go v0.29.6
 	k8s.io/code-generator v0.29.7
 	k8s.io/klog/v2 v2.120.1
@@ -96,7 +95,6 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/nxadm/tail v1.4.8 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_model v0.6.0 // indirect
@@ -126,7 +124,6 @@ require (
 	google.golang.org/grpc v1.64.0 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
-	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/component-base v0.29.2 // indirect

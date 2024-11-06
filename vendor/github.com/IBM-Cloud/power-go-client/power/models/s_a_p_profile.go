@@ -6,17 +6,16 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
 	"encoding/json"
 
+	strfmt "github.com/go-openapi/strfmt"
+
 	"github.com/go-openapi/errors"
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 	"github.com/go-openapi/validate"
 )
 
 // SAPProfile s a p profile
-//
 // swagger:model SAPProfile
 type SAPProfile struct {
 
@@ -28,9 +27,6 @@ type SAPProfile struct {
 	// Required: true
 	Cores *int64 `json:"cores"`
 
-	// Requires full system for deployment
-	FullSystemProfile bool `json:"fullSystemProfile"`
-
 	// Amount of memory (in GB)
 	// Required: true
 	Memory *int64 `json:"memory"`
@@ -39,23 +35,10 @@ type SAPProfile struct {
 	// Required: true
 	ProfileID *string `json:"profileID"`
 
-	// SAP Application Performance Standard
-	Saps int64 `json:"saps"`
-
-	// Required smt mode for that profile
-	// Enum: [4,8]
-	SmtMode int64 `json:"smtMode"`
-
-	// List of supported systems
-	SupportedSystems []string `json:"supportedSystems"`
-
 	// Type of profile
 	// Required: true
-	// Enum: ["balanced","compute","memory","non-production","ultra-memory","small","SAP Rise Optimized"]
+	// Enum: [balanced compute memory non-production ultra-memory]
 	Type *string `json:"type"`
-
-	// List of supported workload types
-	WorkloadTypes []string `json:"workloadTypes"`
 }
 
 // Validate validates this s a p profile
@@ -75,10 +58,6 @@ func (m *SAPProfile) Validate(formats strfmt.Registry) error {
 	}
 
 	if err := m.validateProfileID(formats); err != nil {
-		res = append(res, err)
-	}
-
-	if err := m.validateSmtMode(formats); err != nil {
 		res = append(res, err)
 	}
 
@@ -128,44 +107,11 @@ func (m *SAPProfile) validateProfileID(formats strfmt.Registry) error {
 	return nil
 }
 
-var sAPProfileTypeSmtModePropEnum []interface{}
-
-func init() {
-	var res []int64
-	if err := json.Unmarshal([]byte(`[4,8]`), &res); err != nil {
-		panic(err)
-	}
-	for _, v := range res {
-		sAPProfileTypeSmtModePropEnum = append(sAPProfileTypeSmtModePropEnum, v)
-	}
-}
-
-// prop value enum
-func (m *SAPProfile) validateSmtModeEnum(path, location string, value int64) error {
-	if err := validate.EnumCase(path, location, value, sAPProfileTypeSmtModePropEnum, true); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (m *SAPProfile) validateSmtMode(formats strfmt.Registry) error {
-	if swag.IsZero(m.SmtMode) { // not required
-		return nil
-	}
-
-	// value enum
-	if err := m.validateSmtModeEnum("smtMode", "body", m.SmtMode); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 var sAPProfileTypeTypePropEnum []interface{}
 
 func init() {
 	var res []string
-	if err := json.Unmarshal([]byte(`["balanced","compute","memory","non-production","ultra-memory","small","SAP Rise Optimized"]`), &res); err != nil {
+	if err := json.Unmarshal([]byte(`["balanced","compute","memory","non-production","ultra-memory"]`), &res); err != nil {
 		panic(err)
 	}
 	for _, v := range res {
@@ -184,22 +130,16 @@ const (
 	// SAPProfileTypeMemory captures enum value "memory"
 	SAPProfileTypeMemory string = "memory"
 
-	// SAPProfileTypeNonDashProduction captures enum value "non-production"
-	SAPProfileTypeNonDashProduction string = "non-production"
+	// SAPProfileTypeNonProduction captures enum value "non-production"
+	SAPProfileTypeNonProduction string = "non-production"
 
-	// SAPProfileTypeUltraDashMemory captures enum value "ultra-memory"
-	SAPProfileTypeUltraDashMemory string = "ultra-memory"
-
-	// SAPProfileTypeSmall captures enum value "small"
-	SAPProfileTypeSmall string = "small"
-
-	// SAPProfileTypeSAPRiseOptimized captures enum value "SAP Rise Optimized"
-	SAPProfileTypeSAPRiseOptimized string = "SAP Rise Optimized"
+	// SAPProfileTypeUltraMemory captures enum value "ultra-memory"
+	SAPProfileTypeUltraMemory string = "ultra-memory"
 )
 
 // prop value enum
 func (m *SAPProfile) validateTypeEnum(path, location string, value string) error {
-	if err := validate.EnumCase(path, location, value, sAPProfileTypeTypePropEnum, true); err != nil {
+	if err := validate.Enum(path, location, value, sAPProfileTypeTypePropEnum); err != nil {
 		return err
 	}
 	return nil
@@ -216,11 +156,6 @@ func (m *SAPProfile) validateType(formats strfmt.Registry) error {
 		return err
 	}
 
-	return nil
-}
-
-// ContextValidate validates this s a p profile based on context it is used
-func (m *SAPProfile) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

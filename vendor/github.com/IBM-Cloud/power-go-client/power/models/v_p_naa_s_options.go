@@ -6,16 +6,14 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
+	strfmt "github.com/go-openapi/strfmt"
 
 	"github.com/go-openapi/errors"
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 	"github.com/go-openapi/validate"
 )
 
 // VPNaaSOptions v p naa s options
-//
 // swagger:model VPNaaSOptions
 type VPNaaSOptions struct {
 
@@ -80,8 +78,6 @@ func (m *VPNaaSOptions) validateDeadPeerDetection(formats strfmt.Registry) error
 		if err := m.DeadPeerDetection.Validate(formats); err != nil {
 			if ve, ok := err.(*errors.Validation); ok {
 				return ve.ValidateName("deadPeerDetection")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("deadPeerDetection")
 			}
 			return err
 		}
@@ -100,8 +96,6 @@ func (m *VPNaaSOptions) validateIkePolicyOptions(formats strfmt.Registry) error 
 		if err := m.IkePolicyOptions.Validate(formats); err != nil {
 			if ve, ok := err.(*errors.Validation); ok {
 				return ve.ValidateName("ikePolicyOptions")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("ikePolicyOptions")
 			}
 			return err
 		}
@@ -120,8 +114,6 @@ func (m *VPNaaSOptions) validateIkePolicyTemplate(formats strfmt.Registry) error
 		if err := m.IkePolicyTemplate.Validate(formats); err != nil {
 			if ve, ok := err.(*errors.Validation); ok {
 				return ve.ValidateName("ikePolicyTemplate")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("ikePolicyTemplate")
 			}
 			return err
 		}
@@ -140,8 +132,6 @@ func (m *VPNaaSOptions) validateIPSecPolicyOptions(formats strfmt.Registry) erro
 		if err := m.IPSecPolicyOptions.Validate(formats); err != nil {
 			if ve, ok := err.(*errors.Validation); ok {
 				return ve.ValidateName("ipSecPolicyOptions")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("ipSecPolicyOptions")
 			}
 			return err
 		}
@@ -160,123 +150,6 @@ func (m *VPNaaSOptions) validateIPSecPolicyTemplate(formats strfmt.Registry) err
 		if err := m.IPSecPolicyTemplate.Validate(formats); err != nil {
 			if ve, ok := err.(*errors.Validation); ok {
 				return ve.ValidateName("ipSecPolicyTemplate")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("ipSecPolicyTemplate")
-			}
-			return err
-		}
-	}
-
-	return nil
-}
-
-// ContextValidate validate this v p naa s options based on the context it is used
-func (m *VPNaaSOptions) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
-	var res []error
-
-	if err := m.contextValidateDeadPeerDetection(ctx, formats); err != nil {
-		res = append(res, err)
-	}
-
-	if err := m.contextValidateIkePolicyOptions(ctx, formats); err != nil {
-		res = append(res, err)
-	}
-
-	if err := m.contextValidateIkePolicyTemplate(ctx, formats); err != nil {
-		res = append(res, err)
-	}
-
-	if err := m.contextValidateIPSecPolicyOptions(ctx, formats); err != nil {
-		res = append(res, err)
-	}
-
-	if err := m.contextValidateIPSecPolicyTemplate(ctx, formats); err != nil {
-		res = append(res, err)
-	}
-
-	if len(res) > 0 {
-		return errors.CompositeValidationError(res...)
-	}
-	return nil
-}
-
-func (m *VPNaaSOptions) contextValidateDeadPeerDetection(ctx context.Context, formats strfmt.Registry) error {
-
-	if m.DeadPeerDetection != nil {
-
-		if err := m.DeadPeerDetection.ContextValidate(ctx, formats); err != nil {
-			if ve, ok := err.(*errors.Validation); ok {
-				return ve.ValidateName("deadPeerDetection")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("deadPeerDetection")
-			}
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (m *VPNaaSOptions) contextValidateIkePolicyOptions(ctx context.Context, formats strfmt.Registry) error {
-
-	if m.IkePolicyOptions != nil {
-
-		if err := m.IkePolicyOptions.ContextValidate(ctx, formats); err != nil {
-			if ve, ok := err.(*errors.Validation); ok {
-				return ve.ValidateName("ikePolicyOptions")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("ikePolicyOptions")
-			}
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (m *VPNaaSOptions) contextValidateIkePolicyTemplate(ctx context.Context, formats strfmt.Registry) error {
-
-	if m.IkePolicyTemplate != nil {
-
-		if err := m.IkePolicyTemplate.ContextValidate(ctx, formats); err != nil {
-			if ve, ok := err.(*errors.Validation); ok {
-				return ve.ValidateName("ikePolicyTemplate")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("ikePolicyTemplate")
-			}
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (m *VPNaaSOptions) contextValidateIPSecPolicyOptions(ctx context.Context, formats strfmt.Registry) error {
-
-	if m.IPSecPolicyOptions != nil {
-
-		if err := m.IPSecPolicyOptions.ContextValidate(ctx, formats); err != nil {
-			if ve, ok := err.(*errors.Validation); ok {
-				return ve.ValidateName("ipSecPolicyOptions")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("ipSecPolicyOptions")
-			}
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (m *VPNaaSOptions) contextValidateIPSecPolicyTemplate(ctx context.Context, formats strfmt.Registry) error {
-
-	if m.IPSecPolicyTemplate != nil {
-
-		if err := m.IPSecPolicyTemplate.ContextValidate(ctx, formats); err != nil {
-			if ve, ok := err.(*errors.Validation); ok {
-				return ve.ValidateName("ipSecPolicyTemplate")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("ipSecPolicyTemplate")
 			}
 			return err
 		}

@@ -6,17 +6,16 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
 	"encoding/json"
 
+	strfmt "github.com/go-openapi/strfmt"
+
 	"github.com/go-openapi/errors"
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 	"github.com/go-openapi/validate"
 )
 
 // StoragePool storage pool
-//
 // swagger:model StoragePool
 type StoragePool struct {
 
@@ -37,7 +36,7 @@ type StoragePool struct {
 
 	// state of storage pool
 	// Required: true
-	// Enum: ["closed","opened"]
+	// Enum: [closed opened]
 	State *string `json:"state"`
 
 	// type of storage pool
@@ -107,6 +106,7 @@ func (m *StoragePool) validateName(formats strfmt.Registry) error {
 }
 
 func (m *StoragePool) validateOverrideThresholds(formats strfmt.Registry) error {
+
 	if swag.IsZero(m.OverrideThresholds) { // not required
 		return nil
 	}
@@ -115,8 +115,6 @@ func (m *StoragePool) validateOverrideThresholds(formats strfmt.Registry) error 
 		if err := m.OverrideThresholds.Validate(formats); err != nil {
 			if ve, ok := err.(*errors.Validation); ok {
 				return ve.ValidateName("overrideThresholds")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("overrideThresholds")
 			}
 			return err
 		}
@@ -148,7 +146,7 @@ const (
 
 // prop value enum
 func (m *StoragePool) validateStateEnum(path, location string, value string) error {
-	if err := validate.EnumCase(path, location, value, storagePoolTypeStatePropEnum, true); err != nil {
+	if err := validate.Enum(path, location, value, storagePoolTypeStatePropEnum); err != nil {
 		return err
 	}
 	return nil
@@ -172,41 +170,6 @@ func (m *StoragePool) validateType(formats strfmt.Registry) error {
 
 	if err := validate.Required("type", "body", m.Type); err != nil {
 		return err
-	}
-
-	return nil
-}
-
-// ContextValidate validate this storage pool based on the context it is used
-func (m *StoragePool) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
-	var res []error
-
-	if err := m.contextValidateOverrideThresholds(ctx, formats); err != nil {
-		res = append(res, err)
-	}
-
-	if len(res) > 0 {
-		return errors.CompositeValidationError(res...)
-	}
-	return nil
-}
-
-func (m *StoragePool) contextValidateOverrideThresholds(ctx context.Context, formats strfmt.Registry) error {
-
-	if m.OverrideThresholds != nil {
-
-		if swag.IsZero(m.OverrideThresholds) { // not required
-			return nil
-		}
-
-		if err := m.OverrideThresholds.ContextValidate(ctx, formats); err != nil {
-			if ve, ok := err.(*errors.Validation); ok {
-				return ve.ValidateName("overrideThresholds")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("overrideThresholds")
-			}
-			return err
-		}
 	}
 
 	return nil

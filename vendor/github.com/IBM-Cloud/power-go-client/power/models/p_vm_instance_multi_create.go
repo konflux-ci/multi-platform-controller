@@ -6,29 +6,28 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
 	"encoding/json"
 
+	strfmt "github.com/go-openapi/strfmt"
+
 	"github.com/go-openapi/errors"
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 	"github.com/go-openapi/validate"
 )
 
 // PVMInstanceMultiCreate p VM instance multi create
-//
 // swagger:model PVMInstanceMultiCreate
 type PVMInstanceMultiCreate struct {
 
 	// Affinity policy for pvm-instances being created; affinity for the same host, anti-affinity for different hosts, none for no preference
-	// Enum: ["affinity","anti-affinity","none"]
+	// Enum: [affinity anti-affinity none]
 	AffinityPolicy *string `json:"affinityPolicy,omitempty"`
 
 	// Number of pvm-instances to create
 	Count int64 `json:"count,omitempty"`
 
 	// Where to place the numerical number of the multi-created instance
-	// Enum: ["prefix","suffix"]
+	// Enum: [prefix suffix]
 	Numerical *string `json:"numerical,omitempty"`
 }
 
@@ -67,8 +66,8 @@ const (
 	// PVMInstanceMultiCreateAffinityPolicyAffinity captures enum value "affinity"
 	PVMInstanceMultiCreateAffinityPolicyAffinity string = "affinity"
 
-	// PVMInstanceMultiCreateAffinityPolicyAntiDashAffinity captures enum value "anti-affinity"
-	PVMInstanceMultiCreateAffinityPolicyAntiDashAffinity string = "anti-affinity"
+	// PVMInstanceMultiCreateAffinityPolicyAntiAffinity captures enum value "anti-affinity"
+	PVMInstanceMultiCreateAffinityPolicyAntiAffinity string = "anti-affinity"
 
 	// PVMInstanceMultiCreateAffinityPolicyNone captures enum value "none"
 	PVMInstanceMultiCreateAffinityPolicyNone string = "none"
@@ -76,13 +75,14 @@ const (
 
 // prop value enum
 func (m *PVMInstanceMultiCreate) validateAffinityPolicyEnum(path, location string, value string) error {
-	if err := validate.EnumCase(path, location, value, pVmInstanceMultiCreateTypeAffinityPolicyPropEnum, true); err != nil {
+	if err := validate.Enum(path, location, value, pVmInstanceMultiCreateTypeAffinityPolicyPropEnum); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (m *PVMInstanceMultiCreate) validateAffinityPolicy(formats strfmt.Registry) error {
+
 	if swag.IsZero(m.AffinityPolicy) { // not required
 		return nil
 	}
@@ -118,13 +118,14 @@ const (
 
 // prop value enum
 func (m *PVMInstanceMultiCreate) validateNumericalEnum(path, location string, value string) error {
-	if err := validate.EnumCase(path, location, value, pVmInstanceMultiCreateTypeNumericalPropEnum, true); err != nil {
+	if err := validate.Enum(path, location, value, pVmInstanceMultiCreateTypeNumericalPropEnum); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (m *PVMInstanceMultiCreate) validateNumerical(formats strfmt.Registry) error {
+
 	if swag.IsZero(m.Numerical) { // not required
 		return nil
 	}
@@ -134,11 +135,6 @@ func (m *PVMInstanceMultiCreate) validateNumerical(formats strfmt.Registry) erro
 		return err
 	}
 
-	return nil
-}
-
-// ContextValidate validates this p VM instance multi create based on context it is used
-func (m *PVMInstanceMultiCreate) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

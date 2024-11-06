@@ -6,32 +6,27 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
+	strfmt "github.com/go-openapi/strfmt"
 
 	"github.com/go-openapi/errors"
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 	"github.com/go-openapi/validate"
 )
 
 // VolumesAttach volumes attach
-//
 // swagger:model volumesAttach
 type VolumesAttach struct {
 
-	// Primary Boot Volume Id
-	BootVolumeID string `json:"bootVolumeID,omitempty"`
-
 	// List of volumes to be attached to a PVM instance
 	// Required: true
-	VolumeIDs []string `json:"volumeIDs"`
+	VolumeIds []string `json:"volumeIDs"`
 }
 
 // Validate validates this volumes attach
 func (m *VolumesAttach) Validate(formats strfmt.Registry) error {
 	var res []error
 
-	if err := m.validateVolumeIDs(formats); err != nil {
+	if err := m.validateVolumeIds(formats); err != nil {
 		res = append(res, err)
 	}
 
@@ -41,17 +36,12 @@ func (m *VolumesAttach) Validate(formats strfmt.Registry) error {
 	return nil
 }
 
-func (m *VolumesAttach) validateVolumeIDs(formats strfmt.Registry) error {
+func (m *VolumesAttach) validateVolumeIds(formats strfmt.Registry) error {
 
-	if err := validate.Required("volumeIDs", "body", m.VolumeIDs); err != nil {
+	if err := validate.Required("volumeIDs", "body", m.VolumeIds); err != nil {
 		return err
 	}
 
-	return nil
-}
-
-// ContextValidate validates this volumes attach based on context it is used
-func (m *VolumesAttach) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

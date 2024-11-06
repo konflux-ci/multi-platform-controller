@@ -6,16 +6,14 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
+	strfmt "github.com/go-openapi/strfmt"
 
 	"github.com/go-openapi/errors"
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 	"github.com/go-openapi/validate"
 )
 
 // VolumesCloneAsyncRequest volumes clone async request
-//
 // swagger:model VolumesCloneAsyncRequest
 type VolumesCloneAsyncRequest struct {
 
@@ -26,23 +24,13 @@ type VolumesCloneAsyncRequest struct {
 	//   Example volume names using name="volume-abcdef"
 	//     single volume clone will be named "clone-volume-abcdef-83081"
 	//     multi volume clone will be named "clone-volume-abcdef-73721-1", "clone-volume-abcdef-73721-2", ...
-	// For multiple volume clone, the provided name will be truncated to the first 20 characters.
 	//
 	// Required: true
 	Name *string `json:"name"`
 
-	// Cloned volume will be non replication enabled if it is set to false. By default, the replication property of the source volume will be used to determine the replication property of the cloned target volume.
-	TargetReplicationEnabled *bool `json:"targetReplicationEnabled,omitempty"`
-
-	// Target storage tier for the cloned volumes. Use to clone a set of volumes from one storage tier
-	// to a different storage tier. Cloned volumes must remain in the same storage pool as
-	// the source volumes.
-	//
-	TargetStorageTier string `json:"targetStorageTier,omitempty"`
-
 	// List of volumes to be cloned
 	// Required: true
-	VolumeIDs []string `json:"volumeIDs"`
+	VolumeIds []string `json:"volumeIDs"`
 }
 
 // Validate validates this volumes clone async request
@@ -53,7 +41,7 @@ func (m *VolumesCloneAsyncRequest) Validate(formats strfmt.Registry) error {
 		res = append(res, err)
 	}
 
-	if err := m.validateVolumeIDs(formats); err != nil {
+	if err := m.validateVolumeIds(formats); err != nil {
 		res = append(res, err)
 	}
 
@@ -72,17 +60,12 @@ func (m *VolumesCloneAsyncRequest) validateName(formats strfmt.Registry) error {
 	return nil
 }
 
-func (m *VolumesCloneAsyncRequest) validateVolumeIDs(formats strfmt.Registry) error {
+func (m *VolumesCloneAsyncRequest) validateVolumeIds(formats strfmt.Registry) error {
 
-	if err := validate.Required("volumeIDs", "body", m.VolumeIDs); err != nil {
+	if err := validate.Required("volumeIDs", "body", m.VolumeIds); err != nil {
 		return err
 	}
 
-	return nil
-}
-
-// ContextValidate validates this volumes clone async request based on context it is used
-func (m *VolumesCloneAsyncRequest) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

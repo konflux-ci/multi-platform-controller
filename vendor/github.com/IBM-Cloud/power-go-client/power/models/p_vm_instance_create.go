@@ -6,26 +6,19 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
 	"encoding/json"
 	"strconv"
 
+	strfmt "github.com/go-openapi/strfmt"
+
 	"github.com/go-openapi/errors"
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 	"github.com/go-openapi/validate"
 )
 
 // PVMInstanceCreate p VM instance create
-//
 // swagger:model PVMInstanceCreate
 type PVMInstanceCreate struct {
-
-	// The deployment of a dedicated host
-	DeploymentTarget *DeploymentTarget `json:"deploymentTarget,omitempty"`
-
-	// The custom deployment type
-	DeploymentType string `json:"deploymentType,omitempty"`
 
 	// Image ID of the image to use for the server
 	// Required: true
@@ -41,11 +34,11 @@ type PVMInstanceCreate struct {
 	// Required: true
 	Memory *float64 `json:"memory"`
 
-	// (deprecated - replaced by pinPolicy) Indicates if the server is allowed to migrate between hosts
+	// Indicates if the server is allowed to migrate between hosts
 	Migratable *bool `json:"migratable,omitempty"`
 
 	// (deprecated - replaced by networks) List of Network IDs
-	NetworkIDs []string `json:"networkIDs"`
+	NetworkIds []string `json:"networkIDs"`
 
 	// The pvm instance networks information
 	Networks []*PVMInstanceAddNetwork `json:"networks"`
@@ -58,7 +51,7 @@ type PVMInstanceCreate struct {
 
 	// Processor type (dedicated, shared, capped)
 	// Required: true
-	// Enum: ["dedicated","shared","capped"]
+	// Enum: [dedicated shared capped]
 	ProcType *string `json:"procType"`
 
 	// Number of processors allocated
@@ -66,11 +59,11 @@ type PVMInstanceCreate struct {
 	Processors *float64 `json:"processors"`
 
 	// Affinity policy for replicants being created; affinity for the same host, anti-affinity for different hosts, none for no preference
-	// Enum: ["affinity","anti-affinity","none"]
+	// Enum: [affinity anti-affinity none]
 	ReplicantAffinityPolicy *string `json:"replicantAffinityPolicy,omitempty"`
 
 	// How to name the created vms
-	// Enum: ["prefix","suffix"]
+	// Enum: [prefix suffix]
 	ReplicantNamingScheme *string `json:"replicantNamingScheme,omitempty"`
 
 	// Number of duplicate instances to create in this request
@@ -80,52 +73,38 @@ type PVMInstanceCreate struct {
 	// Required: true
 	ServerName *string `json:"serverName"`
 
-	// The shared processor pool for server deployment
-	SharedProcessorPool string `json:"sharedProcessorPool,omitempty"`
-
 	// The pvm instance Software Licenses
 	SoftwareLicenses *SoftwareLicenses `json:"softwareLicenses,omitempty"`
 
-	// The storage affinity data; ignored if storagePool is provided; Only valid when you deploy one of the IBM supplied stock images. Storage pool for a custom image (an imported image or an image that is created from a PVMInstance capture) defaults to the storage pool the image was created in
+	// The storage affinity data; ignored if storagePool is provided; Only valid when you deploy one of the IBM supplied stock images. Storage type and pool for a custom image (an imported image or an image that is created from a PVMInstance capture) defaults to the storage type and pool the image was created in
 	StorageAffinity *StorageAffinity `json:"storageAffinity,omitempty"`
 
 	// The storage connection type
-	// Enum: ["vSCSI","maxVolumeSupport"]
+	// Enum: [vSCSI]
 	StorageConnection string `json:"storageConnection,omitempty"`
 
-	// The storage connection type
-	// Enum: ["vSCSI","maxVolumeSupport"]
-	StorageConnectionV2 string `json:"storageConnectionV2,omitempty"`
-
-	// Storage Pool for server deployment; if provided then storageAffinity will be ignored; Only valid when you deploy one of the IBM supplied stock images. Storage pool for a custom image (an imported image or an image that is created from a PVMInstance capture) defaults to the storage pool the image was created in
+	// Storage Pool for server deployment; if provided then storageAffinity and storageType will be ignored; Only valid when you deploy one of the IBM supplied stock images. Storage type and pool for a custom image (an imported image or an image that is created from a PVMInstance capture) defaults to the storage type and pool the image was created in
 	StoragePool string `json:"storagePool,omitempty"`
 
-	// Indicates if all volumes attached to the server must reside in the same storage pool; If set to false then volumes from any storage type and pool can be attached to the PVMInstance; Impacts PVMInstance snapshot, capture, and clone, for capture and clone - only data volumes that are of the same storage type and in the same storage pool of the PVMInstance's boot volume can be included; for snapshot - all data volumes to be included in the snapshot must reside in the same storage type and pool. Once set to false, cannot be set back to true unless all volumes attached reside in the same storage type and pool.
-	StoragePoolAffinity *bool `json:"storagePoolAffinity,omitempty"`
-
-	// Storage type for server deployment; if storageType is not provided the storage type will default to 'tier3'.
+	// Storage type for server deployment; will be ignored if storagePool or storageAffinity is provided; Only valid when you deploy one of the IBM supplied stock images. Storage type and pool for a custom image (an imported image or an image that is created from a PVMInstance capture) defaults to the storage type and pool the image was created in
 	StorageType string `json:"storageType,omitempty"`
 
 	// System type used to host the instance
 	SysType string `json:"sysType,omitempty"`
 
-	// Cloud init user defined data; For FLS, only cloud-config instance-data is supported and data must not be compressed or exceed 63K
+	// Cloud init user defined data
 	UserData string `json:"userData,omitempty"`
 
 	// The pvm instance virtual CPU information
 	VirtualCores *VirtualCores `json:"virtualCores,omitempty"`
 
 	// List of volume IDs
-	VolumeIDs []string `json:"volumeIDs"`
+	VolumeIds []string `json:"volumeIDs"`
 }
 
 // Validate validates this p VM instance create
 func (m *PVMInstanceCreate) Validate(formats strfmt.Registry) error {
 	var res []error
-
-	if err := m.validateDeploymentTarget(formats); err != nil {
-		res = append(res, err)
-	}
 
 	if err := m.validateImageID(formats); err != nil {
 		res = append(res, err)
@@ -175,10 +154,6 @@ func (m *PVMInstanceCreate) Validate(formats strfmt.Registry) error {
 		res = append(res, err)
 	}
 
-	if err := m.validateStorageConnectionV2(formats); err != nil {
-		res = append(res, err)
-	}
-
 	if err := m.validateVirtualCores(formats); err != nil {
 		res = append(res, err)
 	}
@@ -186,25 +161,6 @@ func (m *PVMInstanceCreate) Validate(formats strfmt.Registry) error {
 	if len(res) > 0 {
 		return errors.CompositeValidationError(res...)
 	}
-	return nil
-}
-
-func (m *PVMInstanceCreate) validateDeploymentTarget(formats strfmt.Registry) error {
-	if swag.IsZero(m.DeploymentTarget) { // not required
-		return nil
-	}
-
-	if m.DeploymentTarget != nil {
-		if err := m.DeploymentTarget.Validate(formats); err != nil {
-			if ve, ok := err.(*errors.Validation); ok {
-				return ve.ValidateName("deploymentTarget")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("deploymentTarget")
-			}
-			return err
-		}
-	}
-
 	return nil
 }
 
@@ -227,6 +183,7 @@ func (m *PVMInstanceCreate) validateMemory(formats strfmt.Registry) error {
 }
 
 func (m *PVMInstanceCreate) validateNetworks(formats strfmt.Registry) error {
+
 	if swag.IsZero(m.Networks) { // not required
 		return nil
 	}
@@ -240,8 +197,6 @@ func (m *PVMInstanceCreate) validateNetworks(formats strfmt.Registry) error {
 			if err := m.Networks[i].Validate(formats); err != nil {
 				if ve, ok := err.(*errors.Validation); ok {
 					return ve.ValidateName("networks" + "." + strconv.Itoa(i))
-				} else if ce, ok := err.(*errors.CompositeError); ok {
-					return ce.ValidateName("networks" + "." + strconv.Itoa(i))
 				}
 				return err
 			}
@@ -253,6 +208,7 @@ func (m *PVMInstanceCreate) validateNetworks(formats strfmt.Registry) error {
 }
 
 func (m *PVMInstanceCreate) validatePinPolicy(formats strfmt.Registry) error {
+
 	if swag.IsZero(m.PinPolicy) { // not required
 		return nil
 	}
@@ -260,8 +216,6 @@ func (m *PVMInstanceCreate) validatePinPolicy(formats strfmt.Registry) error {
 	if err := m.PinPolicy.Validate(formats); err != nil {
 		if ve, ok := err.(*errors.Validation); ok {
 			return ve.ValidateName("pinPolicy")
-		} else if ce, ok := err.(*errors.CompositeError); ok {
-			return ce.ValidateName("pinPolicy")
 		}
 		return err
 	}
@@ -295,7 +249,7 @@ const (
 
 // prop value enum
 func (m *PVMInstanceCreate) validateProcTypeEnum(path, location string, value string) error {
-	if err := validate.EnumCase(path, location, value, pVmInstanceCreateTypeProcTypePropEnum, true); err != nil {
+	if err := validate.Enum(path, location, value, pVmInstanceCreateTypeProcTypePropEnum); err != nil {
 		return err
 	}
 	return nil
@@ -341,8 +295,8 @@ const (
 	// PVMInstanceCreateReplicantAffinityPolicyAffinity captures enum value "affinity"
 	PVMInstanceCreateReplicantAffinityPolicyAffinity string = "affinity"
 
-	// PVMInstanceCreateReplicantAffinityPolicyAntiDashAffinity captures enum value "anti-affinity"
-	PVMInstanceCreateReplicantAffinityPolicyAntiDashAffinity string = "anti-affinity"
+	// PVMInstanceCreateReplicantAffinityPolicyAntiAffinity captures enum value "anti-affinity"
+	PVMInstanceCreateReplicantAffinityPolicyAntiAffinity string = "anti-affinity"
 
 	// PVMInstanceCreateReplicantAffinityPolicyNone captures enum value "none"
 	PVMInstanceCreateReplicantAffinityPolicyNone string = "none"
@@ -350,13 +304,14 @@ const (
 
 // prop value enum
 func (m *PVMInstanceCreate) validateReplicantAffinityPolicyEnum(path, location string, value string) error {
-	if err := validate.EnumCase(path, location, value, pVmInstanceCreateTypeReplicantAffinityPolicyPropEnum, true); err != nil {
+	if err := validate.Enum(path, location, value, pVmInstanceCreateTypeReplicantAffinityPolicyPropEnum); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (m *PVMInstanceCreate) validateReplicantAffinityPolicy(formats strfmt.Registry) error {
+
 	if swag.IsZero(m.ReplicantAffinityPolicy) { // not required
 		return nil
 	}
@@ -392,13 +347,14 @@ const (
 
 // prop value enum
 func (m *PVMInstanceCreate) validateReplicantNamingSchemeEnum(path, location string, value string) error {
-	if err := validate.EnumCase(path, location, value, pVmInstanceCreateTypeReplicantNamingSchemePropEnum, true); err != nil {
+	if err := validate.Enum(path, location, value, pVmInstanceCreateTypeReplicantNamingSchemePropEnum); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (m *PVMInstanceCreate) validateReplicantNamingScheme(formats strfmt.Registry) error {
+
 	if swag.IsZero(m.ReplicantNamingScheme) { // not required
 		return nil
 	}
@@ -421,6 +377,7 @@ func (m *PVMInstanceCreate) validateServerName(formats strfmt.Registry) error {
 }
 
 func (m *PVMInstanceCreate) validateSoftwareLicenses(formats strfmt.Registry) error {
+
 	if swag.IsZero(m.SoftwareLicenses) { // not required
 		return nil
 	}
@@ -429,8 +386,6 @@ func (m *PVMInstanceCreate) validateSoftwareLicenses(formats strfmt.Registry) er
 		if err := m.SoftwareLicenses.Validate(formats); err != nil {
 			if ve, ok := err.(*errors.Validation); ok {
 				return ve.ValidateName("softwareLicenses")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("softwareLicenses")
 			}
 			return err
 		}
@@ -440,6 +395,7 @@ func (m *PVMInstanceCreate) validateSoftwareLicenses(formats strfmt.Registry) er
 }
 
 func (m *PVMInstanceCreate) validateStorageAffinity(formats strfmt.Registry) error {
+
 	if swag.IsZero(m.StorageAffinity) { // not required
 		return nil
 	}
@@ -448,8 +404,6 @@ func (m *PVMInstanceCreate) validateStorageAffinity(formats strfmt.Registry) err
 		if err := m.StorageAffinity.Validate(formats); err != nil {
 			if ve, ok := err.(*errors.Validation); ok {
 				return ve.ValidateName("storageAffinity")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("storageAffinity")
 			}
 			return err
 		}
@@ -462,7 +416,7 @@ var pVmInstanceCreateTypeStorageConnectionPropEnum []interface{}
 
 func init() {
 	var res []string
-	if err := json.Unmarshal([]byte(`["vSCSI","maxVolumeSupport"]`), &res); err != nil {
+	if err := json.Unmarshal([]byte(`["vSCSI"]`), &res); err != nil {
 		panic(err)
 	}
 	for _, v := range res {
@@ -474,20 +428,18 @@ const (
 
 	// PVMInstanceCreateStorageConnectionVSCSI captures enum value "vSCSI"
 	PVMInstanceCreateStorageConnectionVSCSI string = "vSCSI"
-
-	// PVMInstanceCreateStorageConnectionMaxVolumeSupport captures enum value "maxVolumeSupport"
-	PVMInstanceCreateStorageConnectionMaxVolumeSupport string = "maxVolumeSupport"
 )
 
 // prop value enum
 func (m *PVMInstanceCreate) validateStorageConnectionEnum(path, location string, value string) error {
-	if err := validate.EnumCase(path, location, value, pVmInstanceCreateTypeStorageConnectionPropEnum, true); err != nil {
+	if err := validate.Enum(path, location, value, pVmInstanceCreateTypeStorageConnectionPropEnum); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (m *PVMInstanceCreate) validateStorageConnection(formats strfmt.Registry) error {
+
 	if swag.IsZero(m.StorageConnection) { // not required
 		return nil
 	}
@@ -500,49 +452,8 @@ func (m *PVMInstanceCreate) validateStorageConnection(formats strfmt.Registry) e
 	return nil
 }
 
-var pVmInstanceCreateTypeStorageConnectionV2PropEnum []interface{}
-
-func init() {
-	var res []string
-	if err := json.Unmarshal([]byte(`["vSCSI","maxVolumeSupport"]`), &res); err != nil {
-		panic(err)
-	}
-	for _, v := range res {
-		pVmInstanceCreateTypeStorageConnectionV2PropEnum = append(pVmInstanceCreateTypeStorageConnectionV2PropEnum, v)
-	}
-}
-
-const (
-
-	// PVMInstanceCreateStorageConnectionV2VSCSI captures enum value "vSCSI"
-	PVMInstanceCreateStorageConnectionV2VSCSI string = "vSCSI"
-
-	// PVMInstanceCreateStorageConnectionV2MaxVolumeSupport captures enum value "maxVolumeSupport"
-	PVMInstanceCreateStorageConnectionV2MaxVolumeSupport string = "maxVolumeSupport"
-)
-
-// prop value enum
-func (m *PVMInstanceCreate) validateStorageConnectionV2Enum(path, location string, value string) error {
-	if err := validate.EnumCase(path, location, value, pVmInstanceCreateTypeStorageConnectionV2PropEnum, true); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (m *PVMInstanceCreate) validateStorageConnectionV2(formats strfmt.Registry) error {
-	if swag.IsZero(m.StorageConnectionV2) { // not required
-		return nil
-	}
-
-	// value enum
-	if err := m.validateStorageConnectionV2Enum("storageConnectionV2", "body", m.StorageConnectionV2); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (m *PVMInstanceCreate) validateVirtualCores(formats strfmt.Registry) error {
+
 	if swag.IsZero(m.VirtualCores) { // not required
 		return nil
 	}
@@ -551,169 +462,6 @@ func (m *PVMInstanceCreate) validateVirtualCores(formats strfmt.Registry) error 
 		if err := m.VirtualCores.Validate(formats); err != nil {
 			if ve, ok := err.(*errors.Validation); ok {
 				return ve.ValidateName("virtualCores")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("virtualCores")
-			}
-			return err
-		}
-	}
-
-	return nil
-}
-
-// ContextValidate validate this p VM instance create based on the context it is used
-func (m *PVMInstanceCreate) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
-	var res []error
-
-	if err := m.contextValidateDeploymentTarget(ctx, formats); err != nil {
-		res = append(res, err)
-	}
-
-	if err := m.contextValidateNetworks(ctx, formats); err != nil {
-		res = append(res, err)
-	}
-
-	if err := m.contextValidatePinPolicy(ctx, formats); err != nil {
-		res = append(res, err)
-	}
-
-	if err := m.contextValidateSoftwareLicenses(ctx, formats); err != nil {
-		res = append(res, err)
-	}
-
-	if err := m.contextValidateStorageAffinity(ctx, formats); err != nil {
-		res = append(res, err)
-	}
-
-	if err := m.contextValidateVirtualCores(ctx, formats); err != nil {
-		res = append(res, err)
-	}
-
-	if len(res) > 0 {
-		return errors.CompositeValidationError(res...)
-	}
-	return nil
-}
-
-func (m *PVMInstanceCreate) contextValidateDeploymentTarget(ctx context.Context, formats strfmt.Registry) error {
-
-	if m.DeploymentTarget != nil {
-
-		if swag.IsZero(m.DeploymentTarget) { // not required
-			return nil
-		}
-
-		if err := m.DeploymentTarget.ContextValidate(ctx, formats); err != nil {
-			if ve, ok := err.(*errors.Validation); ok {
-				return ve.ValidateName("deploymentTarget")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("deploymentTarget")
-			}
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (m *PVMInstanceCreate) contextValidateNetworks(ctx context.Context, formats strfmt.Registry) error {
-
-	for i := 0; i < len(m.Networks); i++ {
-
-		if m.Networks[i] != nil {
-
-			if swag.IsZero(m.Networks[i]) { // not required
-				return nil
-			}
-
-			if err := m.Networks[i].ContextValidate(ctx, formats); err != nil {
-				if ve, ok := err.(*errors.Validation); ok {
-					return ve.ValidateName("networks" + "." + strconv.Itoa(i))
-				} else if ce, ok := err.(*errors.CompositeError); ok {
-					return ce.ValidateName("networks" + "." + strconv.Itoa(i))
-				}
-				return err
-			}
-		}
-
-	}
-
-	return nil
-}
-
-func (m *PVMInstanceCreate) contextValidatePinPolicy(ctx context.Context, formats strfmt.Registry) error {
-
-	if swag.IsZero(m.PinPolicy) { // not required
-		return nil
-	}
-
-	if err := m.PinPolicy.ContextValidate(ctx, formats); err != nil {
-		if ve, ok := err.(*errors.Validation); ok {
-			return ve.ValidateName("pinPolicy")
-		} else if ce, ok := err.(*errors.CompositeError); ok {
-			return ce.ValidateName("pinPolicy")
-		}
-		return err
-	}
-
-	return nil
-}
-
-func (m *PVMInstanceCreate) contextValidateSoftwareLicenses(ctx context.Context, formats strfmt.Registry) error {
-
-	if m.SoftwareLicenses != nil {
-
-		if swag.IsZero(m.SoftwareLicenses) { // not required
-			return nil
-		}
-
-		if err := m.SoftwareLicenses.ContextValidate(ctx, formats); err != nil {
-			if ve, ok := err.(*errors.Validation); ok {
-				return ve.ValidateName("softwareLicenses")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("softwareLicenses")
-			}
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (m *PVMInstanceCreate) contextValidateStorageAffinity(ctx context.Context, formats strfmt.Registry) error {
-
-	if m.StorageAffinity != nil {
-
-		if swag.IsZero(m.StorageAffinity) { // not required
-			return nil
-		}
-
-		if err := m.StorageAffinity.ContextValidate(ctx, formats); err != nil {
-			if ve, ok := err.(*errors.Validation); ok {
-				return ve.ValidateName("storageAffinity")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("storageAffinity")
-			}
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (m *PVMInstanceCreate) contextValidateVirtualCores(ctx context.Context, formats strfmt.Registry) error {
-
-	if m.VirtualCores != nil {
-
-		if swag.IsZero(m.VirtualCores) { // not required
-			return nil
-		}
-
-		if err := m.VirtualCores.ContextValidate(ctx, formats); err != nil {
-			if ve, ok := err.(*errors.Validation); ok {
-				return ve.ValidateName("virtualCores")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
-				return ce.ValidateName("virtualCores")
 			}
 			return err
 		}

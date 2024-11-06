@@ -6,14 +6,12 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
-	"context"
+	strfmt "github.com/go-openapi/strfmt"
 
-	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 )
 
 // SoftwareLicenses software licenses
-//
 // swagger:model SoftwareLicenses
 type SoftwareLicenses struct {
 
@@ -35,11 +33,6 @@ type SoftwareLicenses struct {
 
 // Validate validates this software licenses
 func (m *SoftwareLicenses) Validate(formats strfmt.Registry) error {
-	return nil
-}
-
-// ContextValidate validates this software licenses based on context it is used
-func (m *SoftwareLicenses) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 
