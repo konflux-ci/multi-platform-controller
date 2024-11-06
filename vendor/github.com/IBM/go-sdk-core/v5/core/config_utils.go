@@ -63,8 +63,6 @@ func getServiceProperties(serviceName string) (serviceProps map[string]string, e
 		return
 	}
 
-	GetLogger().Debug("Retrieving config properties for service '%s'\n", serviceName)
-
 	// First try to retrieve service properties from a credential file.
 	serviceProps = getServicePropertiesFromCredentialFile(serviceName)
 
@@ -77,8 +75,6 @@ func getServiceProperties(serviceName string) (serviceProps map[string]string, e
 	if serviceProps == nil {
 		serviceProps = getServicePropertiesFromVCAP(serviceName)
 	}
-
-	GetLogger().Debug("Retrieved %d properties\n", len(serviceProps))
 
 	return
 }

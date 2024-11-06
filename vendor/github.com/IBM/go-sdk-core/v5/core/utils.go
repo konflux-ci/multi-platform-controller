@@ -16,7 +16,6 @@ package core
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -60,7 +59,7 @@ func IsNil(object interface{}) bool {
 // ValidateNotNil returns the specified error if 'object' is nil, nil otherwise.
 func ValidateNotNil(object interface{}, errorMsg string) error {
 	if IsNil(object) {
-		err := errors.New(errorMsg)
+		err := fmt.Errorf(errorMsg)
 		return SDKErrorf(err, "", "obj-is-nil", getComponentInfo())
 	}
 	return nil
@@ -208,7 +207,7 @@ func ConvertSlice(slice interface{}) (s []string, err error) {
 	inputIsSlice := false
 
 	if IsNil(slice) {
-		err = errors.New(ERRORMSG_NIL_SLICE)
+		err = fmt.Errorf(ERRORMSG_NIL_SLICE)
 		err = SDKErrorf(err, "", "nil-slice", getComponentInfo())
 		return
 	}
@@ -224,7 +223,7 @@ func ConvertSlice(slice interface{}) (s []string, err error) {
 
 	// If it's not a slice, just return an error
 	if !inputIsSlice {
-		err = errors.New(ERRORMSG_PARAM_NOT_SLICE)
+		err = fmt.Errorf(ERRORMSG_PARAM_NOT_SLICE)
 		err = SDKErrorf(err, "", "param-not-slice", getComponentInfo())
 		return
 	} else if reflect.ValueOf(slice).Len() == 0 {
@@ -264,7 +263,7 @@ func ConvertSlice(slice interface{}) (s []string, err error) {
 		return
 	}
 
-	err = errors.New(ERRORMSG_CONVERT_SLICE)
+	err = fmt.Errorf(ERRORMSG_CONVERT_SLICE)
 	return nil, SDKErrorf(err, "", "cant-convert-slice", getComponentInfo())
 }
 
@@ -404,15 +403,13 @@ var redactedKeywords = []string{
 var redactedTokens = strings.Join(redactedKeywords, "|")
 
 // Pre-compiled regular expressions used by RedactSecrets().
-var (
-	reAuthHeader      = regexp.MustCompile(`(?m)^(Authorization|X-Auth\S*): .*`)
-	rePropertySetting = regexp.MustCompile(`(?i)(` + redactedTokens + `)=[^&]*(&|$)`)
-	reJsonField       = regexp.MustCompile(`(?i)"([^"]*(` + redactedTokens + `)[^"_]*)":\s*"[^\,]*"`)
-)
+var reAuthHeader = regexp.MustCompile(`(?m)^(Authorization|X-Auth\S*): .*`)
+var rePropertySetting = regexp.MustCompile(`(?i)(` + redactedTokens + `)=[^&]*(&|$)`)
+var reJsonField = regexp.MustCompile(`(?i)"([^"]*(` + redactedTokens + `)[^"_]*)":\s*"[^\,]*"`)
 
 // RedactSecrets() returns the input string with secrets redacted.
 func RedactSecrets(input string) string {
-	redacted := "[redacted]"
+	var redacted = "[redacted]"
 
 	redactedString := input
 	redactedString = reAuthHeader.ReplaceAllString(redactedString, "$1: "+redacted)

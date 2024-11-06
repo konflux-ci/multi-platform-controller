@@ -18,7 +18,6 @@ package core
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"reflect"
 )
@@ -79,7 +78,7 @@ const (
 // err = UnmarshalPrimitive(rawMessageMap, "field2", &myString.Field2)
 func UnmarshalPrimitive(rawInput map[string]json.RawMessage, propertyName string, result interface{}) (err error) {
 	if propertyName == "" {
-		err = errors.New(errorPropertyNameMissing)
+		err = fmt.Errorf(errorPropertyNameMissing)
 		err = SDKErrorf(err, "", "no-prop-name", getComponentInfo())
 	}
 
@@ -187,9 +186,10 @@ type ModelUnmarshaller func(rawInput map[string]json.RawMessage, result interfac
 //
 // -------------------+--------------------------+------------------------------------------------------------------
 func UnmarshalModel(rawInput interface{}, propertyName string, result interface{}, unmarshaller ModelUnmarshaller) (err error) {
+
 	// Make sure some input is provided. Otherwise return an error.
 	if IsNil(rawInput) {
-		err = errors.New(errorUnmarshallInputIsNil)
+		err = fmt.Errorf(errorUnmarshallInputIsNil)
 		err = SDKErrorf(err, "", "no-input", getComponentInfo())
 		return
 	}
@@ -615,6 +615,7 @@ func unmarshalModelSliceMap(rawInput interface{}, propertyName string, result in
 
 	if foundInput && rawMap != nil {
 		for k, v := range rawMap {
+
 			// Make sure our slice raw message isn't an explicit JSON null value.
 			if !isJsonNull(v) {
 				// Each value in 'rawMap' should contain an instance of []<model>.
@@ -721,7 +722,7 @@ func getUnmarshalInputSourceSlice(rawInput interface{}, propertyName string) (fo
 			return
 		} else {
 			// We found the property in the map, so unmarshal the json.RawMessage into a []json.RawMessage
-			rawSlice := make([]json.RawMessage, 0)
+			var rawSlice = make([]json.RawMessage, 0)
 			err = json.Unmarshal(rawMsg, &rawSlice)
 			if err != nil {
 				err = fmt.Errorf(errorIncorrectInputType, "map[string][]json.RawMessage", reflect.TypeOf(rawInput).String())
@@ -751,7 +752,7 @@ func getUnmarshalInputSourceSlice(rawInput interface{}, propertyName string) (fo
 
 // isJsonNull returns true iff 'rawMsg' is exlicitly nil or contains a JSON "null" value.
 func isJsonNull(rawMsg json.RawMessage) bool {
-	nullLiteral := []byte("null")
+	var nullLiteral = []byte("null")
 	if rawMsg == nil || string(rawMsg) == string(nullLiteral) {
 		return true
 	}
@@ -772,7 +773,7 @@ func getUnmarshalResultType(result interface{}) (ptrType reflect.Type, err error
 	rResultType := reflect.TypeOf(result).Elem().Elem()
 	switch rResultType.Kind() {
 	case reflect.Struct, reflect.Slice:
-		ptrType = reflect.PointerTo(rResultType)
+		ptrType = reflect.PtrTo(rResultType)
 
 	case reflect.Interface:
 		ptrType = rResultType

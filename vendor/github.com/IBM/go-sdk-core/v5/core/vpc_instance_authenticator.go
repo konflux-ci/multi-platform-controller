@@ -16,7 +16,6 @@ package core
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httputil"
@@ -36,6 +35,7 @@ import (
 //
 //	Authorization: Bearer <access-token>
 type VpcInstanceAuthenticator struct {
+
 	// [optional] The CRN of the linked trusted IAM profile to be used as the identity of the compute resource.
 	// At most one of IAMProfileCRN or IAMProfileID may be specified.  If neither one is specified, then
 	// the default IAM profile defined for the compute resource will be used.
@@ -116,6 +116,7 @@ func (builder *VpcInstanceAuthenticatorBuilder) SetClient(client *http.Client) *
 
 // Build() returns a validated instance of the VpcInstanceAuthenticator with the config that was set in the builder.
 func (builder *VpcInstanceAuthenticatorBuilder) Build() (*VpcInstanceAuthenticator, error) {
+
 	// Make sure the config is valid.
 	err := builder.VpcInstanceAuthenticator.Validate()
 	if err != nil {
@@ -158,7 +159,7 @@ func (authenticator *VpcInstanceAuthenticator) url() string {
 // configuration properties.
 func newVpcInstanceAuthenticatorFromMap(properties map[string]string) (authenticator *VpcInstanceAuthenticator, err error) {
 	if properties == nil {
-		err = errors.New(ERRORMSG_PROPS_MAP_NIL)
+		err = fmt.Errorf(ERRORMSG_PROPS_MAP_NIL)
 		return nil, SDKErrorf(err, "", "missing-props", getComponentInfo())
 	}
 
@@ -188,7 +189,6 @@ func (authenticator *VpcInstanceAuthenticator) Authenticate(request *http.Reques
 	}
 
 	request.Header.Set("Authorization", "Bearer "+token)
-	GetLogger().Debug("Authenticated outbound request (type=%s)\n", authenticator.AuthenticationType())
 	return nil
 }
 
@@ -213,6 +213,7 @@ func (authenticator *VpcInstanceAuthenticator) setTokenData(tokenData *iamTokenD
 // Ensures that one of IAMProfileName or IAMProfileID are specified, and the ClientId and ClientSecret pair are
 // mutually inclusive.
 func (authenticator *VpcInstanceAuthenticator) Validate() error {
+
 	// Check to make sure that at most one of IAMProfileCRN or IAMProfileID are specified.
 	if authenticator.IAMProfileCRN != "" && authenticator.IAMProfileID != "" {
 		err := fmt.Errorf(ERRORMSG_ATMOST_ONE_PROP_ERROR, "IAMProfileCRN", "IAMProfileID")
@@ -244,7 +245,7 @@ func (authenticator *VpcInstanceAuthenticator) GetToken() (string, error) {
 
 	// return an error if the access token is not valid or was not fetched
 	if authenticator.getTokenData() == nil || authenticator.getTokenData().AccessToken == "" {
-		err := errors.New("Error while trying to get access token")
+		err := fmt.Errorf("Error while trying to get access token")
 		return "", SDKErrorf(err, "", "no-token", getComponentInfo())
 	}
 
@@ -290,6 +291,7 @@ func (authenticator *VpcInstanceAuthenticator) invokeRequestTokenData() error {
 // RequestToken will use the VPC Instance Metadata Service to (1) retrieve a fresh instance identity token
 // and then (2) exchange that for an IAM access token.
 func (authenticator *VpcInstanceAuthenticator) RequestToken() (iamTokenResponse *IamTokenServerResponse, err error) {
+
 	// Retrieve the instance identity token from the VPC Instance Metadata Service.
 	instanceIdentityToken, err := authenticator.retrieveInstanceIdentityToken()
 	if err != nil {
@@ -329,6 +331,7 @@ type vpcTokenResponse struct {
 // to authenticate outbound REST requests targeting IAM-secured services.
 func (authenticator *VpcInstanceAuthenticator) retrieveIamAccessToken(
 	instanceIdentityToken string) (iamTokenResponse *IamTokenServerResponse, err error) {
+
 	// Set up the request for the VPC "create_iam_token" operation.
 	builder := NewRequestBuilder(POST)
 	_, err = builder.ResolveRequestURL(authenticator.url(), vpcauthOperationPathCreateIamToken, nil)
@@ -432,6 +435,7 @@ func (authenticator *VpcInstanceAuthenticator) retrieveIamAccessToken(
 // retrieveInstanceIdentityToken retrieves the local compute resource's instance identity token using
 // the "create_access_token" operation of the local VPC Instance Metadata Service API.
 func (authenticator *VpcInstanceAuthenticator) retrieveInstanceIdentityToken() (instanceIdentityToken string, err error) {
+
 	// Set up the request to invoke the "create_access_token" operation.
 	builder := NewRequestBuilder(PUT)
 	_, err = builder.ResolveRequestURL(authenticator.url(), vpcauthOperationPathCreateAccessToken, nil)

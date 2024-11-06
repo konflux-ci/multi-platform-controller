@@ -15,7 +15,6 @@ package core
 // limitations under the License.
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 )
@@ -25,6 +24,7 @@ import (
 //
 //	Authorization: Bearer <bearer-token>
 type BearerTokenAuthenticator struct {
+
 	// The bearer token value to be used to authenticate request [required].
 	BearerToken string
 }
@@ -44,7 +44,7 @@ func NewBearerTokenAuthenticator(bearerToken string) (*BearerTokenAuthenticator,
 // newBearerTokenAuthenticator : Constructs a new BearerTokenAuthenticator instance from a map.
 func newBearerTokenAuthenticatorFromMap(properties map[string]string) (*BearerTokenAuthenticator, error) {
 	if properties == nil {
-		err := errors.New(ERRORMSG_PROPS_MAP_NIL)
+		err := fmt.Errorf(ERRORMSG_PROPS_MAP_NIL)
 		return nil, SDKErrorf(err, "", "missing-props", getComponentInfo())
 	}
 
@@ -61,17 +61,16 @@ func (BearerTokenAuthenticator) AuthenticationType() string {
 // The bearer token will be added to the request's headers in the form:
 //
 //	Authorization: Bearer <bearer-token>
-func (authenticator *BearerTokenAuthenticator) Authenticate(request *http.Request) error {
-	request.Header.Set("Authorization", fmt.Sprintf(`Bearer %s`, authenticator.BearerToken))
-	GetLogger().Debug("Authenticated outbound request (type=%s)\n", authenticator.AuthenticationType())
+func (this *BearerTokenAuthenticator) Authenticate(request *http.Request) error {
+	request.Header.Set("Authorization", fmt.Sprintf(`Bearer %s`, this.BearerToken))
 	return nil
 }
 
 // Validate the authenticator's configuration.
 //
 // Ensures the bearer token is not Nil.
-func (authenticator BearerTokenAuthenticator) Validate() error {
-	if authenticator.BearerToken == "" {
+func (this BearerTokenAuthenticator) Validate() error {
+	if this.BearerToken == "" {
 		err := fmt.Errorf(ERRORMSG_PROP_MISSING, "BearerToken")
 		return SDKErrorf(err, "", "no-token", getComponentInfo())
 	}

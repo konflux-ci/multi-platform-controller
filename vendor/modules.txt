@@ -7,11 +7,11 @@ contrib.go.opencensus.io/exporter/prometheus
 # github.com/IBM-Cloud/power-go-client v1.0.83
 ## explicit; go 1.13
 github.com/IBM-Cloud/power-go-client/power/models
-# github.com/IBM/go-sdk-core/v5 v5.18.1
-## explicit; go 1.21
-github.com/IBM/go-sdk-core/v5/core
-# github.com/IBM/vpc-go-sdk v0.61.0
+# github.com/IBM/go-sdk-core/v5 v5.17.3
 ## explicit; go 1.20
+github.com/IBM/go-sdk-core/v5/core
+# github.com/IBM/vpc-go-sdk v0.50.0
+## explicit; go 1.18
 github.com/IBM/vpc-go-sdk/common
 github.com/IBM/vpc-go-sdk/vpcv1
 # github.com/antlr4-go/antlr/v4 v4.13.0

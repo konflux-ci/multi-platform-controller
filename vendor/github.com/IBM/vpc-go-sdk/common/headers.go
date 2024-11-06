@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/IBM/go-sdk-core/v5/core"
 	"github.com/google/uuid"
 )
 
@@ -59,8 +58,4 @@ var systemInfo = fmt.Sprintf("(arch=%s; os=%s; go.version=%s)", runtime.GOARCH, 
 
 func GetSystemInfo() string {
 	return systemInfo
-}
-
-func GetComponentInfo() *core.ProblemComponent {
-	return core.NewProblemComponent("github.com/IBM/vpc-go-sdk", Version)
 }
