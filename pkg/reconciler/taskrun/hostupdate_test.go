@@ -17,25 +17,27 @@ import (
 
 const testNamespace = "default"
 
-func hostDataFromTRSpec(specParams v1.Params) map[string]string {
+func hostDataFromTRSpec(updateTR v1.TaskRun) map[string]string {
 	newHostData := make(map[string]string)
 
+	specParams := updateTR.Spec.Params
 	for _, specParam := range specParams {
 		switch key := specParam.Name; key {
+
 		case "HOST":
 			newHostData["address"] = specParam.Value.StringVal
-		// case "SECRET":
-		// 	newHostData["secret"] = specParam.Value.StringVal
-		// case "CONCURRENCY":
-		// 	newHostData["concurrency"] = specParam.Value.StringVal
 		case "USER":
 			newHostData["user"] = specParam.Value.StringVal
-		// case "PLATFORM":
-		// 	newHostData["platform"] = specParam.Value.StringVal
+		case "CONCURRENCY":
+			newHostData["concurrency"] = specParam.Value.StringVal
+		case "PLATFORM":
+			newHostData["platform"] = specParam.Value.StringVal
 		default:
 			// Not really needed
 		}
 	}
+
+	newHostData["secret"] = updateTR.Spec.Workspaces[0].Secret.SecretName
 
 	return newHostData
 }
@@ -103,14 +105,14 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 				Expect(createdList.Items[0].Labels).To(HaveKeyWithValue(TaskTypeLabel, TaskTypeUpdate))
 
 				// extract TaskRun data to begin testing individual fields were correctly filled
-				updatedHostData := hostDataFromTRSpec(createdList.Items[0].Spec.Params)
+				updatedHostData := hostDataFromTRSpec(createdList.Items[0])
 
 				// validate each field is exactly as it's expected to be
 				Expect(hostConfigData["address"]).To(Equal(updatedHostData["address"]))
 				Expect(hostConfigData["user"]).To(Equal(updatedHostData["user"]))
-				// Expect(hostConfigData["secret"]).To(Equal(updatedHostData["secret"]))
-				// Expect(hostConfigData["concurrency"]).To(Equal(updatedHostData["concurrency"]))
-				// Expect(hostConfigData["platform"]).To(Equal(updatedHostData["platform"]))
+				Expect(updatedHostData["secret"]).To(Equal(updatedHostData["secret"]))
+				Expect(hostConfigData["concurrency"]).To(Equal(updatedHostData["concurrency"]))
+				Expect(hostConfigData["platform"]).To(Equal(updatedHostData["platform"]))
 			}
 		},
 		Entry("Positive test", map[string]string{

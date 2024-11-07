@@ -2,14 +2,15 @@ package taskrun
 
 import (
 	"context"
+	"strings"
+	"time"
+
 	"github.com/go-logr/logr"
 	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v12 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strings"
-	"time"
 )
 
 // UpdateHostPools Run the host update task periodically
@@ -23,6 +24,7 @@ func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.L
 	}
 
 	hosts := map[string]*Host{}
+	hostsConcurrency := make(map[string]string)
 	for k, v := range cm.Data {
 		if !strings.HasPrefix(k, "host.") {
 			continue
@@ -50,6 +52,12 @@ func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.L
 		case "secret":
 			host.Secret = v
 		case "concurrency":
+			if v != "" {
+				hostsConcurrency[host.Name] = v
+			} else {
+				continue
+			}
+
 		default:
 			log.Info("unknown key", "key", key)
 		}
@@ -84,6 +92,14 @@ func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.L
 				{
 					Name:  "USER",
 					Value: *v1.NewStructuredValues(host.User),
+				},
+				{
+					Name:  "PLATFORM",
+					Value: *v1.NewStructuredValues(host.Platform),
+				},
+				{
+					Name:  "CONCURRENCY",
+					Value: *v1.NewStructuredValues(hostsConcurrency[host.Name]),
 				},
 			}
 			err = client.Create(context.Background(), &provision)
