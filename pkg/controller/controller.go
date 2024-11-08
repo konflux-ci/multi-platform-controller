@@ -84,7 +84,7 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 	podSelector = podSelector.Add(*podLabels)
 
 	taskrunSelector := labels.NewSelector()
-	trLabels, lerr := labels.NewRequirement(TaskLabel, selection.In, []string{"buildah-remote-oci-ta", "clean-shared-host", "provision-shared-host", "update-host"})
+	trLabels, lerr := labels.NewRequirement(TaskLabel, selection.In, []string{"buildah-remote", "buildah-remote-oci-ta", "clean-shared-host", "provision-shared-host", "update-host"})
 	if lerr != nil {
 		return nil, lerr
 	}
