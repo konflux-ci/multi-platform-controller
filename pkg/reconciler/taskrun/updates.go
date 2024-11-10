@@ -24,6 +24,8 @@ func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.L
 	}
 
 	hosts := map[string]*Host{}
+	// A way to transfer the concurrency configuration data from the ConfigMap value (string) to a Param value (also string) not via host.Concurrency
+	// (int) that does not involve strconv.Atoi/Itoi which are expensive.
 	hostsConcurrency := make(map[string]string)
 	for k, v := range cm.Data {
 		if !strings.HasPrefix(k, "host.") {
