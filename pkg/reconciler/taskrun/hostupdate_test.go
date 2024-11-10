@@ -1,3 +1,20 @@
+// Testing UpdateHostPools - that runs the host update task periodically for static host pools.
+// The spec checks that:
+//	- That one test TaskRun has been created when it should and that none were created when the configuration data is incorrect, that the TaskRun
+//	- That the TaskRun created was a host updating TaskRun was created
+//	- That the configuration data in the TaskRun spec Params and Workspace contain the test data
+//
+// There are 9 test cases:
+// 	1. A positive test to verify all is working correctly
+//	2. A negative test with no configuration data
+//	3. A negative test to verify UpdateHostPools only creates TaskRuns for static hosts
+//	4. A negative test to verify UpdateHostPools only creates TaskRuns when the spec Param key has the correct syntax
+//	5. A negative test to verify data validation on the host address field
+//	6. A negative test to verify data validation on the host concurrency field
+//	7. Another negative test to data verify on the host concurrency field
+//	8. A negative test to verify data validation on the host username field
+//	9. A negative test to verify data validation on the host platform field
+
 package taskrun
 
 import (
@@ -17,29 +34,35 @@ import (
 
 const testNamespace = "default"
 
-func hostDataFromTRSpec(specParams v1.Params) map[string]string {
+// hostDataFromTRSpec creates a map[string]string of configuration data that can be compared
+// to the test case data, from the TaskRun input
+func hostDataFromTRSpec(updateTR v1.TaskRun) map[string]string {
 	newHostData := make(map[string]string)
 
+	specParams := updateTR.Spec.Params
 	for _, specParam := range specParams {
 		switch key := specParam.Name; key {
+
 		case "HOST":
 			newHostData["address"] = specParam.Value.StringVal
-		// case "SECRET":
-		// 	newHostData["secret"] = specParam.Value.StringVal
-		// case "CONCURRENCY":
-		// 	newHostData["concurrency"] = specParam.Value.StringVal
 		case "USER":
 			newHostData["user"] = specParam.Value.StringVal
-		// case "PLATFORM":
-		// 	newHostData["platform"] = specParam.Value.StringVal
+		case "CONCURRENCY":
+			newHostData["concurrency"] = specParam.Value.StringVal
+		case "PLATFORM":
+			newHostData["platform"] = specParam.Value.StringVal
 		default:
 			// Not really needed
 		}
 	}
 
+	newHostData["secret"] = updateTR.Spec.Workspaces[0].Secret.SecretName
+
 	return newHostData
 }
 
+// testConfigDataFromTestData adds a suffix to the test data to create a key format for the TaskRun Spec Params
+// that UpdateHostPools recognizes as having the correct syntax
 func testConfigDataFromTestData(testData map[string]string, configKeySuffix string) map[string]string {
 	testConfigData := make(map[string]string)
 
@@ -51,6 +74,8 @@ func testConfigDataFromTestData(testData map[string]string, configKeySuffix stri
 	return testConfigData
 }
 
+// HostUpdateTaskRunTest - Ginkgo table testing spec for HostUpdateTaskRunTest. Creates a new ConfigMap for each
+// test case and runs them separately
 var _ = Describe("HostUpdateTaskRunTest", func() {
 	var scheme = runtime.NewScheme()
 	var hostConfig = &corev1.ConfigMap{}
@@ -103,14 +128,14 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 				Expect(createdList.Items[0].Labels).To(HaveKeyWithValue(TaskTypeLabel, TaskTypeUpdate))
 
 				// extract TaskRun data to begin testing individual fields were correctly filled
-				updatedHostData := hostDataFromTRSpec(createdList.Items[0].Spec.Params)
+				updatedHostData := hostDataFromTRSpec(createdList.Items[0])
 
 				// validate each field is exactly as it's expected to be
 				Expect(hostConfigData["address"]).To(Equal(updatedHostData["address"]))
 				Expect(hostConfigData["user"]).To(Equal(updatedHostData["user"]))
-				// Expect(hostConfigData["secret"]).To(Equal(updatedHostData["secret"]))
-				// Expect(hostConfigData["concurrency"]).To(Equal(updatedHostData["concurrency"]))
-				// Expect(hostConfigData["platform"]).To(Equal(updatedHostData["platform"]))
+				Expect(updatedHostData["secret"]).To(Equal(updatedHostData["secret"]))
+				Expect(hostConfigData["concurrency"]).To(Equal(updatedHostData["concurrency"]))
+				Expect(hostConfigData["platform"]).To(Equal(updatedHostData["platform"]))
 			}
 		},
 		Entry("Positive test", map[string]string{
