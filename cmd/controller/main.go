@@ -2,7 +2,9 @@ package main
 
 import (
 	"flag"
+	mpcmetrics "github.com/konflux-ci/multi-platform-controller/pkg/metrics"
 	"os"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	zap2 "go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -16,6 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"github.com/konflux-ci/multi-platform-controller/pkg/controller"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	//+kubebuilder:scaffold:imports
 	"github.com/go-logr/logr"
 )
@@ -58,13 +61,18 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "5483be8f.redhat.com",
+		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 	}
-	mopts.Metrics.BindAddress = metricsAddr
 
 	mainLog.Info("The apis.kcp.dev group is not present - creating standard manager")
 	mgr, err = controller.NewManager(restConfig, mopts)
 	if err != nil {
 		mainLog.Error(err, "unable to start manager")
+		os.Exit(1)
+	}
+
+	if err = mpcmetrics.RegisterCommonMetrics(ctx, metrics.Registry); err != nil {
+		mainLog.Error(err, "failed to register common metrics")
 		os.Exit(1)
 	}
 

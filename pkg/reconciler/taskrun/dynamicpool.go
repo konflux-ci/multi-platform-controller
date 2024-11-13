@@ -15,13 +15,14 @@ import (
 )
 
 type DynamicHostPool struct {
-	cloudProvider cloud.CloudProvider
-	sshSecret     string
-	platform      string
-	maxInstances  int
-	concurrency   int
-	maxAge        time.Duration
-	instanceTag   string
+	cloudProvider          cloud.CloudProvider
+	sshSecret              string
+	platform               string
+	maxInstances           int
+	concurrency            int
+	maxAge                 time.Duration
+	instanceTag            string
+	additionalInstanceTags map[string]string
 }
 
 func (a DynamicHostPool) InstanceTag() string {
@@ -142,7 +143,7 @@ func (a DynamicHostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *
 	// Counter intuitively we don't need the instance id
 	// It will be picked up on the list call
 	log.Info(fmt.Sprintf("launching instance %s", name))
-	inst, err := a.cloudProvider.LaunchInstance(r.client, ctx, name, a.instanceTag)
+	inst, err := a.cloudProvider.LaunchInstance(r.client, ctx, name, a.instanceTag, a.additionalInstanceTags)
 	if err != nil {
 		return reconcile.Result{}, err
 	}

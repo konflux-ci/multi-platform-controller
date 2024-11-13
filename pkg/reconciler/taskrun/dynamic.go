@@ -17,12 +17,13 @@ import (
 
 type DynamicResolver struct {
 	cloud.CloudProvider
-	sshSecret    string
-	platform     string
-	maxInstances int
-	instanceTag  string
-	timeout      int64
-	sudoCommands string
+	sshSecret              string
+	platform               string
+	maxInstances           int
+	instanceTag            string
+	timeout                int64
+	sudoCommands           string
+	additionalInstanceTags map[string]string
 }
 
 func (r DynamicResolver) Deallocate(taskRun *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string, selectedHost string) error {
@@ -145,22 +146,25 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 			log.Error(err, "Failed to count existing cloud instances")
 			return reconcile.Result{}, err
 		}
+		log.Info("Too many running cloud tasks, waiting for existing tasks to finish")
 		if tr.Labels[WaitingForPlatformLabel] == platformLabel(r.platform) {
 			//we are already in a waiting state
-			return reconcile.Result{}, nil
+			return reconcile.Result{RequeueAfter: time.Minute}, nil
 		}
-		log.Info("Too many running cloud tasks, waiting for existing tasks to finish")
 		//no host available
 		//add the waiting label
 		tr.Labels[WaitingForPlatformLabel] = platformLabel(r.platform)
-		return reconcile.Result{RequeueAfter: time.Minute}, taskRun.client.Update(ctx, tr)
+		if err := taskRun.client.Update(ctx, tr); err != nil {
+			log.Error(err, "Failed to update task with waiting label. Will retry.")
+		}
+		return reconcile.Result{RequeueAfter: time.Minute}, nil
 	}
 	delete(tr.Labels, WaitingForPlatformLabel)
 	startTime := time.Now().Unix()
 	tr.Annotations[AllocationStartTimeAnnotation] = strconv.FormatInt(startTime, 10)
 	log.Info(fmt.Sprintf("%d instances are running, creating a new instance", instanceCount))
 	log.Info("attempting to launch a new host for " + tr.Name)
-	instance, err := r.CloudProvider.LaunchInstance(taskRun.client, ctx, tr.Name, r.instanceTag)
+	instance, err := r.CloudProvider.LaunchInstance(taskRun.client, ctx, tr.Name, r.instanceTag, r.additionalInstanceTags)
 
 	if err != nil {
 		launchErr := err
@@ -227,6 +231,6 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 		}
 	}
 
-	return reconcile.Result{}, nil
+	return reconcile.Result{RequeueAfter: 2 * time.Minute}, nil
 
 }

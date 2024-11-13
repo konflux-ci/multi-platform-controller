@@ -3,6 +3,7 @@ package taskrun
 import (
 	"context"
 	"fmt"
+	"github.com/konflux-ci/multi-platform-controller/pkg/metrics"
 	"regexp"
 	"strconv"
 	"strings"
@@ -12,7 +13,6 @@ import (
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
 	"github.com/konflux-ci/multi-platform-controller/pkg/ibm"
 	errors2 "github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
 	tektonapi "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	kubecore "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -25,7 +25,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/go-logr/logr"
@@ -67,14 +66,15 @@ const (
 	TaskTypeUpdate               = "update"
 	TaskTypeClean                = "clean"
 
-	ServiceAccountName = "multi-platform-controller"
+	ServiceAccountName = "multi-platform-controller-controller-manager"
 
 	PlatformParam          = "PLATFORM"
 	LocalPlatforms         = "local-platforms"
 	DynamicPlatforms       = "dynamic-platforms"
 	DynamicPoolPlatforms   = "dynamic-pool-platforms"
+	DefaultInstanceTag     = "instance-tag"
+	AdditionalInstanceTags = "additional-instance-tags"
 	AllowedNamespaces      = "allowed-namespaces"
-	MultiPlatformSubsystem = "multi_platform_controller"
 	ParamNamespace         = "NAMESPACE"
 	ParamTaskrunName       = "TASKRUN_NAME"
 	ParamSecretName        = "SECRET_NAME"
@@ -91,19 +91,7 @@ type ReconcileTaskRun struct {
 	operatorNamespace        string
 	configMapResourceVersion string
 	platformConfig           map[string]PlatformConfig
-	platformMetrics          map[string]*PlatformMetrics
 	cloudProviders           map[string]func(platform string, config map[string]string, systemNamespace string) cloud.CloudProvider
-}
-
-type PlatformMetrics struct {
-	allocationTime         prometheus.Histogram
-	waitTime               prometheus.Histogram
-	taskRunTime            prometheus.Histogram
-	runningTasks           prometheus.Gauge
-	waitingTasks           prometheus.Gauge
-	provisionFailures      prometheus.Counter
-	cleanupFailures        prometheus.Counter
-	hostAllocationFailures prometheus.Counter
 }
 
 //+kubebuilder:rbac:groups="tekton.dev",resources=taskruns,verbs=create;delete;deletecollection;get;list;patch;update;watch
@@ -121,7 +109,6 @@ func newReconciler(mgr ctrl.Manager, operatorNamespace string) reconcile.Reconci
 		scheme:            mgr.GetScheme(),
 		eventRecorder:     mgr.GetEventRecorderFor("ComponentBuild"),
 		operatorNamespace: operatorNamespace,
-		platformMetrics:   map[string]*PlatformMetrics{},
 		platformConfig:    map[string]PlatformConfig{},
 		cloudProviders:    map[string]func(platform string, config map[string]string, systemNamespace string) cloud.CloudProvider{"aws": aws.Ec2Provider, "ibmz": ibm.IBMZProvider, "ibmp": ibm.IBMPowerProvider},
 	}
@@ -252,8 +239,8 @@ func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, tr *tektonapi.Ta
 	if !success {
 		log := logr.FromContextOrDiscard(ctx)
 		log.Info("cleanup task failed", "task", tr.Name)
-		r.handleMetrics(tr.Annotations[TaskTargetPlatformAnnotation], func(metrics *PlatformMetrics) {
-			metrics.provisionFailures.Inc()
+		mpcmetrics.HandleMetrics(tr.Annotations[TaskTargetPlatformAnnotation], func(metrics *mpcmetrics.PlatformMetrics) {
+			metrics.ProvisionFailures.Inc()
 		})
 	}
 	//leave the failed TR for an hour to view logs
@@ -293,9 +280,10 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 	assigned := tr.Labels[AssignedHost]
 	log := logr.FromContextOrDiscard(ctx)
 	if !success {
-		r.handleMetrics(tr.Annotations[TaskTargetPlatformAnnotation], func(metrics *PlatformMetrics) {
-			metrics.provisionFailures.Inc()
+		mpcmetrics.HandleMetrics(tr.Annotations[TaskTargetPlatformAnnotation], func(metrics *mpcmetrics.PlatformMetrics) {
+			metrics.ProvisionFailures.Inc()
 		})
+		mpcmetrics.CountAvailabilityError(tr.Annotations[TaskTargetPlatformAnnotation])
 		log.Info(fmt.Sprintf("provision task for host %s for user task %s/%sfailed", assigned, userNamespace, userTaskName))
 		if assigned != "" {
 			userTr := tektonapi.TaskRun{}
@@ -326,6 +314,7 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 		}
 	} else {
 		log.Info("provision task succeeded")
+		mpcmetrics.CountAvailabilitySuccess(tr.Annotations[TaskTargetPlatformAnnotation])
 		//verify we ended up with a secret
 		secret := kubecore.Secret{}
 		err := r.client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: secretName}, &secret)
@@ -436,7 +425,7 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *tektonapi.Tas
 			return reconcile.Result{}, nil
 		}
 
-		targetPlatform, err := extracPlatform(tr)
+		targetPlatform, err := extractPlatform(tr)
 		if err != nil {
 			err := r.createErrorSecret(ctx, tr, secretName, err.Error())
 			if err != nil {
@@ -446,8 +435,8 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *tektonapi.Tas
 		}
 		res, err := r.handleHostAllocation(ctx, tr, secretName, targetPlatform)
 		if err != nil && !errors.IsConflict(err) {
-			r.handleMetrics(targetPlatform, func(metrics *PlatformMetrics) {
-				metrics.hostAllocationFailures.Inc()
+			mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
+				metrics.HostAllocationFailures.Inc()
 			})
 			err := r.createErrorSecret(ctx, tr, secretName, err.Error())
 			if err != nil {
@@ -458,7 +447,7 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *tektonapi.Tas
 	}
 }
 
-func extracPlatform(tr *tektonapi.TaskRun) (string, error) {
+func extractPlatform(tr *tektonapi.TaskRun) (string, error) {
 	for _, p := range tr.Spec.Params {
 		if p.Name == PlatformParam {
 			return p.Value.StringVal, nil
@@ -469,9 +458,7 @@ func extracPlatform(tr *tektonapi.TaskRun) (string, error) {
 
 func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektonapi.TaskRun, secretName string, targetPlatform string) (reconcile.Result, error) {
 	log := logr.FromContextOrDiscard(ctx)
-
-	log.Info("attempting to allocate host")
-
+	log.Info("attempting to allocate host", "platform", targetPlatform)
 	if tr.Labels == nil {
 		tr.Labels = map[string]string{}
 	}
@@ -497,7 +484,9 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektona
 	hosts, err := r.readConfiguration(ctx, targetPlatform, tr.Namespace)
 	if err != nil {
 		log.Error(err, "failed to read host config")
-		r.handleMetrics(targetPlatform, func(metrics *PlatformMetrics) { metrics.hostAllocationFailures.Inc() })
+		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
+			metrics.HostAllocationFailures.Inc()
+		})
 		return reconcile.Result{}, r.createErrorSecret(ctx, tr, secretName, "failed to read host config "+err.Error())
 	}
 	if tr.Annotations == nil {
@@ -509,8 +498,8 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektona
 	isWaiting := tr.Labels[WaitingForPlatformLabel] != ""
 
 	if err != nil {
-		r.handleMetrics(targetPlatform, func(metrics *PlatformMetrics) {
-			metrics.hostAllocationFailures.Inc()
+		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
+			metrics.HostAllocationFailures.Inc()
 		})
 	} else {
 		if tr.Labels[AssignedHost] != "" {
@@ -518,23 +507,23 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektona
 			if alternateStart != "" {
 				startTime, err = strconv.ParseInt(alternateStart, 10, 64)
 			}
-			r.handleMetrics(targetPlatform, func(metrics *PlatformMetrics) {
-				metrics.allocationTime.Observe(float64(time.Now().Unix() - startTime))
-				metrics.runningTasks.Inc()
+			mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
+				metrics.AllocationTime.Observe(float64(time.Now().Unix() - startTime))
+				metrics.RunningTasks.Inc()
 			})
 		}
 		if wasWaiting {
-			r.handleMetrics(targetPlatform, func(metrics *PlatformMetrics) {
-				metrics.waitTime.Observe(float64(time.Now().Unix() - tr.CreationTimestamp.Unix()))
+			mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
+				metrics.WaitTime.Observe(float64(time.Now().Unix() - tr.CreationTimestamp.Unix()))
 			})
 		}
 		if isWaiting && !wasWaiting {
-			r.handleMetrics(targetPlatform, func(metrics *PlatformMetrics) {
-				metrics.waitingTasks.Inc()
+			mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
+				metrics.WaitingTasks.Inc()
 			})
 		} else if !isWaiting && wasWaiting {
-			r.handleMetrics(targetPlatform, func(metrics *PlatformMetrics) {
-				metrics.waitingTasks.Dec()
+			mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
+				metrics.WaitingTasks.Dec()
 			})
 		}
 	}
@@ -548,7 +537,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 		selectedHost := tr.Labels[AssignedHost]
 		log.Info(fmt.Sprintf("unassigning host %s from task", selectedHost))
 
-		platform, err := extracPlatform(tr)
+		platform, err := extractPlatform(tr)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -560,9 +549,9 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 			log.Error(fmt.Errorf("could not find config for platform %s", platform), "could not find config")
 			return reconcile.Result{}, nil
 		}
-		r.handleMetrics(platform, func(metrics *PlatformMetrics) {
-			metrics.taskRunTime.Observe(float64(time.Now().Unix() - tr.CreationTimestamp.Unix()))
-			metrics.runningTasks.Dec()
+		mpcmetrics.HandleMetrics(platform, func(metrics *mpcmetrics.PlatformMetrics) {
+			metrics.TaskRunTime.Observe(float64(time.Now().Unix() - tr.CreationTimestamp.Unix()))
+			metrics.RunningTasks.Dec()
 		})
 		err = config.Deallocate(r, ctx, tr, secretName, selectedHost)
 		if err != nil {
@@ -635,6 +624,18 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 		return existing, nil
 	}
 
+	var additionalInstanceTags map[string]string
+	if val, ok := cm.Data[AdditionalInstanceTags]; !ok {
+		additionalInstanceTags = map[string]string{}
+	} else {
+		additionalTagsArray := strings.Split(val, ",")
+		additionalInstanceTags = make(map[string]string, len(additionalTagsArray))
+		for _, tag := range additionalTagsArray {
+			parts := strings.Split(tag, "=")
+			additionalInstanceTags[parts[0]] = parts[1]
+		}
+	}
+
 	local := strings.Split(cm.Data[LocalPlatforms], ",")
 	if slices.Contains(local, targetPlatform) {
 		return Local{}, nil
@@ -656,7 +657,7 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 			}
 			instanceTag := cm.Data["dynamic."+platformConfigName+".instance-tag"]
 			if instanceTag == "" {
-				instanceTag = cm.Data["instance-tag"]
+				instanceTag = cm.Data[DefaultInstanceTag]
 			}
 			timeoutSeconds := cm.Data["dynamic."+platformConfigName+".allocation-timeout"]
 			timeout := int64(600) //default to 10 minutes
@@ -669,20 +670,20 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 				}
 			}
 			ret := DynamicResolver{
-				CloudProvider: allocfunc(platformConfigName, cm.Data, r.operatorNamespace),
-				sshSecret:     cm.Data["dynamic."+platformConfigName+".ssh-secret"],
-				platform:      platform,
-				maxInstances:  maxInstances,
-				instanceTag:   instanceTag,
-				timeout:       timeout,
-				sudoCommands:  cm.Data["dynamic."+platformConfigName+".sudo-commands"],
+				CloudProvider:          allocfunc(platformConfigName, cm.Data, r.operatorNamespace),
+				sshSecret:              cm.Data["dynamic."+platformConfigName+".ssh-secret"],
+				platform:               platform,
+				maxInstances:           maxInstances,
+				instanceTag:            instanceTag,
+				timeout:                timeout,
+				sudoCommands:           cm.Data["dynamic."+platformConfigName+".sudo-commands"],
+				additionalInstanceTags: additionalInstanceTags,
 			}
 			r.platformConfig[targetPlatform] = ret
-			metrics, err := r.registerMetrics(targetPlatform)
+			err = mpcmetrics.RegisterPlatformMetrics(ctx, targetPlatform)
 			if err != nil {
 				return nil, err
 			}
-			r.platformMetrics[targetPlatform] = metrics
 			return ret, nil
 		}
 	}
@@ -715,20 +716,20 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 				instanceTag = cm.Data["instance-tag"]
 			}
 			ret := DynamicHostPool{
-				cloudProvider: allocfunc(platformConfigName, cm.Data, r.operatorNamespace),
-				sshSecret:     cm.Data["dynamic."+platformConfigName+".ssh-secret"],
-				platform:      platform,
-				maxInstances:  maxInstances,
-				maxAge:        time.Minute * time.Duration(maxAge),
-				concurrency:   concurrency,
-				instanceTag:   instanceTag,
+				cloudProvider:          allocfunc(platformConfigName, cm.Data, r.operatorNamespace),
+				sshSecret:              cm.Data["dynamic."+platformConfigName+".ssh-secret"],
+				platform:               platform,
+				maxInstances:           maxInstances,
+				maxAge:                 time.Minute * time.Duration(maxAge),
+				concurrency:            concurrency,
+				instanceTag:            instanceTag,
+				additionalInstanceTags: additionalInstanceTags,
 			}
 			r.platformConfig[targetPlatform] = ret
-			metrics, err := r.registerMetrics(targetPlatform)
+			err = mpcmetrics.RegisterPlatformMetrics(ctx, targetPlatform)
 			if err != nil {
 				return nil, err
 			}
-			r.platformMetrics[targetPlatform] = metrics
 			return ret, nil
 		}
 	}
@@ -772,11 +773,10 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 
 	}
 	r.platformConfig[targetPlatform] = ret
-	metrics, err := r.registerMetrics(targetPlatform)
+	err = mpcmetrics.RegisterPlatformMetrics(ctx, targetPlatform)
 	if err != nil {
 		return nil, err
 	}
-	r.platformMetrics[targetPlatform] = metrics
 	return ret, nil
 }
 
@@ -853,100 +853,4 @@ type Host struct {
 
 func platformLabel(platform string) string {
 	return strings.ReplaceAll(platform, "/", "-")
-}
-
-func (r *ReconcileTaskRun) registerMetrics(platform string) (*PlatformMetrics, error) {
-
-	if r.platformMetrics[platform] != nil {
-		return r.platformMetrics[platform], nil
-	}
-	ret := PlatformMetrics{}
-
-	smallBuckets := []float64{1, 2, 3, 4, 5, 10, 15, 20, 30, 60, 120, 300, 600, 1200}
-	bigBuckets := []float64{20, 40, 60, 90, 120, 300, 600, 1200, 2400, 4800, 6000, 7200, 8400, 9600}
-	ret.allocationTime = prometheus.NewHistogram(prometheus.HistogramOpts{
-		ConstLabels: map[string]string{"platform": platform},
-		Namespace:   strings.ReplaceAll(r.operatorNamespace, "-", "_"),
-		Name:        "host_allocation_time",
-		Help:        "The time in seconds it takes to allocate a host, excluding wait time. In practice this is the amount of time it takes a cloud provider to start an instance",
-		Buckets:     smallBuckets})
-	err := metrics.Registry.Register(ret.allocationTime)
-	if err != nil {
-		return nil, err
-	}
-	ret.waitTime = prometheus.NewHistogram(prometheus.HistogramOpts{
-		ConstLabels: map[string]string{"platform": platform},
-		Namespace:   strings.ReplaceAll(r.operatorNamespace, "-", "_"),
-		Name:        "wait_time",
-		Help:        "The time in seconds a task has spent waiting for a host to become available, excluding the host allocation time",
-		Buckets:     smallBuckets})
-	err = metrics.Registry.Register(ret.waitTime)
-	if err != nil {
-		return nil, err
-	}
-	ret.taskRunTime = prometheus.NewHistogram(prometheus.HistogramOpts{
-		ConstLabels: map[string]string{"platform": platform},
-		Namespace:   strings.ReplaceAll(r.operatorNamespace, "-", "_"),
-		Name:        "task_run_time",
-		Help:        "The total time taken by a task, including wait and allocation time",
-		Buckets:     bigBuckets})
-	err = metrics.Registry.Register(ret.taskRunTime)
-	if err != nil {
-		return nil, err
-	}
-	ret.runningTasks = prometheus.NewGauge(prometheus.GaugeOpts{
-		ConstLabels: map[string]string{"platform": platform},
-		Namespace:   strings.ReplaceAll(r.operatorNamespace, "-", "_"),
-		Name:        "running_tasks",
-		Help:        "The number of currently running tasks on this platform"})
-	err = metrics.Registry.Register(ret.runningTasks)
-	if err != nil {
-		return nil, err
-	}
-	ret.waitingTasks = prometheus.NewGauge(prometheus.GaugeOpts{
-		ConstLabels: map[string]string{"platform": platform},
-		Namespace:   strings.ReplaceAll(r.operatorNamespace, "-", "_"),
-		Name:        "waiting_tasks",
-		Help:        "The number of tasks waiting for an executor to be available to run"})
-	err = metrics.Registry.Register(ret.waitingTasks)
-	if err != nil {
-		return nil, err
-	}
-
-	ret.provisionFailures = prometheus.NewCounter(prometheus.CounterOpts{
-		ConstLabels: map[string]string{"platform": platform},
-		Namespace:   strings.ReplaceAll(r.operatorNamespace, "-", "_"),
-		Name:        "provisioning_failures",
-		Help:        "The number of times a provisioning task has failed"})
-	err = metrics.Registry.Register(ret.provisionFailures)
-	if err != nil {
-		return nil, err
-	}
-	ret.cleanupFailures = prometheus.NewCounter(prometheus.CounterOpts{
-		ConstLabels: map[string]string{"platform": platform},
-		Namespace:   strings.ReplaceAll(r.operatorNamespace, "-", "_"),
-		Name:        "cleanup_failures",
-		Help:        "The number of times a cleanup task has failed"})
-	err = metrics.Registry.Register(ret.cleanupFailures)
-	if err != nil {
-		return nil, err
-	}
-	ret.hostAllocationFailures = prometheus.NewCounter(prometheus.CounterOpts{
-		ConstLabels: map[string]string{"platform": platform},
-		Namespace:   strings.ReplaceAll(r.operatorNamespace, "-", "_"),
-		Name:        "host_allocation_failures",
-		Help:        "The number of times host allocation has failed"})
-	err = metrics.Registry.Register(ret.hostAllocationFailures)
-	if err != nil {
-		return nil, err
-	}
-	return &ret, nil
-}
-
-func (r *ReconcileTaskRun) handleMetrics(platform string, f func(metrics *PlatformMetrics)) {
-	metrics := r.platformMetrics[platform]
-	if metrics == nil {
-		return
-	}
-	f(metrics)
 }
