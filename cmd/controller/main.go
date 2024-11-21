@@ -32,6 +32,8 @@ func main() {
 	var enableLeaderElection bool
 	var probeAddr string
 	var abAPIExportName string
+	var logLevel string
+	var stackTraceLevel string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.StringVar(&abAPIExportName, "api-export-name", "jvm-build-service", "The name of the jvm-build-service APIExport.")
@@ -39,21 +41,30 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+
+	// logging vars
+	flag.StringVar(&logLevel, "zap-log-level", "", "Zap Level to configure the verbosity of logging")
+	flag.StringVar(&stackTraceLevel, "zap-stacktrace-level", "", "Zap Level at and above which stacktraces are captured")
+
+	zapFlagSet := flag.NewFlagSet("zap", flag.ContinueOnError)
 	opts := zap.Options{
 		TimeEncoder: zapcore.RFC3339TimeEncoder,
 		ZapOpts:     []zap2.Option{zap2.WithCaller(true)},
 	}
-	opts.BindFlags(flag.CommandLine)
-	klog.InitFlags(flag.CommandLine)
+	opts.BindFlags(zapFlagSet)
+	klog.InitFlags(zapFlagSet)
+
 	flag.Parse()
 
-	logger := zap.New(zap.UseFlagOptions(&opts))
+	setFlagIfNotEmptyOrPanic(zapFlagSet, "zap-log-level", logLevel)
+	setFlagIfNotEmptyOrPanic(zapFlagSet, "zap-stacktrace-level", stackTraceLevel)
 
+	logger := zap.New(zap.UseFlagOptions(&opts))
 	ctrl.SetLogger(logger)
-	mainLog = ctrl.Log.WithName("main")
+	klog.SetLoggerWithOptions(logger, klog.ContextualLogger(true))
+
 	ctx := ctrl.SetupSignalHandler()
 	restConfig := ctrl.GetConfigOrDie()
-	klog.SetLogger(mainLog)
 
 	var mgr ctrl.Manager
 	var err error
@@ -64,7 +75,8 @@ func main() {
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 	}
 
-	mainLog.Info("The apis.kcp.dev group is not present - creating standard manager")
+	mainLog = ctrl.Log.WithName("main")
+	mainLog.Info("creating standard manager")
 	mgr, err = controller.NewManager(restConfig, mopts)
 	if err != nil {
 		mainLog.Error(err, "unable to start manager")
@@ -91,5 +103,14 @@ func main() {
 	if err := mgr.Start(ctx); err != nil {
 		mainLog.Error(err, "problem running manager")
 		os.Exit(1)
+	}
+}
+
+func setFlagIfNotEmptyOrPanic(fs *flag.FlagSet, name, value string) {
+	if len(value) > 0 {
+		err := fs.Set(name, value)
+		if err != nil {
+			panic(err)
+		}
 	}
 }

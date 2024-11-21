@@ -29,6 +29,7 @@ var (
 )
 
 const TaskRunLabel = "tekton.dev/taskRun"
+const DebugLevel = 1
 
 func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 	// do not check tekton in kcp
@@ -42,7 +43,7 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 			controllerLog.Info(fmt.Sprintf("get of taskrun CRD failed with: %s", err.Error()))
 			return false, nil
 		}
-		controllerLog.Info("get of taskrun CRD returned successfully")
+		controllerLog.V(DebugLevel).Info("get of taskrun CRD returned successfully")
 		return true, nil
 	}); err != nil {
 		controllerLog.Error(err, "timed out waiting for taskrun CRD to be created")
@@ -95,7 +96,7 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	controllerLog.Info("deployed in namespace", "namespace", operatorNamespace)
+	controllerLog.V(DebugLevel).Info("deployed in namespace", "namespace", operatorNamespace)
 	if err := taskrun.SetupNewReconcilerWithManager(mgr, operatorNamespace); err != nil {
 		return nil, err
 	}

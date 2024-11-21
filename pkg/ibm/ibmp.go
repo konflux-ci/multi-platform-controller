@@ -55,6 +55,8 @@ func IBMPowerProvider(platform string, config map[string]string, systemNamespace
 }
 
 func (r IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunName string, instanceTag string, _ map[string]string) (cloud.InstanceIdentifier, error) {
+	log := logr.FromContextOrDiscard(ctx)
+	log.Info(fmt.Sprintf("attempting to launch IBM-P instance for %s", taskRunName))
 	service, err := r.authenticatedService(ctx, kubeClient)
 	if err != nil {
 		return "", err
@@ -74,6 +76,8 @@ func (r IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx cont
 }
 
 func (r IBMPowerDynamicConfig) CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error) {
+	log := logr.FromContextOrDiscard(ctx)
+	log.Info("attempting to count IBM-P instances")
 	instances, err := r.fetchInstances(ctx, kubeClient)
 	if err != nil {
 		return 0, err
@@ -84,6 +88,7 @@ func (r IBMPowerDynamicConfig) CountInstances(kubeClient client.Client, ctx cont
 			count--
 		}
 	}
+	log.Info("Count of IBM-P instances done", "count", count)
 	return count, nil
 }
 
@@ -121,11 +126,11 @@ func (r IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx 
 	}
 	ip, err := r.lookupIp(ctx, service, string(instanceId))
 	if err != nil {
-		log.Error(err, "Failed to lookup IP", "instanceId", instanceId, "error", err.Error())
+		log.Info("Failed to lookup IP", "instanceId", instanceId, "error", err.Error())
 		return "", nil //todo: check for permanent errors
 	}
 	if err = checkAddressLive(ctx, ip); err != nil {
-		log.Error(err, "Failed to check address", "instanceId", instanceId, "error", err.Error())
+		log.Info("Failed to check address", "instanceId", instanceId, "error", err.Error())
 		return "", nil
 	}
 	return ip, nil

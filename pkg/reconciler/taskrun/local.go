@@ -18,7 +18,7 @@ func (l Local) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *pipelinev1
 	var err error
 	log := logr.FromContextOrDiscard(ctx)
 
-	log.Info("Task set to run locally in the cluster")
+	log.Info("Task set to run locally in the cluster", "task", tr.Name)
 	tr.Labels[AssignedHost] = "localhost"
 	controllerutil.AddFinalizer(tr, PipelineFinalizer)
 	if err = r.client.Update(ctx, tr); err != nil {

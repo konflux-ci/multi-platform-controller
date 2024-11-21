@@ -39,6 +39,8 @@ func IBMZProvider(arch string, config map[string]string, systemNamespace string)
 }
 
 func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunName string, instanceTag string, _ map[string]string) (cloud.InstanceIdentifier, error) {
+	log := logr.FromContextOrDiscard(ctx)
+	log.Info(fmt.Sprintf("attempting to launch IBM-Z instance for %s", taskRunName))
 	vpcService, err := r.authenticatedService(ctx, kubeClient)
 	if err != nil {
 		return "", err
@@ -112,6 +114,8 @@ func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.
 }
 
 func (r IBMZDynamicConfig) CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error) {
+	log := logr.FromContextOrDiscard(ctx)
+	log.Info("attempting to count IBM-Z instances")
 	vpcService, err := r.authenticatedService(ctx, kubeClient)
 	if err != nil {
 		return 0, err
@@ -131,10 +135,13 @@ func (r IBMZDynamicConfig) CountInstances(kubeClient client.Client, ctx context.
 			count++
 		}
 	}
+	log.Info("Count of IBM-Z instances done", "count", count)
 	return count, nil
 }
 
 func (r IBMZDynamicConfig) ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
+	log := logr.FromContextOrDiscard(ctx)
+	log.Info("Listing IBM-Z instances", "tag", instanceTag)
 	vpcService, err := r.authenticatedService(ctx, kubeClient)
 	if err != nil {
 		return nil, err
@@ -149,16 +156,15 @@ func (r IBMZDynamicConfig) ListInstances(kubeClient client.Client, ctx context.C
 		return nil, err
 	}
 	ret := []cloud.CloudVMInstance{}
-	log := logr.FromContextOrDiscard(ctx)
 	for _, instance := range instances.Instances {
 		if strings.HasPrefix(*instance.Name, instanceTag) {
 			addr, err := r.instanceIP(ctx, &instance, kubeClient)
 			if err != nil {
-				log.Error(err, "not listing instance as address cannot be assigned yet", "instance", *instance.ID)
+				log.Info("not listing instance as address cannot be assigned yet", "instance", *instance.ID, "message", err.Error())
 				continue
 			}
 			if err := checkAddressLive(ctx, addr); err != nil {
-				log.Error(err, "not listing instance as address cannot be accessed yet", "instance", *instance.ID)
+				log.Info("not listing instance as address cannot be accessed yet", "instance", *instance.ID, "message", err.Error())
 				continue
 			}
 			ret = append(ret, cloud.CloudVMInstance{InstanceId: cloud.InstanceIdentifier(*instance.ID), Address: addr, StartTime: time.Time(*instance.CreatedAt)})
@@ -260,7 +266,7 @@ func (r IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx cont
 
 	ip, err := r.instanceIP(ctx, instance, kubeClient)
 	if err != nil {
-		log.Error(err, "Failed to lookup IP", "instanceId", instanceId, "error", err.Error())
+		log.Info("Failed to lookup IP", "instanceId", instanceId, "error", err.Error())
 		return "", err
 	}
 	if ip != "" {
@@ -359,7 +365,8 @@ func checkAddressLive(ctx context.Context, addr string) error {
 }
 
 func (r IBMZDynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
-
+	log := logr.FromContextOrDiscard(ctx)
+	log.Info("attempting to terminate IBM-Z server", "instance", instanceId)
 	timeout := time.Now().Add(time.Minute * 10)
 	go func() {
 		vpcService, err := r.authenticatedService(context.Background(), kubeClient)
@@ -367,10 +374,9 @@ func (r IBMZDynamicConfig) TerminateInstance(kubeClient client.Client, ctx conte
 			return
 		}
 		for {
-			log := logr.FromContextOrDiscard(ctx)
 			instance, _, err := vpcService.GetInstance(&vpcv1.GetInstanceOptions{ID: ptr(string(instanceId))})
 			if err != nil {
-				log.Error(err, "failed to delete system z instance, unable to get instance")
+				log.Error(err, "failed to delete IBM-Z instance, unable to get instance")
 				return
 			}
 			switch *instance.Status {
@@ -384,7 +390,7 @@ func (r IBMZDynamicConfig) TerminateInstance(kubeClient client.Client, ctx conte
 			}
 			_, err = vpcService.DeleteInstance(&vpcv1.DeleteInstanceOptions{ID: instance.ID})
 			if err != nil {
-				log.Error(err, "failed to delete system z instance")
+				log.Error(err, "failed to delete IBM-Z instance")
 			}
 			if timeout.Before(time.Now()) {
 				return

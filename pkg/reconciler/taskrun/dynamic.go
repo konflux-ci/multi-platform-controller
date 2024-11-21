@@ -3,6 +3,7 @@ package taskrun
 import (
 	"context"
 	"fmt"
+	"github.com/konflux-ci/multi-platform-controller/pkg/controller"
 	"strconv"
 	"time"
 
@@ -109,7 +110,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 			if err != nil {
 				return reconcile.Result{}, err
 			}
-			log.Info("launching provisioning task")
+			log.Info("launching provisioning task", "instance", tr.Annotations[CloudInstanceId])
 			err = launchProvisioningTask(taskRun, ctx, tr, secretName, r.sshSecret, address, r.CloudProvider.SshUser(), r.platform, r.sudoCommands)
 			if err != nil {
 				//ugh, try and unassign
@@ -162,7 +163,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 	delete(tr.Labels, WaitingForPlatformLabel)
 	startTime := time.Now().Unix()
 	tr.Annotations[AllocationStartTimeAnnotation] = strconv.FormatInt(startTime, 10)
-	log.Info(fmt.Sprintf("%d instances are running, creating a new instance", instanceCount))
+	log.V(controller.DebugLevel).Info(fmt.Sprintf("%d instances are running, creating a new instance", instanceCount))
 	log.Info("attempting to launch a new host for " + tr.Name)
 	instance, err := r.CloudProvider.LaunchInstance(taskRun.client, ctx, tr.Name, r.instanceTag, r.additionalInstanceTags)
 
@@ -201,7 +202,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 		tr.Annotations[CloudInstanceId] = string(instance)
 		tr.Labels[CloudDynamicPlatform] = platformLabel(r.platform)
 
-		log.Info("updating instance id of cloud host", "instance", instance)
+		log.V(controller.DebugLevel).Info("updating instance id of cloud host", "instance", instance)
 		//add a finalizer to clean up
 		controllerutil.AddFinalizer(tr, PipelineFinalizer)
 		err = taskRun.client.Update(ctx, tr)

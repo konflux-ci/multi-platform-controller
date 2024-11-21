@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"github.com/konflux-ci/multi-platform-controller/pkg/controller"
 	"net"
 	"os"
 	"strconv"
@@ -187,11 +188,12 @@ func (r AwsDynamicConfig) CountInstances(kubeClient client.Client, ctx context.C
 	for _, res := range res.Reservations {
 		for _, inst := range res.Instances {
 			if inst.State.Name != types.InstanceStateNameTerminated && string(inst.InstanceType) == r.InstanceType {
-				log.Info(fmt.Sprintf("counting instance %s towards running count", *inst.InstanceId))
+				log.V(controller.DebugLevel).Info(fmt.Sprintf("counting instance %s towards running count", *inst.InstanceId))
 				count++
 			}
 		}
 	}
+	log.Info("Count of AWS instances done", "count", count)
 	return count, nil
 }
 
@@ -231,19 +233,19 @@ func (r AwsDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx conte
 
 func (r AwsDynamicConfig) checkInstanceConnectivity(ctx context.Context, instance *types.Instance) (string, error) {
 	if instance.PublicDnsName != nil && *instance.PublicDnsName != "" {
-		return pingSSHIp(ctx, *instance.PublicDnsName)
+		return pingSSHIp(ctx, *instance.InstanceId, *instance.PublicDnsName)
 	} else if instance.PrivateIpAddress != nil && *instance.PrivateIpAddress != "" {
-		return pingSSHIp(ctx, *instance.PrivateIpAddress)
+		return pingSSHIp(ctx, *instance.InstanceId, *instance.PrivateIpAddress)
 	}
 	return "", nil
 }
 
-func pingSSHIp(ctx context.Context, ipAddress string) (string, error) {
+func pingSSHIp(ctx context.Context, instanceId, ipAddress string) (string, error) {
 	server, _ := net.ResolveTCPAddr("tcp", ipAddress+":22")
 	conn, err := net.DialTCP("tcp", nil, server)
 	if err != nil {
 		log := logr.FromContextOrDiscard(ctx)
-		log.Error(err, "failed to connect to AWS instance")
+		log.Info("failed to connect to AWS instance", "instanceId", instanceId, "message", err.Error())
 		return "", err
 	}
 	defer conn.Close()
@@ -294,7 +296,7 @@ func (r AwsDynamicConfig) ListInstances(kubeClient client.Client, ctx context.Co
 				address, err := r.checkInstanceConnectivity(ctx, &inst)
 				if err == nil {
 					ret = append(ret, cloud.CloudVMInstance{InstanceId: cloud.InstanceIdentifier(*inst.InstanceId), StartTime: *inst.LaunchTime, Address: address})
-					log.Info(fmt.Sprintf("counting instance %s towards running count", *inst.InstanceId))
+					log.V(controller.DebugLevel).Info(fmt.Sprintf("counting instance %s towards running count", *inst.InstanceId))
 				}
 			}
 		}
