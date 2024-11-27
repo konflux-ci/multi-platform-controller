@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"github.com/konflux-ci/multi-platform-controller/pkg/controller"
+	mpclogs "github.com/konflux-ci/multi-platform-controller/pkg/logs"
 	"net"
 	"os"
 	"strconv"
@@ -188,7 +188,7 @@ func (r AwsDynamicConfig) CountInstances(kubeClient client.Client, ctx context.C
 	for _, res := range res.Reservations {
 		for _, inst := range res.Instances {
 			if inst.State.Name != types.InstanceStateNameTerminated && string(inst.InstanceType) == r.InstanceType {
-				log.V(controller.DebugLevel).Info(fmt.Sprintf("counting instance %s towards running count", *inst.InstanceId))
+				log.V(mpclogs.DebugLevel).Info(fmt.Sprintf("counting instance %s towards running count", *inst.InstanceId))
 				count++
 			}
 		}
@@ -296,7 +296,7 @@ func (r AwsDynamicConfig) ListInstances(kubeClient client.Client, ctx context.Co
 				address, err := r.checkInstanceConnectivity(ctx, &inst)
 				if err == nil {
 					ret = append(ret, cloud.CloudVMInstance{InstanceId: cloud.InstanceIdentifier(*inst.InstanceId), StartTime: *inst.LaunchTime, Address: address})
-					log.V(controller.DebugLevel).Info(fmt.Sprintf("counting instance %s towards running count", *inst.InstanceId))
+					log.V(mpclogs.DebugLevel).Info(fmt.Sprintf("counting instance %s towards running count", *inst.InstanceId))
 				}
 			}
 		}

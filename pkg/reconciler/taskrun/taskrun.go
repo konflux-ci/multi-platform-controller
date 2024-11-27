@@ -3,6 +3,7 @@ package taskrun
 import (
 	"context"
 	"fmt"
+	mpclogs "github.com/konflux-ci/multi-platform-controller/pkg/logs"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/konflux-ci/multi-platform-controller/pkg/aws"
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
-	"github.com/konflux-ci/multi-platform-controller/pkg/controller"
 	"github.com/konflux-ci/multi-platform-controller/pkg/ibm"
 	mpcmetrics "github.com/konflux-ci/multi-platform-controller/pkg/metrics"
 	errors2 "github.com/pkg/errors"
@@ -132,7 +132,7 @@ func (r *ReconcileTaskRun) Reconcile(ctx context.Context, request reconcile.Requ
 		}
 	}
 	if prerr != nil {
-		log.V(controller.DebugLevel).Info("Reconcile key received not found errors for TaskRuns (probably deleted)", "taskrun", request.NamespacedName.String())
+		log.V(mpclogs.DebugLevel).Info("Reconcile key received not found errors for TaskRuns (probably deleted)", "taskrun", request.NamespacedName.String())
 		return ctrl.Result{}, nil
 	}
 	if pr.Annotations != nil {

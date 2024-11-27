@@ -2,22 +2,17 @@ package main
 
 import (
 	"flag"
+	mpclogs "github.com/konflux-ci/multi-platform-controller/pkg/logs"
 	mpcmetrics "github.com/konflux-ci/multi-platform-controller/pkg/metrics"
 	"os"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
-	zap2 "go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-	"k8s.io/klog/v2"
-
 	// needed for hack/update-codegen.sh
 	_ "k8s.io/code-generator"
 
+	"github.com/konflux-ci/multi-platform-controller/pkg/controller"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-
-	"github.com/konflux-ci/multi-platform-controller/pkg/controller"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	//+kubebuilder:scaffold:imports
 	"github.com/go-logr/logr"
@@ -46,28 +41,18 @@ func main() {
 	flag.StringVar(&logLevel, "zap-log-level", "", "Zap Level to configure the verbosity of logging")
 	flag.StringVar(&stackTraceLevel, "zap-stacktrace-level", "", "Zap Level at and above which stacktraces are captured")
 
-	zapFlagSet := flag.NewFlagSet("zap", flag.ContinueOnError)
-	opts := zap.Options{
-		TimeEncoder: zapcore.RFC3339TimeEncoder,
-		ZapOpts:     []zap2.Option{zap2.WithCaller(true)},
-	}
-	opts.BindFlags(zapFlagSet)
-	klog.InitFlags(zapFlagSet)
-
 	flag.Parse()
 
-	setFlagIfNotEmptyOrPanic(zapFlagSet, "zap-log-level", logLevel)
-	setFlagIfNotEmptyOrPanic(zapFlagSet, "zap-stacktrace-level", stackTraceLevel)
-
-	logger := zap.New(zap.UseFlagOptions(&opts))
-	ctrl.SetLogger(logger)
-	klog.SetLoggerWithOptions(logger, klog.ContextualLogger(true))
+	err := mpclogs.InitLogger(logLevel, stackTraceLevel)
+	if err != nil {
+		mainLog.Error(err, "unable to init logger")
+		//os.Exit(1)
+	}
 
 	ctx := ctrl.SetupSignalHandler()
 	restConfig := ctrl.GetConfigOrDie()
 
 	var mgr ctrl.Manager
-	var err error
 	mopts := ctrl.Options{
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
@@ -103,14 +88,5 @@ func main() {
 	if err := mgr.Start(ctx); err != nil {
 		mainLog.Error(err, "problem running manager")
 		os.Exit(1)
-	}
-}
-
-func setFlagIfNotEmptyOrPanic(fs *flag.FlagSet, name, value string) {
-	if len(value) > 0 {
-		err := fs.Set(name, value)
-		if err != nil {
-			panic(err)
-		}
 	}
 }

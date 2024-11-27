@@ -3,7 +3,7 @@ package taskrun
 import (
 	"context"
 	"fmt"
-	"github.com/konflux-ci/multi-platform-controller/pkg/controller"
+	mpclogs "github.com/konflux-ci/multi-platform-controller/pkg/logs"
 	"strconv"
 	"time"
 
@@ -163,7 +163,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 	delete(tr.Labels, WaitingForPlatformLabel)
 	startTime := time.Now().Unix()
 	tr.Annotations[AllocationStartTimeAnnotation] = strconv.FormatInt(startTime, 10)
-	log.V(controller.DebugLevel).Info(fmt.Sprintf("%d instances are running, creating a new instance", instanceCount))
+	log.V(mpclogs.DebugLevel).Info(fmt.Sprintf("%d instances are running, creating a new instance", instanceCount))
 	log.Info("attempting to launch a new host for " + tr.Name)
 	instance, err := r.CloudProvider.LaunchInstance(taskRun.client, ctx, tr.Name, r.instanceTag, r.additionalInstanceTags)
 
@@ -202,7 +202,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 		tr.Annotations[CloudInstanceId] = string(instance)
 		tr.Labels[CloudDynamicPlatform] = platformLabel(r.platform)
 
-		log.V(controller.DebugLevel).Info("updating instance id of cloud host", "instance", instance)
+		log.V(mpclogs.DebugLevel).Info("updating instance id of cloud host", "instance", instance)
 		//add a finalizer to clean up
 		controllerutil.AddFinalizer(tr, PipelineFinalizer)
 		err = taskRun.client.Update(ctx, tr)
