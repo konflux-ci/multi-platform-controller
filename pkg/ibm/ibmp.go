@@ -55,8 +55,8 @@ func IBMPowerProvider(platform string, config map[string]string, systemNamespace
 }
 
 func (r IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunName string, instanceTag string, _ map[string]string) (cloud.InstanceIdentifier, error) {
-	log := logr.FromContextOrDiscard(ctx)
-	log.Info(fmt.Sprintf("attempting to launch IBM-P instance for %s", taskRunName))
+	log := logr.FromContextOrDiscard(ctx).WithValues("platform", "ibm-p", "taskrun", taskRunName)
+	log.Info("attempting to launch instance")
 	service, err := r.authenticatedService(ctx, kubeClient)
 	if err != nil {
 		return "", err
@@ -76,8 +76,8 @@ func (r IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx cont
 }
 
 func (r IBMPowerDynamicConfig) CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error) {
-	log := logr.FromContextOrDiscard(ctx)
-	log.Info("attempting to count IBM-P instances")
+	log := logr.FromContextOrDiscard(ctx).WithValues("platform", "ibm-p")
+	log.Info("attempting to count instances")
 	instances, err := r.fetchInstances(ctx, kubeClient)
 	if err != nil {
 		return 0, err
@@ -88,7 +88,7 @@ func (r IBMPowerDynamicConfig) CountInstances(kubeClient client.Client, ctx cont
 			count--
 		}
 	}
-	log.Info("Count of IBM-P instances done", "count", count)
+	log.Info("Instances count done", "count", count)
 	return count, nil
 }
 
@@ -119,26 +119,26 @@ func (r IBMPowerDynamicConfig) authenticatedService(ctx context.Context, kubeCli
 }
 
 func (r IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
-	log := logr.FromContextOrDiscard(ctx)
+	log := logr.FromContextOrDiscard(ctx).WithValues("platform", "ibm-p", "instanceId", instanceId)
 	service, err := r.authenticatedService(ctx, kubeClient)
 	if err != nil {
 		return "", err
 	}
 	ip, err := r.lookupIp(ctx, service, string(instanceId))
 	if err != nil {
-		log.Info("Failed to lookup IP", "instanceId", instanceId, "error", err.Error())
+		log.Info("Failed to lookup IP", "error", err.Error())
 		return "", nil //todo: check for permanent errors
 	}
 	if err = checkAddressLive(ctx, ip); err != nil {
-		log.Info("Failed to check address", "instanceId", instanceId, "error", err.Error())
+		log.Info("Failed to check address", "error", err.Error())
 		return "", nil
 	}
 	return ip, nil
 }
 
 func (r IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
-	log := logr.FromContextOrDiscard(ctx)
-	log.Info("Listing ppc instances", "tag", instanceTag)
+	log := logr.FromContextOrDiscard(ctx).WithValues("platform", "ibm-p")
+	log.Info("Listing instances", "tag", instanceTag)
 	instances, err := r.fetchInstances(ctx, kubeClient)
 	if err != nil {
 		return nil, err
@@ -163,7 +163,7 @@ func (r IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx conte
 		ret = append(ret, cloud.CloudVMInstance{InstanceId: identifier, Address: ip, StartTime: createdAt})
 
 	}
-	log.Info("Listing ppc instances done.", "count", len(ret))
+	log.Info("Listing instances done.", "count", len(ret))
 	return ret, nil
 
 }
@@ -201,8 +201,8 @@ func (r IBMPowerDynamicConfig) fetchInstances(ctx context.Context, kubeClient cl
 	return instances, nil
 }
 func (r IBMPowerDynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
-	log := logr.FromContextOrDiscard(ctx)
-	log.Info("attempting to terminate power server", "instance", instanceId)
+	log := logr.FromContextOrDiscard(ctx).WithValues("platform", "ibm-p", "instanceId", instanceId)
+	log.Info("attempting to terminate power server")
 	service, err := r.authenticatedService(ctx, kubeClient)
 	if err != nil {
 		return err
@@ -224,7 +224,7 @@ func (r IBMPowerDynamicConfig) TerminateInstance(kubeClient client.Client, ctx c
 			//so we just try in a loop
 			err = r.deleteServer(ctx, service, string(instanceId))
 			if err != nil {
-				log.Error(err, "failed to delete system power vm instance")
+				log.Error(err, "failed to delete instance")
 			}
 			if timeout.Before(time.Now()) {
 				return
