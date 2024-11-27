@@ -3,22 +3,23 @@ package taskrun
 import (
 	"context"
 	"fmt"
-	"github.com/konflux-ci/multi-platform-controller/pkg/controller"
-	"github.com/konflux-ci/multi-platform-controller/pkg/metrics"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/konflux-ci/multi-platform-controller/pkg/aws"
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
+	"github.com/konflux-ci/multi-platform-controller/pkg/controller"
 	"github.com/konflux-ci/multi-platform-controller/pkg/ibm"
+	mpcmetrics "github.com/konflux-ci/multi-platform-controller/pkg/metrics"
 	errors2 "github.com/pkg/errors"
 	tektonapi "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	kubecore "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/runtime"
+	k8sRuntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/strings/slices"
@@ -87,7 +88,7 @@ const (
 type ReconcileTaskRun struct {
 	apiReader                client.Reader
 	client                   client.Client
-	scheme                   *runtime.Scheme
+	scheme                   *k8sRuntime.Scheme
 	eventRecorder            record.EventRecorder
 	operatorNamespace        string
 	configMapResourceVersion string
@@ -278,12 +279,13 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 	userNamespace := tr.Labels[UserTaskNamespace]
 	userTaskName := tr.Labels[UserTaskName]
 	assigned := tr.Labels[AssignedHost]
+	targetPlatform := tr.Annotations[TaskTargetPlatformAnnotation]
 	log := logr.FromContextOrDiscard(ctx)
 	if !success {
-		mpcmetrics.HandleMetrics(tr.Annotations[TaskTargetPlatformAnnotation], func(metrics *mpcmetrics.PlatformMetrics) {
+		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
 			metrics.ProvisionFailures.Inc()
 		})
-		mpcmetrics.CountAvailabilityError(tr.Annotations[TaskTargetPlatformAnnotation])
+		mpcmetrics.CountAvailabilityError(targetPlatform)
 		log.Info(fmt.Sprintf("provision task for host %s for user task %s/%sfailed", assigned, userNamespace, userTaskName))
 		if assigned != "" {
 			userTr := tektonapi.TaskRun{}
@@ -314,7 +316,7 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 		}
 	} else {
 		log.Info("provision task succeeded")
-		mpcmetrics.CountAvailabilitySuccess(tr.Annotations[TaskTargetPlatformAnnotation])
+		mpcmetrics.CountAvailabilitySuccess(targetPlatform)
 		//verify we ended up with a secret
 		secret := kubecore.Secret{}
 		err := r.client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: secretName}, &secret)
@@ -328,7 +330,7 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 						return reconcile.Result{}, err
 					}
 				} else {
-					err = r.createErrorSecret(ctx, &userTr, secretName, "provision task failed to create a secret")
+					err = r.createErrorSecret(ctx, &userTr, targetPlatform, secretName, "provision task failed to create a secret")
 					if err != nil {
 						return reconcile.Result{}, err
 					}
@@ -376,7 +378,7 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 
 // This creates an secret with the 'error' field set
 // This will result in the pipeline run immediately failing with the message printed in the logs
-func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, tr *tektonapi.TaskRun, secretName string, msg string) error {
+func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, tr *tektonapi.TaskRun, targetPlatform, secretName, msg string) error {
 	if controllerutil.AddFinalizer(tr, PipelineFinalizer) {
 		err := r.client.Update(ctx, tr)
 		if err != nil {
@@ -394,9 +396,20 @@ func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, tr *tektonapi.
 	if err != nil {
 		return err
 	}
+	_, file, line, _ := runtime.Caller(1)
+	fullMsg := fmt.Sprintf(
+		"%s\n"+
+			"\n"+
+			"Context info:\n"+
+			"  Platform: %s\n"+
+			"  File:     %s\n"+
+			"  Line:     %d\n"+
+			"\n",
+		msg, targetPlatform, file, line,
+	)
 
 	secret.Data = map[string][]byte{
-		"error": []byte(msg),
+		"error": []byte(fullMsg),
 	}
 	err = r.client.Create(ctx, &secret)
 	if err != nil {
@@ -427,7 +440,7 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *tektonapi.Tas
 
 		targetPlatform, err := extractPlatform(tr)
 		if err != nil {
-			err := r.createErrorSecret(ctx, tr, secretName, err.Error())
+			err := r.createErrorSecret(ctx, tr, "[UNKNOWN]", secretName, err.Error())
 			if err != nil {
 				log.Error(err, "could not create error secret")
 			}
@@ -438,7 +451,7 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *tektonapi.Tas
 			mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
 				metrics.HostAllocationFailures.Inc()
 			})
-			err := r.createErrorSecret(ctx, tr, secretName, err.Error())
+			err := r.createErrorSecret(ctx, tr, targetPlatform, secretName, "Error allocating host: "+err.Error())
 			if err != nil {
 				log.Error(err, "could not create error secret")
 			}
@@ -487,7 +500,7 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektona
 		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
 			metrics.HostAllocationFailures.Inc()
 		})
-		return reconcile.Result{}, r.createErrorSecret(ctx, tr, secretName, "failed to read host config "+err.Error())
+		return reconcile.Result{}, r.createErrorSecret(ctx, tr, targetPlatform, secretName, "failed to read host config "+err.Error())
 	}
 	if tr.Annotations == nil {
 		tr.Annotations = map[string]string{}
@@ -795,7 +808,7 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 	if err != nil {
 		log := logr.FromContextOrDiscard(ctx)
 		log.Error(fmt.Errorf("failed to find SSH secret %s", sshSecret), "failed to find SSH secret")
-		return r.createErrorSecret(ctx, tr, secretName, "failed to get SSH secret, system may not be configured correctly")
+		return r.createErrorSecret(ctx, tr, platform, secretName, "failed to get SSH secret, system may not be configured correctly")
 	}
 
 	provision := tektonapi.TaskRun{}
