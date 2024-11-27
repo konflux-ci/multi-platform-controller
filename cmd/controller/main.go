@@ -46,7 +46,7 @@ func main() {
 	err := mpclogs.InitLogger(logLevel, stackTraceLevel)
 	if err != nil {
 		mainLog.Error(err, "unable to init logger")
-		//os.Exit(1)
+		os.Exit(1)
 	}
 
 	ctx := ctrl.SetupSignalHandler()
