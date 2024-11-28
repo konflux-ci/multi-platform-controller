@@ -74,7 +74,7 @@ jobs:
       - name: Fetch branch name for SeaLights commands
         run: echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_ENV
       - name: Create build name for SeaLights commands
-        run: echo "date=$(date +'%y%m%d.%H%M')" >> $GITHUB_ENV    
+        run: echo "date=$(date +'%y%m%d.%H:%M')" >> $GITHUB_ENV    
       - name: Initiating and configuring SeaLights
         run: |
           echo "[Sealights] Initiating and configuring SeaLights to scan the branch $BRANCH_NAME and for build $BUILD_NAME"
