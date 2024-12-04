@@ -39,7 +39,7 @@ func IBMZProvider(arch string, config map[string]string, systemNamespace string)
 }
 
 func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunName string, instanceTag string, _ map[string]string) (cloud.InstanceIdentifier, error) {
-	log := logr.FromContextOrDiscard(ctx).WithValues("platform", "ibm-z", "taskrun", taskRunName)
+	log := logr.FromContextOrDiscard(ctx).WithValues("provider", "ibm-z", "taskrun", taskRunName)
 	log.Info("attempting to launch instance")
 	vpcService, err := r.authenticatedService(ctx, kubeClient)
 	if err != nil {
@@ -114,7 +114,7 @@ func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.
 }
 
 func (r IBMZDynamicConfig) CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error) {
-	log := logr.FromContextOrDiscard(ctx).WithValues("platform", "ibm-z")
+	log := logr.FromContextOrDiscard(ctx).WithValues("provider", "ibm-z")
 	log.Info("attempting to count instances")
 	vpcService, err := r.authenticatedService(ctx, kubeClient)
 	if err != nil {
@@ -140,7 +140,7 @@ func (r IBMZDynamicConfig) CountInstances(kubeClient client.Client, ctx context.
 }
 
 func (r IBMZDynamicConfig) ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
-	log := logr.FromContextOrDiscard(ctx).WithValues("platform", "ibm-z")
+	log := logr.FromContextOrDiscard(ctx).WithValues("provider", "ibm-z")
 	log.Info("Listing instances", "tag", instanceTag)
 	vpcService, err := r.authenticatedService(ctx, kubeClient)
 	if err != nil {
@@ -255,7 +255,7 @@ func (r IBMZDynamicConfig) authenticatedService(ctx context.Context, kubeClient 
 }
 
 func (r IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
-	log := logr.FromContextOrDiscard(ctx).WithValues("platform", "ibm-z", "instanceId", instanceId)
+	log := logr.FromContextOrDiscard(ctx).WithValues("provider", "ibm-z", "instanceId", instanceId)
 	vpcService, err := r.authenticatedService(ctx, kubeClient)
 	if err != nil {
 		return "", err
@@ -352,7 +352,7 @@ func (r IBMZDynamicConfig) instanceIP(ctx context.Context, instance *vpcv1.Insta
 }
 
 func checkAddressLive(ctx context.Context, addr string) error {
-	log := logr.FromContextOrDiscard(ctx).WithValues("platform", "ibm-z")
+	log := logr.FromContextOrDiscard(ctx).WithValues("provider", "ibm-z")
 	log.Info(fmt.Sprintf("checking if address %s is live", addr))
 	server, _ := net.ResolveTCPAddr("tcp", addr+":22")
 	conn, err := net.DialTimeout(server.Network(), server.String(), 5*time.Second)
@@ -366,7 +366,7 @@ func checkAddressLive(ctx context.Context, addr string) error {
 }
 
 func (r IBMZDynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
-	log := logr.FromContextOrDiscard(ctx).WithValues("platform", "ibm-p", "instanceId", instanceId)
+	log := logr.FromContextOrDiscard(ctx).WithValues("provider", "ibm-p", "instanceId", instanceId)
 	log.Info("attempting to terminate server")
 	timeout := time.Now().Add(time.Minute * 10)
 	go func() {
