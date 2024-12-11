@@ -69,7 +69,7 @@ jobs:
           ./slgoagent -v 2> /dev/null | grep version && ./slcli -v 2> /dev/null | grep version
       - name: Write SeaLights token into file
         run: echo "${SEALIGHTS_AGENT_TOKEN}" > sltoken.txt
-        env:
+        with:
           SEALIGHTS_AGENT_TOKEN: ${{secrets.SEALIGHTS_AGENT_TOKEN}}
       - name: Fetch branch name for SeaLights commands
         run: echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_ENV
