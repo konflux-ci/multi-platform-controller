@@ -1,7 +1,7 @@
 name: Validate PR - golang CI
 on:
   pull_request:
-    branches: [ main ]
+    branches: [main]
 jobs:
   lint:
     name: Lint
@@ -12,7 +12,7 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5
         with:
-          go-version-file: './go.mod'
+          go-version-file: "./go.mod"
       - name: golangci-lint
         uses: golangci/golangci-lint-action@3cfe3a4abbb849e10058ce4af15d205b6da42804 # v4
         with:
@@ -26,7 +26,7 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5
         with:
-          go-version-file: './go.mod'
+          go-version-file: "./go.mod"
       - name: Check go mod status
         run: |
           go mod tidy
@@ -54,7 +54,39 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5
         with:
-          go-version-file: './go.mod'
+          go-version-file: "./go.mod"
+      - name: Download SeaLights Go agent and CLI tool
+        run: |
+          echo "[Sealights] Downloading Sealights Golang & CLI Agents..."
+          case $(lscpu | awk '/Architecture:/{print $2}') in
+            x86_64) SL_ARCH="linux-amd64";;
+            arm) SL_ARCH="linux-arm64";;
+          esac
+          wget -nv -O sealights-go-agent.tar.gz https://agents.sealights.co/slgoagent/latest/slgoagent-$SL_ARCH.tar.gz
+          wget -nv -O sealights-slcli.tar.gz https://agents.sealights.co/slcli/latest/slcli-$SL_ARCH.tar.gz
+          tar -xzf ./sealights-go-agent.tar.gz && tar -xzf ./sealights-slcli.tar.gz
+          rm -f ./sealights-go-agent.tar.gz ./sealights-slcli.tar.gz
+          ./slgoagent -v 2> /dev/null | grep version && ./slcli -v 2> /dev/null | grep version
+      - name: Write SeaLights token into file
+        run: echo "$SEALIGHTS_AGENT_TOKEN" > sltoken.txt
+        env:
+          SEALIGHTS_AGENT_TOKEN: ${{secrets.SEALIGHTS_AGENT_TOKEN}}
+      - name: Fetch branch name for SeaLights commands
+        run: echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_ENV
+      - name: Create build name for SeaLights commands
+        run: echo "date=$(date +'%y%m%d.%H:%M')" >> $GITHUB_ENV
+      - name: Initiating and configuring SeaLights
+        run: |
+          echo "[Sealights] Initiating and configuring SeaLights to scan the branch $BRANCH_NAME and for build $BUILD_NAME"
+          ./slcli config init --lang go --token ./sltoken.txt
+          ./slcli config create-pr-bsid --app multi-platform-controller --target-branch "main" --pull-request-number $PULL_REQUEST_NAME --latest-commit $LATEST_COMMIT_SHA --repository-url https://github.com/konflux-ci/multi-platform-controller
+        env:
+          PULL_REQUEST_NAME: ${{ github.event.pull_request.number || github.event.issue.number }}
+          LATEST_COMMIT_SHA: ${{github.event.pull_request.head.sha}}
+      - name: Run the SeaLights scan
+        run: |
+          echo "[Sealights] Running the SeaLights scan"
+          ./slcli scan --bsid buildSessionId.txt  --path-to-scanner ./slgoagent --workspacepath ./ --scm git --scmBaseUrl https://github.com/konflux-ci/multi-platform-controller --scmVersion “0” --scmProvider github
       - name: Build
         run: make build
       - name: Test
@@ -69,13 +101,13 @@ jobs:
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
       - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5
         with:
-          go-version-file: './go.mod'
+          go-version-file: "./go.mod"
       # https://github.com/securego/gosec/blob/12be14859bc7d4b956b71bef0b443694aa519d8a/README.md#integrating-with-code-scanning
       - name: Run Gosec Security Scanner
         uses: securego/gosec@master
         with:
           # we let the report trigger content trigger a failure using the GitHub Security features.
-          args: '-tags normal,periodic -no-fail -fmt sarif -out results.sarif ./...'
+          args: "-tags normal,periodic -no-fail -fmt sarif -out results.sarif ./..."
       - name: Upload SARIF file
         uses: github/codeql-action/upload-sarif@1b1aada464948af03b950897e5eb522f92603cc2 # v3
         with:
