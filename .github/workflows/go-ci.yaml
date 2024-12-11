@@ -68,7 +68,7 @@ jobs:
           rm -f ./sealights-go-agent.tar.gz ./sealights-slcli.tar.gz
           ./slgoagent -v 2> /dev/null | grep version && ./slcli -v 2> /dev/null | grep version
       - name: Write SeaLights token into file
-        run: echo "$SEALIGHTS_AGENT_TOKEN" > sltoken.txt
+        run: echo "${SEALIGHTS_AGENT_TOKEN}" > sltoken.txt
         env:
           SEALIGHTS_AGENT_TOKEN: ${{secrets.SEALIGHTS_AGENT_TOKEN}}
       - name: Fetch branch name for SeaLights commands
@@ -77,9 +77,9 @@ jobs:
         run: echo "date=$(date +'%y%m%d.%H:%M')" >> $GITHUB_ENV
       - name: Initiating and configuring SeaLights
         run: |
-          echo "[Sealights] Initiating and configuring SeaLights to scan the branch $BRANCH_NAME and for build $BUILD_NAME"
+          echo "[Sealights] Initiating and configuring SeaLights to scan the pull request branch"
           ./slcli config init --lang go --token ./sltoken.txt
-          ./slcli config create-pr-bsid --app multi-platform-controller --target-branch "main" --pull-request-number $PULL_REQUEST_NAME --latest-commit $LATEST_COMMIT_SHA --repository-url https://github.com/konflux-ci/multi-platform-controller
+          ./slcli config create-pr-bsid --app multi-platform-controller --target-branch "main" --pull-request-number ${PULL_REQUEST_NAME} --latest-commit ${LATEST_COMMIT_SHA} --repository-url https://github.com/konflux-ci/multi-platform-controller
         env:
           PULL_REQUEST_NAME: ${{ github.event.pull_request.number || github.event.issue.number }}
           LATEST_COMMIT_SHA: ${{github.event.pull_request.head.sha}}
