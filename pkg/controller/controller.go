@@ -42,7 +42,6 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 			controllerLog.Info(fmt.Sprintf("get of taskrun CRD failed with: %s", err.Error()))
 			return false, nil
 		}
-		controllerLog.Info("get of taskrun CRD returned successfully")
 		return true, nil
 	}); err != nil {
 		controllerLog.Error(err, "timed out waiting for taskrun CRD to be created")

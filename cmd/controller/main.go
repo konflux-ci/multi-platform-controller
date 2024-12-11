@@ -64,7 +64,6 @@ func main() {
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 	}
 
-	mainLog.Info("The apis.kcp.dev group is not present - creating standard manager")
 	mgr, err = controller.NewManager(restConfig, mopts)
 	if err != nil {
 		mainLog.Error(err, "unable to start manager")
