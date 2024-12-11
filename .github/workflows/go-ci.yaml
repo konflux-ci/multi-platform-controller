@@ -70,7 +70,7 @@ jobs:
       - name: Write SeaLights token into file
         run: echo "${SEALIGHTS_AGENT_TOKEN}" > sltoken.txt
         with:
-          SEALIGHTS_AGENT_TOKEN: ${{secrets.SEALIGHTS_AGENT_TOKEN}}
+          SEALIGHTS_AGENT_TOKEN: '${{secrets.SEALIGHTS_AGENT_TOKEN}}'
       - name: Fetch branch name for SeaLights commands
         run: echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_ENV
       - name: Create build name for SeaLights commands
