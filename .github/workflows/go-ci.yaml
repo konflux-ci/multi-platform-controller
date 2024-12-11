@@ -93,6 +93,10 @@ jobs:
         run: make test
       - name: Codecov
         uses: codecov/codecov-action@84508663e988701840491b86de86b666e8a86bed # v4
+      - name: clean all SeaLights secret stuff
+        run: |
+          echo "[Sealights] Cleaning up after SeaLights run"
+          rm sltoken.txt buildSessionId.txt
   security_scan:
     name: Security scan
     runs-on: ubuntu-latest
