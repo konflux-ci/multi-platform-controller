@@ -1,8 +1,10 @@
 name: Validate PR - Testing Phase - golang CI
 
 on:
-  repository_dispatch:
-    types: [trigger-mpc-test-ci-workflow]
+  workflow_run:
+    workflows: ["go-ci.yaml"]
+    types:
+      - completed
 jobs:
   checkout_and_test:
     name: Golang Unit tests
@@ -11,8 +13,8 @@ jobs:
       - name: Check out code of the forked repository's head branch
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
         with:
-          repository: ${{ github.event.client_payload.target_branch }}  
-          ref: ${{ github.event.client_payload.target_branch }}  
+          repository: ${{ github.event.workflow_run.head_repository.full_name }}  
+          ref: ${{ github.event.pull_request.head.ref }}  
       - name: Install Go
         uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5
         with:

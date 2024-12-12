@@ -47,19 +47,16 @@ jobs:
           fi
   trigger_unit_test_workflow:
     runs-on: ubuntu-latest
-    steps:
+    steps: 
       - name: Check out code
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
       - name: Trigger mpc-test-ci workflow
-        uses: peter-evans/repository-dispatch@v3
-        with:
-          token: ${{ secrets.REPO_ACCESS_TOKEN }}  
-          repository: ${{ github.event.pull_request.head.repo.full_name }}  
-          event-type: trigger-mpc-test-ci-workflow  
-          client-payload: |
-            {
-              "target-branch": "${{ github.event.pull_request.head.ref }}"
-            }
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.REPO_ACCESS_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -d '{"event_type":"run-tests","client_payload":{"repository":"${{ github.event.pull_request.base.repo.full_name }}","ref":"${{ github.sha }}","head_branch":"${{ github.event.pull_request.head.ref }}"} }' \
+            https://api.github.com/repos/${{ github.event.pull_request.base.repo.full_name }}/dispatches
   security_scan:
     name: Security scan
     runs-on: ubuntu-latest
