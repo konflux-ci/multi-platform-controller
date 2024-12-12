@@ -53,7 +53,7 @@ jobs:
       - name: Trigger mpc-test-ci workflow
         run: |
           curl -X POST \
-            -H "Authorization: Bearer ${{ secrets.REPO_ACCESS_TOKEN }}" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
             -d '{"event_type":"run-tests","client_payload":{"repository":"${{ github.event.pull_request.base.repo.full_name }}","ref":"${{ github.sha }}","head_branch":"${{ github.event.pull_request.head.ref }}"} }' \
             https://api.github.com/repos/${{ github.event.pull_request.base.repo.full_name }}/dispatches
