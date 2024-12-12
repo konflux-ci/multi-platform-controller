@@ -1,0 +1,62 @@
+name: Validate PR - Testing Phase - golang CI
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - reopened
+    branches: [main]
+jobs:
+  checkout_and_test:
+    name: Golang Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+      - name: Install Go
+        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5
+        with:
+          go-version-file: "./go.mod"
+      - name: Download SeaLights Go agent and CLI tool
+        run: |
+          echo "[Sealights] Downloading Sealights Golang & CLI Agents..."
+          case $(lscpu | awk '/Architecture:/{print $2}') in
+            x86_64) SL_ARCH="linux-amd64";;
+            arm) SL_ARCH="linux-arm64";;
+          esac
+          wget -nv -O sealights-go-agent.tar.gz https://agents.sealights.co/slgoagent/latest/slgoagent-$SL_ARCH.tar.gz
+          wget -nv -O sealights-slcli.tar.gz https://agents.sealights.co/slcli/latest/slcli-$SL_ARCH.tar.gz
+          tar -xzf ./sealights-go-agent.tar.gz && tar -xzf ./sealights-slcli.tar.gz
+          rm -f ./sealights-go-agent.tar.gz ./sealights-slcli.tar.gz
+          ./slgoagent -v 2> /dev/null | grep version && ./slcli -v 2> /dev/null | grep version
+      - name: Write SeaLights token into file
+        run: echo "${SEALIGHTS_AGENT_TOKEN}" > sltoken.txt
+        env:
+          SEALIGHTS_AGENT_TOKEN: '${{secrets.SEALIGHTS_AGENT_TOKEN}}'
+      - name: Fetch branch name for SeaLights commands
+        run: echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_ENV
+      - name: Create build name for SeaLights commands
+        run: echo "date=$(date +'%y%m%d.%H:%M')" >> $GITHUB_ENV
+      - name: Initiating and configuring SeaLights
+        run: |
+          echo "[Sealights] Initiating and configuring SeaLights to scan the pull request branch"
+          ./slcli config init --lang go --token ./sltoken.txt
+          ./slcli config create-pr-bsid --app multi-platform-controller --target-branch "main" --pull-request-number ${PULL_REQUEST_NAME} --latest-commit ${LATEST_COMMIT_SHA} --repository-url https://github.com/konflux-ci/multi-platform-controller
+        env:
+          PULL_REQUEST_NAME: ${{ github.event.pull_request.number || github.event.issue.number }}
+          LATEST_COMMIT_SHA: ${{github.event.pull_request.head.sha}}
+      - name: Run the SeaLights scan
+        run: |
+          echo "[Sealights] Running the SeaLights scan"
+          ./slcli scan --bsid buildSessionId.txt  --path-to-scanner ./slgoagent --workspacepath ./ --scm git --scmBaseUrl https://github.com/konflux-ci/multi-platform-controller --scmVersion “0” --scmProvider github
+      - name: Build
+        run: make build
+      - name: Test
+        run: make test
+      - name: Codecov
+        uses: codecov/codecov-action@84508663e988701840491b86de86b666e8a86bed # v4
+      - name: clean all SeaLights secret stuff
+        run: |
+          echo "[Sealights] Cleaning up after SeaLights run"
+          rm sltoken.txt buildSessionId.txt
