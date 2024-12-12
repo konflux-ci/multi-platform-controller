@@ -109,7 +109,7 @@ func newReconciler(mgr ctrl.Manager, operatorNamespace string) reconcile.Reconci
 		apiReader:         mgr.GetAPIReader(),
 		client:            mgr.GetClient(),
 		scheme:            mgr.GetScheme(),
-		eventRecorder:     mgr.GetEventRecorderFor("ComponentBuild"),
+		eventRecorder:     mgr.GetEventRecorderFor("TaskRun"),
 		operatorNamespace: operatorNamespace,
 		platformConfig:    map[string]PlatformConfig{},
 		cloudProviders:    map[string]func(platform string, config map[string]string, systemNamespace string) cloud.CloudProvider{"aws": aws.Ec2Provider, "ibmz": ibm.IBMZProvider, "ibmp": ibm.IBMPowerProvider},
@@ -284,7 +284,10 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 			metrics.ProvisionFailures.Inc()
 		})
 		mpcmetrics.CountAvailabilityError(targetPlatform)
-		log.Info(fmt.Sprintf("provision task for host %s for user task %s/%sfailed", assigned, userNamespace, userTaskName))
+		message := fmt.Sprintf("provision task for host %s for user task %s/%sfailed", assigned, userNamespace, userTaskName)
+		r.eventRecorder.Event(tr, "Error", "ProvisioningFailed", message)
+		err := errors2.New(message)
+		log.Error(err, message)
 		if assigned != "" {
 			userTr := tektonapi.TaskRun{}
 			err := r.client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: userTaskName}, &userTr)
@@ -313,7 +316,9 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 			}
 		}
 	} else {
-		log.Info("provision task succeeded")
+		message := fmt.Sprintf("provision task for host %s for user task %s/%s succeeded", assigned, userNamespace, userTaskName)
+		log.Info(message)
+		r.eventRecorder.Event(tr, "Normal", "Provisioned", message)
 		mpcmetrics.CountAvailabilitySuccess(targetPlatform)
 		//verify we ended up with a secret
 		secret := kubecore.Secret{}
@@ -689,6 +694,7 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 				timeout:                timeout,
 				sudoCommands:           cm.Data["dynamic."+platformConfigName+".sudo-commands"],
 				additionalInstanceTags: additionalInstanceTags,
+				eventRecorder:          r.eventRecorder,
 			}
 			r.platformConfig[targetPlatform] = ret
 			err = mpcmetrics.RegisterPlatformMetrics(ctx, targetPlatform)

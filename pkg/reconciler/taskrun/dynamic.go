@@ -11,6 +11,7 @@ import (
 	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -24,16 +25,18 @@ type DynamicResolver struct {
 	timeout                int64
 	sudoCommands           string
 	additionalInstanceTags map[string]string
+	eventRecorder          record.EventRecorder
 }
 
 func (r DynamicResolver) Deallocate(taskRun *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string, selectedHost string) error {
 
 	log := logr.FromContextOrDiscard(ctx)
 	instance := tr.Annotations[CloudInstanceId]
-	log.Info(fmt.Sprintf("terminating cloud instances %s for TaskRun %s", instance, tr.Name))
+	log.Info(fmt.Sprintf("terminating cloud instance %s for TaskRun %s", instance, tr.Name))
 	err := r.CloudProvider.TerminateInstance(taskRun.client, ctx, cloud.InstanceIdentifier(instance))
 	if err != nil {
 		log.Error(err, "Failed to terminate EC2 instance")
+		r.eventRecorder.Event(tr, "Error", "TerminateFailed", err.Error())
 		return err
 	}
 	delete(tr.Annotations, CloudInstanceId)
@@ -90,7 +93,9 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 			//ugh, try and unassign
 			terr := r.CloudProvider.TerminateInstance(taskRun.client, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
 			if terr != nil {
-				log.Error(terr, "Failed to terminate instance")
+				message := fmt.Sprintf("Failed to terminate %s instance for %s", r.instanceTag, tr.Name)
+				r.eventRecorder.Event(tr, "Normal", "TerminateFailed", message)
+				log.Error(terr, message)
 			}
 			delete(tr.Labels, AssignedHost)
 			delete(tr.Annotations, CloudInstanceId)
@@ -109,7 +114,9 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 			if err != nil {
 				return reconcile.Result{}, err
 			}
-			log.Info("launching provisioning task")
+			message := fmt.Sprintf("launching %s provisioning task for %s", r.instanceTag, tr.Name)
+			log.Info(message)
+			r.eventRecorder.Event(tr, "Normal", "Provisioning", message)
 			err = launchProvisioningTask(taskRun, ctx, tr, secretName, r.sshSecret, address, r.CloudProvider.SshUser(), r.platform, r.sudoCommands)
 			if err != nil {
 				//ugh, try and unassign
@@ -142,11 +149,13 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 	instanceCount, err := r.CloudProvider.CountInstances(taskRun.client, ctx, r.instanceTag)
 	if instanceCount >= r.maxInstances || err != nil {
 		if err != nil {
-			log.Error(err, "unable to count running instances, not allocating a new instance out of an abundance of caution")
+			log.Error(err, "unable to count running instances, not launching a new instance out of an abundance of caution")
 			log.Error(err, "Failed to count existing cloud instances")
 			return reconcile.Result{}, err
 		}
-		log.Info("Too many running cloud tasks, waiting for existing tasks to finish")
+		message := fmt.Sprintf("%d of %d maxInstances running for %s, waiting for existing tasks to finish before provisioning for ", instanceCount, r.maxInstances, r.instanceTag)
+		r.eventRecorder.Event(tr, "Warning", "Pending", message)
+		log.Info(message)
 		if tr.Labels[WaitingForPlatformLabel] == platformLabel(r.platform) {
 			//we are already in a waiting state
 			return reconcile.Result{RequeueAfter: time.Minute}, nil
@@ -162,8 +171,9 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 	delete(tr.Labels, WaitingForPlatformLabel)
 	startTime := time.Now().Unix()
 	tr.Annotations[AllocationStartTimeAnnotation] = strconv.FormatInt(startTime, 10)
-	log.Info(fmt.Sprintf("%d instances are running, creating a new instance", instanceCount))
-	log.Info("attempting to launch a new host for " + tr.Name)
+
+	message := fmt.Sprintf("%d instances are running for %s, creating a new instance %s", instanceCount, r.instanceTag, tr.Name)
+	r.eventRecorder.Event(tr, "Normal", "Launching", message)
 	instance, err := r.CloudProvider.LaunchInstance(taskRun.client, ctx, tr.Name, r.instanceTag, r.additionalInstanceTags)
 
 	if err != nil {
@@ -193,7 +203,8 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 
 		return reconcile.Result{RequeueAfter: time.Second * 20}, nil
 	}
-	log.Info("allocated instance", "instance", instance)
+	message = fmt.Sprintf("launched %s instance for %s", r.instanceTag, tr.Name)
+	r.eventRecorder.Event(tr, "Normal", "Launched", message)
 
 	//this seems super prone to conflicts
 	//we always read a new version direct from the API server on conflict
