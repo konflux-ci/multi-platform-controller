@@ -62,7 +62,7 @@ jobs:
               }
             }
             
-            const response = await github.rest.repos.createDispatch({
+            const response = await github.rest.repos.createDispatchEvent({
               owner: '${{ github.event.pull_request.base.repo.owner.login }}',
               repo: '${{ github.event.pull_request.base.repo.name }}',
               event_type: payload.event_type,
