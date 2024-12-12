@@ -42,9 +42,6 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 			hostCount[host] = hostCount[host] + 1
 		}
 	}
-	for k, v := range hostCount {
-		log.Info("host count", "host", k, "count", v)
-	}
 
 	//now select the host with the most free spots
 	//this algorithm is not very complex
