@@ -114,7 +114,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 			if err != nil {
 				return reconcile.Result{}, err
 			}
-			message := fmt.Sprintf("launching %s provisioning task for %s", r.instanceTag, tr.Name)
+			message := fmt.Sprintf("starting %s provisioning task for %s", r.instanceTag, tr.Name)
 			log.Info(message)
 			r.eventRecorder.Event(tr, "Normal", "Provisioning", message)
 			err = launchProvisioningTask(taskRun, ctx, tr, secretName, r.sshSecret, address, r.CloudProvider.SshUser(), r.platform, r.sudoCommands)
