@@ -1,19 +1,18 @@
 name: Validate PR - Testing Phase - golang CI
 
 on:
-  pull_request_target:
-    types:
-      - opened
-      - synchronize
-      - reopened
-    branches: [main]
+  repository_dispatch:
+    types: [pull_request_target]
 jobs:
   checkout_and_test:
     name: Golang Unit tests
     runs-on: ubuntu-latest
     steps:
-      - name: Check out code
+      - name: Check out code of the forked repository's head branch
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+        with:
+          repository: ${{ github.event.client_payload.target_branch }}  
+          ref: ${{ github.event.client_payload.ref }}  
       - name: Install Go
         uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5
         with:
