@@ -51,7 +51,7 @@ jobs:
       - name: Check out code
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
       - name: Trigger mpc-test-ci workflow
-        uses: actions/github-script@v7.0.1 #v7
+        uses: actions/github-script@4020e461acd7a80762cdfff123a1fde368246fa4 #v7
         with:
           script: |
             const payload = {
