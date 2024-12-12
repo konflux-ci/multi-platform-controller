@@ -67,6 +67,9 @@ jobs:
               repo: '${{ github.event.pull_request.base.repo.name }}',
               event_type: payload.event_type,
               client_payload: payload.client_payload,
+              headers: {
+                authorization: `token ${{ secrets.PAT_TOKEN }}`  
+            }
             });
             console.log(response);
   security_scan:
