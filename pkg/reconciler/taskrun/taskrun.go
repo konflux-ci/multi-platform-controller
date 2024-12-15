@@ -109,7 +109,7 @@ func newReconciler(mgr ctrl.Manager, operatorNamespace string) reconcile.Reconci
 		apiReader:         mgr.GetAPIReader(),
 		client:            mgr.GetClient(),
 		scheme:            mgr.GetScheme(),
-		eventRecorder:     mgr.GetEventRecorderFor("TaskRun"),
+		eventRecorder:     mgr.GetEventRecorderFor("MultiPlatformTaskRun"),
 		operatorNamespace: operatorNamespace,
 		platformConfig:    map[string]PlatformConfig{},
 		cloudProviders:    map[string]func(platform string, config map[string]string, systemNamespace string) cloud.CloudProvider{"aws": aws.Ec2Provider, "ibmz": ibm.IBMZProvider, "ibmp": ibm.IBMPowerProvider},
