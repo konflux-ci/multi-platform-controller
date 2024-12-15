@@ -1,4 +1,4 @@
-name: Validate PR - Testing Phase - golang CI
+name: Validate PR - Testing Phase With SeaLights Monitoring - golang CI
 
 on:
   pull_request_target:
