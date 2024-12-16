@@ -49,10 +49,6 @@ jobs:
             exit 1
           fi
   trigger_unit_test_workflow:
-    permissions:
-      contents: write
-      pull-requests: write
-      repository-projects: write # only this job will have access to the GITHUB_TOKEN
     runs-on: ubuntu-latest
     steps: 
       - name: Check out code
@@ -64,6 +60,7 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}  
           event-type: trigger-mpc-test-with-sealights-ci
           client-payload: '{"target-branch": "${{ github.event.pull_request.head.ref }}"}'
+        continue-on-error: true
   security_scan:
     name: Security scan
     runs-on: ubuntu-latest
