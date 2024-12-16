@@ -51,15 +51,12 @@ jobs:
       - name: Check out code
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
       - name: Trigger mpc-test-ci workflow
-        uses: peter-evans/repository-dispatch@v2
+        uses: peter-evans/repository-dispatch@v1
         with:
           token: ${{ secrets.REPO_ACCESS_TOKEN }}  
           repository: ${{ github.event.pull_request.head.repo.full_name }}  
           event-type: trigger-mpc-test-with-sealights-ci
-          client-payload: |
-            {
-              "target-branch": "${{ github.event.pull_request.head.ref }}"
-            }
+          client-payload: '{"target-branch": "${{ github.event.pull_request.head.ref }}"}'
   security_scan:
     name: Security scan
     runs-on: ubuntu-latest
