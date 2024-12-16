@@ -2,6 +2,9 @@ name: Validate PR - golang CI
 on:
   pull_request:
     branches: [ main ]
+permissions:
+  contents: write
+  actions: write
 jobs:
   lint:
     name: Lint
@@ -45,22 +48,19 @@ jobs:
             git --no-pager diff
             exit 1
           fi
-  unit:
-    name: Golang Unit tests
+  trigger_unit_test_workflow:
     runs-on: ubuntu-latest
-    steps:
+    steps: 
       - name: Check out code
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
-      - name: Install Go
-        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5
+      - name: Trigger mpc-test-ci workflow
+        uses: peter-evans/repository-dispatch@v1
         with:
-          go-version-file: './go.mod'
-      - name: Build
-        run: make build
-      - name: Test
-        run: make test
-      - name: Codecov
-        uses: codecov/codecov-action@84508663e988701840491b86de86b666e8a86bed # v4
+          token: ${{ secrets.GITHUB_TOKEN }}  
+          repository: ${{ github.event.pull_request.head.repo.full_name }}  
+          event-type: trigger-mpc-test-with-sealights-ci
+          client-payload: '{"target-branch": "${{ github.event.pull_request.head.ref }}"}'
+        continue-on-error: true
   security_scan:
     name: Security scan
     runs-on: ubuntu-latest

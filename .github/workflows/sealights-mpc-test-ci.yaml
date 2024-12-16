@@ -8,6 +8,10 @@ on:
       - reopened
     branches:
       - main
+
+  repository_dispatch:
+    types: [trigger-mpc-test-with-sealights-ci]
+
 jobs:
   checkout_and_test:
     name: Golang Unit tests
