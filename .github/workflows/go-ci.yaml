@@ -49,6 +49,7 @@ jobs:
             exit 1
           fi
   trigger_unit_test_workflow:
+    permissions: write-all # only this job will have access to the GITHUB_TOKEN
     runs-on: ubuntu-latest
     steps: 
       - name: Check out code
