@@ -2,6 +2,9 @@ name: Validate PR - golang CI
 on:
   pull_request:
     branches: [ main ]
+permissions:
+  contents: write
+  actions: write
 jobs:
   lint:
     name: Lint
