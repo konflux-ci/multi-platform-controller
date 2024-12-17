@@ -15,6 +15,9 @@ import (
 
 // UpdateHostPools Run the host update task periodically
 func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.Logger) {
+	// THIS CODE WILL BE REMOVED SOON
+	log.Info("Just adding some code changes to test SeaLights")
+
 	log.Info("running pooled host update")
 	cm := v12.ConfigMap{}
 	err := client.Get(context.Background(), types.NamespacedName{Namespace: operatorNamespace, Name: HostConfig}, &cm)
