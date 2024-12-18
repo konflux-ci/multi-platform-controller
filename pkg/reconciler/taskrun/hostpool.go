@@ -24,9 +24,6 @@ type HostPool struct {
 func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
 	log := logr.FromContextOrDiscard(ctx)
 
-	// THIS CODE WILL BE REMOVED SOON
-	log.Info("Just adding some code changes to test SeaLights")
-
 	if len(hp.hosts) == 0 {
 		//no hosts configured
 		return reconcile.Result{}, fmt.Errorf("no hosts configured")
