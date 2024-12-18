@@ -19,5 +19,8 @@ openssl req -x509 -new -nodes -key ${GENCERTS_DIR}/ca.key -subj "/CN=otp-service
 # verify created
 cat ${GENCERTS_DIR}/ca.crt >/dev/null
 if [ $? -eq 0 ]; then
-  echo "CA bundle created"
+    echo "CA bundle created"
+  else
+    echo "CA generation failed"
+    exit 1
 fi
