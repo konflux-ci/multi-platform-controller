@@ -6,6 +6,7 @@ target
 .project
 .classpath
 .vscode/
+.tmp
 *~
 local-test
 out

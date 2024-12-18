@@ -48,7 +48,9 @@ dev-image: build build-otp
 dev: dev-image
 	./deploy/development.sh
 
-dev-minikube: dev
+.PHONY: dev-minikube
+dev-minikube: dev-image
+	./deploy/generate_ca.sh
 	./deploy/minikube-development.sh
 
 ## Tool Versions
