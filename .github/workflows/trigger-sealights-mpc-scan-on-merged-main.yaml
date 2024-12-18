@@ -1,15 +1,13 @@
 name: Run A SeaLights Scan Main Branch After A Pull Request Has Been Merged
 
 on:
-  workflow_run:
-    workflows:
-      - Trigger on PR Merge
+  pull_request:
     types:
-      - completed
+      - closed
 
 jobs:
   run-after-merge:
-    if: github.event.repository.default_branch == 'main'
+    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Main Repository

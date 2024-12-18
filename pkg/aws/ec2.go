@@ -239,9 +239,6 @@ func (r AwsDynamicConfig) checkInstanceConnectivity(ctx context.Context, instanc
 }
 
 func pingSSHIp(ctx context.Context, ipAddress string) (string, error) {
-	// THIS CODE WILL BE REMOVED SOON
-	log := logr.FromContextOrDiscard(ctx)
-	log.Info("Just adding some code changes to test SeaLights")
 	server, _ := net.ResolveTCPAddr("tcp", ipAddress+":22")
 	conn, err := net.DialTCP("tcp", nil, server)
 	if err != nil {
