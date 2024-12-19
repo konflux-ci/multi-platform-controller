@@ -1,0 +1,14 @@
+name: Trigger on PR Merge
+
+on:
+  pull_request:
+    types:
+      - closed
+
+jobs:
+  pr-merge:
+    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify Merge Complete
+        run: echo "Pull request merged into main. Triggering SeaLights scan on merged main workflow."
