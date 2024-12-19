@@ -3,16 +3,17 @@ package taskrun
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
+
 	"github.com/go-logr/logr"
-	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v12 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/utils/strings/slices"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"strings"
-	"time"
 )
 
 type HostPool struct {
@@ -22,6 +23,7 @@ type HostPool struct {
 
 func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
 	log := logr.FromContextOrDiscard(ctx)
+
 	if len(hp.hosts) == 0 {
 		//no hosts configured
 		return reconcile.Result{}, fmt.Errorf("no hosts configured")
