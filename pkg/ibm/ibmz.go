@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -359,18 +360,20 @@ func checkAddressLive(ctx context.Context, addr string) error {
 }
 
 func (r IBMZDynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
-
+	log := logr.FromContextOrDiscard(ctx)
+	vpcService, err := r.authenticatedService(context.Background(), kubeClient)
+	if err != nil {
+		return err
+	}
 	timeout := time.Now().Add(time.Minute * 10)
 	go func() {
-		vpcService, err := r.authenticatedService(context.Background(), kubeClient)
-		if err != nil {
-			return
-		}
+		repeats := 0
 		for {
-			log := logr.FromContextOrDiscard(ctx)
-			instance, _, err := vpcService.GetInstance(&vpcv1.GetInstanceOptions{ID: ptr(string(instanceId))})
+			instance, resp, err := vpcService.GetInstanceWithContext(ctx, &vpcv1.GetInstanceOptions{ID: ptr(string(instanceId))})
 			if err != nil {
-				log.Error(err, "failed to delete system z instance, unable to get instance")
+				if repeats == 0 || (resp != nil && resp.StatusCode != http.StatusNotFound) {
+					log.Error(err, "failed to delete system z instance, unable to get instance")
+				}
 				return
 			}
 			switch *instance.Status {
@@ -382,13 +385,14 @@ func (r IBMZDynamicConfig) TerminateInstance(kubeClient client.Client, ctx conte
 				time.Sleep(time.Second * 10)
 				continue
 			}
-			_, err = vpcService.DeleteInstance(&vpcv1.DeleteInstanceOptions{ID: instance.ID})
+			_, err = vpcService.DeleteInstanceWithContext(ctx, &vpcv1.DeleteInstanceOptions{ID: instance.ID})
 			if err != nil {
 				log.Error(err, "failed to delete system z instance")
 			}
 			if timeout.Before(time.Now()) {
 				return
 			}
+			repeats++
 			time.Sleep(time.Second * 10)
 		}
 	}()

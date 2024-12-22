@@ -35,7 +35,7 @@ func (r DynamicResolver) Deallocate(taskRun *ReconcileTaskRun, ctx context.Conte
 	log.Info(fmt.Sprintf("terminating cloud instance %s for TaskRun %s", instance, tr.Name))
 	err := r.CloudProvider.TerminateInstance(taskRun.client, ctx, cloud.InstanceIdentifier(instance))
 	if err != nil {
-		log.Error(err, "Failed to terminate EC2 instance")
+		log.Error(err, "Failed to terminate dynamic instance")
 		r.eventRecorder.Event(tr, "Error", "TerminateFailed", err.Error())
 		return err
 	}
