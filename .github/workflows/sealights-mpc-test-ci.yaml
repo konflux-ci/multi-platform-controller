@@ -12,11 +12,20 @@ on:
   repository_dispatch:
     types: [trigger-mpc-test-with-sealights-ci]
 
+concurrency:
+  group: ${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   checkout_and_test:
     name: Golang Unit tests
     runs-on: ubuntu-latest
     steps:
+      - name: Handle invalid context
+        if: ${{ !github.event.pull_request.head.sha || !github.event.pull_request.number }}
+        run: |
+          echo "Invalid context for this workflow run. Exiting."
+          exit 1
       - name: Check out code of the forked repository's head branch
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
         with:
@@ -43,9 +52,12 @@ jobs:
         env:
           SEALIGHTS_AGENT_TOKEN: '${{secrets.SEALIGHTS_AGENT_TOKEN}}'
       - name: Initiating and configuring SeaLights
+        if: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha && github.event.pull_request.number }}
         run: |
           echo "[Sealights] Initiating and configuring SeaLights to scan the pull request branch"
           ./slcli config init --lang go --token ./sltoken.txt
+          echo "Latest commit sha: ${LATEST_COMMIT_SHA}"
+          echo "PR Number: ${PULL_REQUEST_NUMBER}"
           ./slcli config create-pr-bsid --app multi-platform-controller --target-branch "main" --pull-request-number ${PULL_REQUEST_NUMBER} --latest-commit ${LATEST_COMMIT_SHA} --repository-url https://github.com/konflux-ci/multi-platform-controller
         env:
           PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
