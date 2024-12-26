@@ -4,7 +4,7 @@ on:
     branches: [ main ]
 permissions:
   checks: read
-  contents: write
+  contents: read
   actions: write
 jobs:
   lint:
@@ -55,7 +55,7 @@ jobs:
       - name: Check out code
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
       - name: Trigger mpc-test-ci workflow
-        uses: peter-evans/repository-dispatch@v1
+        uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}  
           repository: ${{ github.event.pull_request.head.repo.full_name }}  
@@ -67,14 +67,25 @@ jobs:
         uses: actions/github-script@v6
         with:
           script: |
-            const checkRuns = github.rest.checks.listForRef({
+            try {
+              const checkRuns = github.rest.checks.listForRef({
               owner: context.repo.owner,
               repo: context.repo.repo,
               ref: context.sha,
             });
+
+            if (!response.data || !response.data.check_runs) {
+              core.setFailed('No check runs found for the specified ref.');
+              return;
+            }
+            console.log(response);
+
             const targetWorkflow = checkRuns.data.check_runs.find(run => run.name === 'Validate PR - Testing Phase With SeaLights Monitoring - golang CI');
             if (!targetWorkflow || targetWorkflow.conclusion !== 'success') {
               core.setFailed('Pull Request Target Workflow did not pass.');
+            }
+              } catch (error) {
+            console.error('API call failed:', error);
             }
   security_scan:
     name: Security scan
