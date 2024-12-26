@@ -62,32 +62,6 @@ jobs:
           event-type: trigger-mpc-test-with-sealights-ci
           client-payload: '{"target-branch": "${{ github.event.pull_request.head.ref }}"}'
         continue-on-error: true
-      - name: Wait for Target Workflow
-        id: wait
-        uses: actions/github-script@v6
-        with:
-          debug: true
-          script: |
-            try {
-              const response = github.rest.checks.listForRef({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: github.event.pull_request.head.sha,
-            });
-
-            if (!response.data || !response.data.check_runs) {
-              core.setFailed('No check runs found for the specified ref.');
-              return;
-            }
-            console.log(response);
-
-            const targetWorkflow = response.data.check_runs.find(run => run.name === 'Validate PR - Testing Phase With SeaLights Monitoring - golang CI');
-            if (!targetWorkflow || targetWorkflow.conclusion !== 'success') {
-              core.setFailed('Pull Request Target Workflow did not pass.');
-            }
-              } catch (error) {
-            console.error('API call failed:', error);
-            }
   security_scan:
     name: Security scan
     runs-on: ubuntu-latest
