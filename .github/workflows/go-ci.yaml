@@ -66,9 +66,10 @@ jobs:
         id: wait
         uses: actions/github-script@v6
         with:
+          debug: true
           script: |
             try {
-              const checkRuns = github.rest.checks.listForRef({
+              const response = github.rest.checks.listForRef({
               owner: context.repo.owner,
               repo: context.repo.repo,
               ref: context.sha,
@@ -80,7 +81,7 @@ jobs:
             }
             console.log(response);
 
-            const targetWorkflow = checkRuns.data.check_runs.find(run => run.name === 'Validate PR - Testing Phase With SeaLights Monitoring - golang CI');
+            const targetWorkflow = response.data.check_runs.find(run => run.name === 'Validate PR - Testing Phase With SeaLights Monitoring - golang CI');
             if (!targetWorkflow || targetWorkflow.conclusion !== 'success') {
               core.setFailed('Pull Request Target Workflow did not pass.');
             }
