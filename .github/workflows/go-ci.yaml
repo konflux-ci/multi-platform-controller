@@ -72,7 +72,7 @@ jobs:
               const response = github.rest.checks.listForRef({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              ref: context.sha,
+              ref: github.event.pull_request.head.sha,
             });
 
             if (!response.data || !response.data.check_runs) {
