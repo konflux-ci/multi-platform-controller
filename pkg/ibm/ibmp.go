@@ -322,7 +322,7 @@ func (r IBMPowerDynamicConfig) lookupIp(ctx context.Context, service *core.BaseS
 
 func (r IBMPowerDynamicConfig) instanceIP(instanceId *string, networks []*models.PVMInstanceNetwork) (string, error) {
 	if len(networks) == 0 {
-		return "", fmt.Errorf("no networks found for pvm %s", instanceId)
+		return "", fmt.Errorf("no networks found for pvm %s", *instanceId)
 	}
 	network := networks[0]
 	if network.ExternalIP != "" {
@@ -330,7 +330,7 @@ func (r IBMPowerDynamicConfig) instanceIP(instanceId *string, networks []*models
 	} else if network.IPAddress != "" {
 		return network.IPAddress, nil
 	} else {
-		return "", fmt.Errorf("no IP address found for pvm %s", instanceId)
+		return "", fmt.Errorf("no IP address found for pvm %s", *instanceId)
 	}
 }
 
