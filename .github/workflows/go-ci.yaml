@@ -3,7 +3,8 @@ on:
   pull_request:
     branches: [ main ]
 permissions:
-  contents: write
+  checks: read
+  contents: read
   actions: write
 jobs:
   lint:
@@ -54,7 +55,7 @@ jobs:
       - name: Check out code
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
       - name: Trigger mpc-test-ci workflow
-        uses: peter-evans/repository-dispatch@v1
+        uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}  
           repository: ${{ github.event.pull_request.head.repo.full_name }}  
