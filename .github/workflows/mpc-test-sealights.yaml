@@ -15,7 +15,7 @@ on:
     types: [trigger-mpc-test-with-sealights-ci]
 
 concurrency:
-  group: ${{ github.event.pull_request.number }}
+  group: ${{ github.workflow }}-${{ (github.event_name == 'pull_request_target' && github.event.pull_request.number) || github.ref }}
   cancel-in-progress: true
 
 jobs:
