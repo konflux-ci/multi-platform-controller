@@ -31,6 +31,10 @@ func IBMPowerProvider(platform string, config map[string]string, systemNamespace
 	if err != nil {
 		cores = 0.25
 	}
+	volumeSize, err := strconv.ParseFloat(config["dynamic."+platform+".disk"], 64)
+	if err != nil || volumeSize < 100 { // IMB docs says it is potentially unwanted to downsize the bootable volume
+		volumeSize = 100
+	}
 
 	userDataString := config["dynamic."+platform+".user-data"]
 	var base64userData = ""
@@ -48,6 +52,7 @@ func IBMPowerProvider(platform string, config map[string]string, systemNamespace
 		System:          config["dynamic."+platform+".system"],
 		Cores:           cores,
 		Memory:          mem,
+		Disk:            volumeSize,
 		SystemNamespace: systemNamespace,
 		UserData:        base64userData,
 		ProcType:        "shared",
@@ -146,7 +151,7 @@ func (r IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx conte
 		}
 		identifier := cloud.InstanceIdentifier(*instance.PvmInstanceID)
 		createdAt := time.Time(instance.CreationDate)
-		ip, err := r.instanceIP(instance)
+		ip, err := r.instanceIP(instance.PvmInstanceID, instance.Networks)
 		if err != nil {
 			log.Error(err, "not listing instance as address cannot be assigned yet", "instance", identifier)
 			continue
@@ -240,6 +245,7 @@ type IBMPowerDynamicConfig struct {
 	Network         string
 	Cores           float64
 	Memory          float64
+	Disk            float64
 	System          string
 	UserData        string
 	ProcType        string
@@ -293,20 +299,17 @@ func (r IBMPowerDynamicConfig) createServerInstance(ctx context.Context, service
 		return "", err
 	}
 
-	var rawResponse []map[string]json.RawMessage
-	_, err = service.Request(request, &rawResponse)
+	instance := models.PVMInstance{}
+	_, err = service.Request(request, &instance)
 	//println(response.String())
 	if err != nil {
 		log.Error(err, "failed to start power server")
 		return "", err
 	}
-	instanceId := string(rawResponse[0]["pvmInstanceID"])
+	instanceId := instance.PvmInstanceID
 	log.Info("started power server", "instance", instanceId)
-	if instanceId[0] == '"' {
-		return cloud.InstanceIdentifier(instanceId[1 : len(instanceId)-1]), nil
-
-	}
-	return cloud.InstanceIdentifier(instanceId), nil
+	r.resizeInstanceVolume(ctx, service, instanceId)
+	return cloud.InstanceIdentifier(*instanceId), nil
 }
 
 func (r IBMPowerDynamicConfig) lookupIp(ctx context.Context, service *core.BaseService, pvmId string) (string, error) {
@@ -314,24 +317,24 @@ func (r IBMPowerDynamicConfig) lookupIp(ctx context.Context, service *core.BaseS
 	if err != nil {
 		return "", err
 	}
-	return r.instanceIP(instance)
+	return r.instanceIP(instance.PvmInstanceID, instance.Networks)
 }
 
-func (r IBMPowerDynamicConfig) instanceIP(instance *models.PVMInstanceReference) (string, error) {
-	if len(instance.Networks) == 0 {
-		return "", fmt.Errorf("no networks found for pvm %s", *instance.PvmInstanceID)
+func (r IBMPowerDynamicConfig) instanceIP(instanceId *string, networks []*models.PVMInstanceNetwork) (string, error) {
+	if len(networks) == 0 {
+		return "", fmt.Errorf("no networks found for pvm %s", *instanceId)
 	}
-	network := instance.Networks[0]
+	network := networks[0]
 	if network.ExternalIP != "" {
 		return network.ExternalIP, nil
 	} else if network.IPAddress != "" {
 		return network.IPAddress, nil
 	} else {
-		return "", fmt.Errorf("no IP address found for pvm %s", *instance.PvmInstanceID)
+		return "", fmt.Errorf("no IP address found for pvm %s", *instanceId)
 	}
 }
 
-func (r IBMPowerDynamicConfig) lookupInstance(ctx context.Context, service *core.BaseService, pvmId string) (*models.PVMInstanceReference, error) {
+func (r IBMPowerDynamicConfig) lookupInstance(ctx context.Context, service *core.BaseService, pvmId string) (*models.PVMInstance, error) {
 	builder := core.NewRequestBuilder(core.GET)
 	builder = builder.WithContext(ctx)
 	builder.EnableGzipCompression = service.GetEnableGzipCompression()
@@ -352,7 +355,7 @@ func (r IBMPowerDynamicConfig) lookupInstance(ctx context.Context, service *core
 		return nil, err
 	}
 
-	instance := models.PVMInstanceReference{}
+	instance := models.PVMInstance{}
 	_, err = service.Request(request, &instance)
 	//println(response.String())
 	if err != nil {
@@ -387,4 +390,75 @@ func (r IBMPowerDynamicConfig) deleteServer(ctx context.Context, service *core.B
 	var rawResponse map[string]json.RawMessage
 	_, err = service.Request(request, &rawResponse)
 	return err
+}
+
+// asynchronously resize volume when it's ID become known
+func (r IBMPowerDynamicConfig) resizeInstanceVolume(ctx context.Context, service *core.BaseService, id *string) {
+	log := logr.FromContextOrDiscard(ctx)
+	timeout := time.Now().Add(time.Minute * 10)
+	go func() {
+		for {
+			time.Sleep(10 * time.Second)
+			if timeout.Before(time.Now()) {
+				log.Info("Resizing timeout reached")
+				return
+			}
+			instance, err := r.lookupInstance(ctx, service, *id)
+			if err != nil {
+				log.Error(err, "failed to get instance for resize")
+				return
+			}
+			// no volumes yet, wait more
+			if len(instance.VolumeIDs) == 0 {
+				continue
+			}
+			err = r.updateVolume(ctx, service, instance.VolumeIDs[0])
+			if err != nil {
+				log.Error(err, "failed to resize power server volume")
+				return
+			}
+		}
+	}()
+}
+
+func (r IBMPowerDynamicConfig) updateVolume(ctx context.Context, service *core.BaseService, volumeId string) error {
+
+	log := logr.FromContextOrDiscard(ctx)
+	builder := core.NewRequestBuilder(core.POST)
+	builder = builder.WithContext(ctx)
+	builder.EnableGzipCompression = service.GetEnableGzipCompression()
+
+	pathParamsMap := map[string]string{
+		"cloud":  r.pCloudId(),
+		"volume": volumeId,
+	}
+
+	body := models.UpdateVolume{
+		Size: r.Disk,
+	}
+	_, err := builder.ResolveRequestURL(r.Url, `/pcloud/v1/cloud-instances/{cloud}/volumes/{volume}`, pathParamsMap)
+	if err != nil {
+		return err
+	}
+	_, err = builder.SetBodyContentJSON(&body)
+	if err != nil {
+		return err
+	}
+	builder.AddHeader("CRN", r.CRN)
+	builder.AddHeader("Content-Type", "application/json")
+	builder.AddHeader("Accept", "application/json")
+
+	request, err := builder.Build()
+	if err != nil {
+		return err
+	}
+
+	var rawResponse []map[string]json.RawMessage
+	_, err = service.Request(request, &rawResponse)
+	//println(response.String())
+	if err != nil {
+		log.Error(err, "failed to update pvm volume")
+		return err
+	}
+	return nil
 }
