@@ -30,7 +30,7 @@ jobs:
             echo "on-event=push" >> $GITHUB_ENV 
           else
             echo "Running tests on the pull request head branch"
-            echo "on-event=pull_reqest" >> $GITHUB_ENV
+            echo "on-event=pull_request" >> $GITHUB_ENV
           fi
       - name: Handle invalid context for pull requests
         if: ${{ env.on-event == 'pull_request' && (!github.event.pull_request.head.sha || !github.event.pull_request.number) }}
