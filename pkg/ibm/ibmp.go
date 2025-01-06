@@ -299,7 +299,7 @@ func (r IBMPowerDynamicConfig) createServerInstance(ctx context.Context, service
 		return "", err
 	}
 
-	var instances []models.PVMInstance
+	instances := make([]models.PVMInstance, 1)
 	_, err = service.Request(request, &instances)
 	//println(response.String())
 	if err != nil {
