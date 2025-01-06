@@ -299,14 +299,14 @@ func (r IBMPowerDynamicConfig) createServerInstance(ctx context.Context, service
 		return "", err
 	}
 
-	instance := models.PVMInstance{}
-	_, err = service.Request(request, &instance)
+	var instances []models.PVMInstance
+	_, err = service.Request(request, &instances)
 	//println(response.String())
 	if err != nil {
 		log.Error(err, "failed to start power server")
 		return "", err
 	}
-	instanceId := instance.PvmInstanceID
+	instanceId := instances[0].PvmInstanceID
 	log.Info("started power server", "instance", instanceId)
 	r.resizeInstanceVolume(ctx, service, instanceId)
 	return cloud.InstanceIdentifier(*instanceId), nil
@@ -412,6 +412,7 @@ func (r IBMPowerDynamicConfig) resizeInstanceVolume(ctx context.Context, service
 			if len(instance.VolumeIDs) == 0 {
 				continue
 			}
+			log.Info("Resizing instance volume", "instance", *id, "volumeID", instance.VolumeIDs[0], "size", r.Disk)
 			err = r.updateVolume(ctx, service, instance.VolumeIDs[0])
 			if err != nil {
 				log.Error(err, "failed to resize power server volume")
