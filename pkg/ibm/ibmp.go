@@ -210,19 +210,20 @@ func (r IBMPowerDynamicConfig) TerminateInstance(kubeClient client.Client, ctx c
 	_ = r.deleteServer(ctx, service, string(instanceId))
 	timeout := time.Now().Add(time.Minute * 10)
 	go func() {
-		service, err := r.authenticatedService(context.Background(), kubeClient)
+		localCtx := context.WithoutCancel(ctx)
+		service, err := r.authenticatedService(localCtx, kubeClient)
 		if err != nil {
 			return
 		}
 		for {
-			_, err := r.lookupInstance(ctx, service, string(instanceId))
+			_, err := r.lookupInstance(localCtx, service, string(instanceId))
 			if err != nil {
 				//its gone, return
 				return
 			}
 			//we want to make really sure it is gone, delete opts don't really work when the server is starting
 			//so we just try in a loop
-			err = r.deleteServer(ctx, service, string(instanceId))
+			err = r.deleteServer(localCtx, service, string(instanceId))
 			if err != nil {
 				log.Error(err, "failed to delete system power vm instance")
 			}
@@ -397,13 +398,14 @@ func (r IBMPowerDynamicConfig) resizeInstanceVolume(ctx context.Context, service
 	log := logr.FromContextOrDiscard(ctx)
 	timeout := time.Now().Add(time.Minute * 10)
 	go func() {
+		localCtx := context.WithoutCancel(ctx)
 		for {
 			time.Sleep(10 * time.Second)
 			if timeout.Before(time.Now()) {
 				log.Info("Resizing timeout reached")
 				return
 			}
-			instance, err := r.lookupInstance(ctx, service, *id)
+			instance, err := r.lookupInstance(localCtx, service, *id)
 			if err != nil {
 				log.Error(err, "failed to get instance for resize")
 				return
@@ -413,7 +415,7 @@ func (r IBMPowerDynamicConfig) resizeInstanceVolume(ctx context.Context, service
 				continue
 			}
 			log.Info("Resizing instance volume", "instance", *id, "volumeID", instance.VolumeIDs[0], "size", r.Disk)
-			err = r.updateVolume(ctx, service, instance.VolumeIDs[0])
+			err = r.updateVolume(localCtx, service, instance.VolumeIDs[0])
 			if err != nil {
 				log.Error(err, "failed to resize power server volume")
 				return
