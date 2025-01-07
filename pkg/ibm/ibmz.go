@@ -371,8 +371,9 @@ func (r IBMZDynamicConfig) TerminateInstance(kubeClient client.Client, ctx conte
 	timeout := time.Now().Add(time.Minute * 10)
 	go func() {
 		repeats := 0
+		localCtx := context.WithoutCancel(ctx)
 		for {
-			instance, resp, err := vpcService.GetInstanceWithContext(ctx, &vpcv1.GetInstanceOptions{ID: ptr(string(instanceId))})
+			instance, resp, err := vpcService.GetInstanceWithContext(localCtx, &vpcv1.GetInstanceOptions{ID: ptr(string(instanceId))})
 			if err != nil {
 				if repeats == 0 || (resp != nil && resp.StatusCode != http.StatusNotFound) {
 					log.Error(err, "failed to delete system z instance, unable to get instance")
@@ -388,7 +389,7 @@ func (r IBMZDynamicConfig) TerminateInstance(kubeClient client.Client, ctx conte
 				time.Sleep(time.Second * 10)
 				continue
 			}
-			_, err = vpcService.DeleteInstanceWithContext(ctx, &vpcv1.DeleteInstanceOptions{ID: instance.ID})
+			_, err = vpcService.DeleteInstanceWithContext(localCtx, &vpcv1.DeleteInstanceOptions{ID: instance.ID})
 			if err != nil {
 				log.Error(err, "failed to delete system z instance")
 			}
