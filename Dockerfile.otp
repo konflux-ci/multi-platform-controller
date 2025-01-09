@@ -3,7 +3,7 @@ FROM registry.access.redhat.com/ubi9/go-toolset:1.22.9-1734626445@sha256:ead3518
 
 # Copy the Go Modules manifests
 COPY go.mod go.mod
-COPY vendor/ vendor/
+COPY go.sum go.sum
 COPY pkg/ pkg/
 COPY cmd/ cmd/
 

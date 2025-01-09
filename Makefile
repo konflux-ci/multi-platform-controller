@@ -27,11 +27,11 @@ test: fmt vet ## Run tests.
 .PHONY: build
 build: fmt vet clean manifests
 	go build -o out/multi-platform-controller cmd/controller/main.go
-	env GOOS=linux GOARCH=amd64 go build -mod=vendor -o out/multi-platform-controller ./cmd/controller
+	env GOOS=linux GOARCH=amd64 go build -o out/multi-platform-controller ./cmd/controller
 
 .PHONY: build-otp
 build-otp:
-	env GOOS=linux GOARCH=amd64 go build -mod=vendor -o out/otp-server ./cmd/otp
+	env GOOS=linux GOARCH=amd64 go build -o out/otp-server ./cmd/otp
 
 .PHONY: clean
 clean:
