@@ -6,22 +6,39 @@ on:
       - opened
       - synchronize
       - reopened
-    branches:
-      - main
+    branches: [ main ]
+  
+  push:
+    branches: [ main ]
 
   repository_dispatch:
     types: [trigger-mpc-test-with-sealights-ci]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ (github.event_name == 'pull_request_target' && github.event.pull_request.number) || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   checkout_and_test:
     name: Golang Unit tests
     runs-on: ubuntu-latest
     steps:
-      - name: Check out code of the forked repository's head branch
+      - name: Determine workflow run event context
+        run: echo "on-event=${{ github.event_name }}" >> $GITHUB_ENV
+      - name: Handle invalid context for pull requests
+        if: ${{ env.on-event == 'pull_request_target' && (!github.event.pull_request.head.sha || !github.event.pull_request.number) }}
+        run: |
+          echo "Invalid context for this workflow run. Exiting."
+          exit 1
+      - name: Check out pull request head code - on pull_request event
+        if: env.on-event == 'pull_request_target'
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}  
           ref: ${{ github.event.pull_request.head.ref }}  
+      - name: Check out main code - on push event
+        if: env.on-event == 'push'
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
       - name: Install Go
         uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5
         with:
@@ -42,14 +59,25 @@ jobs:
         run: echo "${SEALIGHTS_AGENT_TOKEN}" > sltoken.txt
         env:
           SEALIGHTS_AGENT_TOKEN: '${{secrets.SEALIGHTS_AGENT_TOKEN}}'
-      - name: Initiating and configuring SeaLights
+      - name: Initiating the SeaLights agent
         run: |
-          echo "[Sealights] Initiating and configuring SeaLights to scan the pull request branch"
+          echo "[Sealights] Initiating the SeaLights agent to Goland and handing it the token"
           ./slcli config init --lang go --token ./sltoken.txt
+      - name: Configuring SeaLights - on pull_request event
+        if: env.on-event == 'pull_request_target'
+        run: |
+          echo "[Sealights] Configuring SeaLights to scan the pull request branch"
+          echo "Latest commit sha: ${LATEST_COMMIT_SHA}"
+          echo "PR Number: ${PULL_REQUEST_NUMBER}"
           ./slcli config create-pr-bsid --app multi-platform-controller --target-branch "main" --pull-request-number ${PULL_REQUEST_NUMBER} --latest-commit ${LATEST_COMMIT_SHA} --repository-url https://github.com/konflux-ci/multi-platform-controller
         env:
           PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
           LATEST_COMMIT_SHA: ${{github.event.pull_request.head.sha}}
+      - name: Configuring SeaLights - on push event
+        if: env.on-event == 'push'
+        run: |
+          echo "[Sealights] Configuring SeaLights to scan the main branch after pull request was closed"
+          ./slcli config create-bsid --app multi-platform-controller --branch main --build multi-platform-controller-main-$(date +'%Y.%m.%d_%H:%M')
       - name: Run the SeaLights scan
         run: |
           echo "[Sealights] Running the SeaLights scan"

@@ -24,6 +24,10 @@ import (
 
 func IBMZProvider(arch string, config map[string]string, systemNamespace string) cloud.CloudProvider {
 	privateIp, _ := strconv.ParseBool(config["dynamic."+arch+".private-ip"])
+	volumeSize, err := strconv.Atoi(config["dynamic."+arch+".disk"])
+	if err != nil {
+		volumeSize = 100
+	}
 	return IBMZDynamicConfig{
 		Region:          config["dynamic."+arch+".region"],
 		Key:             config["dynamic."+arch+".key"],
@@ -35,6 +39,7 @@ func IBMZProvider(arch string, config map[string]string, systemNamespace string)
 		Url:             config["dynamic."+arch+".url"],
 		Profile:         config["dynamic."+arch+".profile"],
 		PrivateIP:       privateIp,
+		Disk:            volumeSize,
 		SystemNamespace: systemNamespace,
 	}
 }
@@ -50,8 +55,6 @@ func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.
 		return "", err
 	}
 	name := instanceTag + "-" + strings.Replace(strings.ToLower(base64.URLEncoding.EncodeToString(md5.New().Sum(binary))[0:20]), "_", "-", -1) + "x" //#nosec
-	truebool := true
-	size := int64(100)
 
 	vpc, err := r.lookupVpc(vpcService)
 	if err != nil {
@@ -79,10 +82,10 @@ func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.
 			Profile: &vpcv1.InstanceProfileIdentityByName{Name: ptr(r.Profile)},
 			Keys:    []vpcv1.KeyIdentityIntf{&vpcv1.KeyIdentity{ID: key.ID}},
 			BootVolumeAttachment: &vpcv1.VolumeAttachmentPrototypeInstanceByImageContext{
-				DeleteVolumeOnInstanceDelete: &truebool,
+				DeleteVolumeOnInstanceDelete: ptr(true),
 				Volume: &vpcv1.VolumePrototypeInstanceByImageContext{
 					Name:     ptr(name + "-volume"),
-					Capacity: &size,
+					Capacity: ptr(int64(r.Disk)),
 					Profile: &vpcv1.VolumeProfileIdentity{
 						Name: ptr("general-purpose"),
 					},
@@ -92,10 +95,10 @@ func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.
 				Name: ptr("eth0"),
 				VirtualNetworkInterface: &vpcv1.InstanceNetworkAttachmentPrototypeVirtualNetworkInterface{
 					AllowIPSpoofing:         new(bool),
-					AutoDelete:              &truebool,
-					EnableInfrastructureNat: &truebool,
-					Ips:                     []vpcv1.VirtualNetworkInterfaceIPPrototypeIntf{&vpcv1.VirtualNetworkInterfaceIPPrototype{AutoDelete: &truebool}},
-					PrimaryIP:               &vpcv1.VirtualNetworkInterfacePrimaryIPPrototype{AutoDelete: &truebool},
+					AutoDelete:              ptr(true),
+					EnableInfrastructureNat: ptr(true),
+					Ips:                     []vpcv1.VirtualNetworkInterfaceIPPrototypeIntf{&vpcv1.VirtualNetworkInterfaceIPPrototype{AutoDelete: ptr(true)}},
+					PrimaryIP:               &vpcv1.VirtualNetworkInterfacePrimaryIPPrototype{AutoDelete: ptr(true)},
 					Subnet:                  &vpcv1.SubnetIdentityByID{ID: subnet.ID},
 					SecurityGroups:          []vpcv1.SecurityGroupIdentityIntf{&vpcv1.SecurityGroupIdentityByID{ID: vpc.DefaultSecurityGroup.ID}},
 				},
@@ -222,7 +225,7 @@ func (r IBMZDynamicConfig) lookupVpc(vpcService *vpcv1.VpcV1) (*vpcv1.VPC, error
 	return vpc, nil
 }
 
-func ptr(s string) *string {
+func ptr[V any](s V) *V {
 	return &s
 }
 
@@ -368,8 +371,9 @@ func (r IBMZDynamicConfig) TerminateInstance(kubeClient client.Client, ctx conte
 	timeout := time.Now().Add(time.Minute * 10)
 	go func() {
 		repeats := 0
+		localCtx := context.WithoutCancel(ctx)
 		for {
-			instance, resp, err := vpcService.GetInstanceWithContext(ctx, &vpcv1.GetInstanceOptions{ID: ptr(string(instanceId))})
+			instance, resp, err := vpcService.GetInstanceWithContext(localCtx, &vpcv1.GetInstanceOptions{ID: ptr(string(instanceId))})
 			if err != nil {
 				if repeats == 0 || (resp != nil && resp.StatusCode != http.StatusNotFound) {
 					log.Error(err, "failed to delete system z instance, unable to get instance")
@@ -385,7 +389,7 @@ func (r IBMZDynamicConfig) TerminateInstance(kubeClient client.Client, ctx conte
 				time.Sleep(time.Second * 10)
 				continue
 			}
-			_, err = vpcService.DeleteInstanceWithContext(ctx, &vpcv1.DeleteInstanceOptions{ID: instance.ID})
+			_, err = vpcService.DeleteInstanceWithContext(localCtx, &vpcv1.DeleteInstanceOptions{ID: instance.ID})
 			if err != nil {
 				log.Error(err, "failed to delete system z instance")
 			}
@@ -417,6 +421,7 @@ type IBMZDynamicConfig struct {
 	ImageId         string
 	Url             string
 	Profile         string
+	Disk            int
 	PrivateIP       bool
 }
 
