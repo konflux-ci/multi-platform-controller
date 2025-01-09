@@ -427,7 +427,7 @@ func (r IBMPowerDynamicConfig) resizeInstanceVolume(ctx context.Context, service
 func (r IBMPowerDynamicConfig) updateVolume(ctx context.Context, service *core.BaseService, volumeId string) error {
 
 	log := logr.FromContextOrDiscard(ctx)
-	builder := core.NewRequestBuilder(core.POST)
+	builder := core.NewRequestBuilder(core.PUT)
 	builder = builder.WithContext(ctx)
 	builder.EnableGzipCompression = service.GetEnableGzipCompression()
 
