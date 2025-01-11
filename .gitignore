@@ -14,8 +14,6 @@ lib
 bin
 !devtools/cli/distribution/java-binary/bin
 dependency-reduced-pom.xml
-derby.log
-hotspot.log
 .directory
 .java-version
 .graal-install
