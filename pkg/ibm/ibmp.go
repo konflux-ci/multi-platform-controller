@@ -418,7 +418,9 @@ func (r IBMPowerDynamicConfig) resizeInstanceVolume(ctx context.Context, service
 			err = r.updateVolume(localCtx, service, instance.VolumeIDs[0])
 			if err != nil {
 				log.Error(err, "failed to resize power server volume")
-				return
+				if err.Error() != "conflict" { // conflicts may happen if volume is not ready yet
+					return
+				}
 			}
 		}
 	}()
