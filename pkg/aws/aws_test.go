@@ -14,8 +14,6 @@ var _ = Describe("Ec2 Connection Test", func() {
 	Describe("Testing pingSSHIp", func() {
 		DescribeTable("Testing the ability to ping via SSH a remote AWS ec2 instance",
 			func(testInstanceIP string, shouldFail bool) {
-				Skip("Skipping test because VM setup is missing so its too fragile")
-
 				ec2IPAddress, err := pingSSHIp(context.TODO(), testInstanceIP)
 
 				if !shouldFail {
