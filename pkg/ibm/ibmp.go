@@ -414,6 +414,12 @@ func (r IBMPowerDynamicConfig) resizeInstanceVolume(ctx context.Context, service
 			if len(instance.VolumeIDs) == 0 {
 				continue
 			}
+
+			if *instance.DiskSize == r.Disk {
+				//nothing to do
+				return
+			}
+
 			log.Info("Resizing instance volume", "instance", *id, "volumeID", instance.VolumeIDs[0], "size", r.Disk)
 			err = r.updateVolume(localCtx, service, instance.VolumeIDs[0])
 			if err != nil {
@@ -458,12 +464,12 @@ func (r IBMPowerDynamicConfig) updateVolume(ctx context.Context, service *core.B
 		return err
 	}
 
-	var rawResponse []map[string]json.RawMessage
-	_, err = service.Request(request, &rawResponse)
-	//println(response.String())
+	var vRef models.VolumeReference
+	_, err = service.Request(request, &vRef)
 	if err != nil {
 		log.Error(err, "failed to update pvm volume")
 		return err
 	}
+	log.Info("Volume size updated", "volumeId", vRef.VolumeID, "size", vRef.Size)
 	return nil
 }
