@@ -7,8 +7,8 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-// This test is only here to check SeaLights integration, it will be replaced with a more robust integration
-// test for the AWS API
+// This test is only here to check AWS connectivity in a very primitive and quick way until KFLUXINFRA-1065
+// work starts
 var _ = Describe("Ec2 Connection Test", func() {
 
 	Describe("Testing pingSSHIp", func() {
