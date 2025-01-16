@@ -407,14 +407,15 @@ func (r IBMPowerDynamicConfig) resizeInstanceVolume(ctx context.Context, service
 			}
 			instance, err := r.lookupInstance(localCtx, service, *id)
 			if err != nil {
-				log.Error(err, "failed to get instance for resize")
-				return
+				log.Error(err, "failed to get instance for resize, retrying is 10s")
+				continue
 			}
 			// no volumes yet, wait more
 			if len(instance.VolumeIDs) == 0 {
 				continue
 			}
 
+			log.Info("Current volume", "size", *instance.DiskSize, "instance", *id)
 			if *instance.DiskSize == r.Disk {
 				//nothing to do
 				return
@@ -423,11 +424,10 @@ func (r IBMPowerDynamicConfig) resizeInstanceVolume(ctx context.Context, service
 			log.Info("Resizing instance volume", "instance", *id, "volumeID", instance.VolumeIDs[0], "size", r.Disk)
 			err = r.updateVolume(localCtx, service, instance.VolumeIDs[0])
 			if err != nil {
-				log.Error(err, "failed to resize power server volume")
-				if err.Error() != "conflict" { // conflicts may happen if volume is not ready yet
-					return
-				}
+				// API is quite unstable, randomly throwing conflicts or bad requests, so makes sense to repeat calls
+				continue
 			}
+			return
 		}
 	}()
 }

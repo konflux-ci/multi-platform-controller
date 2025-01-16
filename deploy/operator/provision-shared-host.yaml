@@ -37,7 +37,7 @@ spec:
         value: $(params.SUDO_COMMANDS)
   steps:
     - name: provision
-      image: quay.io/redhat-appstudio/multi-platform-runner:0e55eb996181ec207bf60badc7d3331d6a11c113@sha256:fe5f34be30b0945967fc2b3a4f3da675e475c77e6333c5e56c444ca10b09a2e5
+      image: quay.io/redhat-appstudio/multi-platform-runner:01c7670e81d5120347cf0ad13372742489985e5f@sha256:246adeaaba600e207131d63a7f706cffdcdc37d8f600c56187123ec62823ff44
       imagePullPolicy: IfNotPresent
       volumeMounts:
         - mountPath: /tls
