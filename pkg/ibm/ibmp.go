@@ -407,8 +407,8 @@ func (r IBMPowerDynamicConfig) resizeInstanceVolume(ctx context.Context, service
 			}
 			instance, err := r.lookupInstance(localCtx, service, *id)
 			if err != nil {
-				log.Error(err, "failed to get instance for resize")
-				return
+				log.Error(err, "failed to get instance for resize, retrying is 10s")
+				continue
 			}
 			// no volumes yet, wait more
 			if len(instance.VolumeIDs) == 0 {
