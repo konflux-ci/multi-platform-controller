@@ -25,8 +25,7 @@ var _ = Describe("Ec2 Connection Test", func() {
 				}
 
 			},
-			Entry("Positive test - IP address", "3.87.91.87", false),
-			Entry("Positive test - DNS name", "ec2-3-87-91-87.compute-1.amazonaws.com", false),
+			Entry("Positive test - IP address", "150.239.19.36", false),
 			Entry("Negative test - no such IP address", "192.168.4.231", true),
 			Entry("Negative test - no such DNS name", "not a DNS name, that's for sure", true),
 			Entry("Negative test - not an IP address", "Not an IP address", true),

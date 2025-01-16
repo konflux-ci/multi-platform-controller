@@ -1,3 +1,15 @@
+//Testing IBMPowerProvider - that provides a IBMPowerDynamicConfig for creating an IBMPowerPC machine for tasks.
+// The spec checks that:
+//	- Configuration data is passed to IBMPowerDynamicConfig correctly when the values are valid
+//  - Default values are inserted whenever the configuration written to host-config.yaml are problematic in structure or value
+//
+// There are 5 test cases:
+// 	1. A positive test to verify all is working correctly with valid config map keys
+//	2. A negative test with a platform name unlike any the MPC covers
+//	3. A negative test to verify default value completion - empty memory, core number and disk size values
+//	4. A negative test to verify default value completion - non-numeric memory, core number and disk size values
+//	5. A negative test to verify default value completion - Verifying disk size default number of 100 if the configuration aims for less than that
+
 package ibm
 
 import (
@@ -17,7 +29,7 @@ func parseFloat(s string) float64 {
 }
 
 var _ = DescribeTable("IBMPowerProvider unit test",
-	func(platform string, testConfig map[string]string, expectedCores string, expectedMemory string, expectedDisk string) {
+	func(platform string, testConfig map[string]string, expectedMemory string, expectedCores string, expectedDisk string) {
 		config := map[string]string{
 			"dynamic." + platform + ".key":       "test-key",
 			"dynamic." + platform + ".image":     "test-image",
@@ -51,19 +63,23 @@ var _ = DescribeTable("IBMPowerProvider unit test",
 	},
 
 	Entry("Positive - valid config map keys", "power-rhtap-prod-2", map[string]string{
-		"memory": "10.0",
-		"cores":  "2.0",
-		"disk":   "100"}, "2.0", "10.0", "100"),
+		"memory": "64.0",
+		"cores":  "8.0",
+		"disk":   "300"}, "64.0", "8.0", "300"),
 	Entry("Negative - nonexistant platform name", "koko-hazamar", map[string]string{
-		"memory": "10.0",
-		"cores":  "2.0",
-		"disk":   "300"}, "2.0", "10.0", "300"),
+		"memory": "64.0",
+		"cores":  "8.0",
+		"disk":   "300"}, "64.0", "8.0", "300"),
 	Entry("Negative - missing config data", "ppc6", map[string]string{
 		"memory": "",
 		"cores":  "",
-		"disk":   ""}, "0.25", "2", "100"),
+		"disk":   ""}, "2", "0.25", "100"),
 	Entry("Negative - non-numeral config data", "ppc6", map[string]string{
 		"memory": "koko-hazamar",
 		"cores":  "koko-hazamar",
-		"disk":   "koko-hazamar"}, "0.25", "2", "100"),
+		"disk":   "koko-hazamar"}, "2", "0.25", "100"),
+	Entry("Negative - disk size too small", "power-rhtap-prod-2", map[string]string{
+		"memory": "64.0",
+		"cores":  "8.0",
+		"disk":   "42"}, "64.0", "8.0", "100"),
 )
