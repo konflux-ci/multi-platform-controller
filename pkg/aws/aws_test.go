@@ -7,14 +7,13 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-// This test is only here to check SeaLights integration, it will be replaced with a more robust integration
-// test for the AWS API
+// This test is only here to check AWS connectivity in a very primitive and quick way until KFLUXINFRA-1065
+// work starts
 var _ = Describe("Ec2 Connection Test", func() {
 
 	Describe("Testing pingSSHIp", func() {
 		DescribeTable("Testing the ability to ping via SSH a remote AWS ec2 instance",
 			func(testInstanceIP string, shouldFail bool) {
-				Skip("Skipping test because VM setup is missing so its too fragile")
 
 				ec2IPAddress, err := pingSSHIp(context.TODO(), testInstanceIP)
 
@@ -26,8 +25,7 @@ var _ = Describe("Ec2 Connection Test", func() {
 				}
 
 			},
-			Entry("Positive test - IP address", "3.87.91.87", false),
-			Entry("Positive test - DNS name", "ec2-3-87-91-87.compute-1.amazonaws.com", false),
+			Entry("Positive test - IP address", "150.239.19.36", false),
 			Entry("Negative test - no such IP address", "192.168.4.231", true),
 			Entry("Negative test - no such DNS name", "not a DNS name, that's for sure", true),
 			Entry("Negative test - not an IP address", "Not an IP address", true),
