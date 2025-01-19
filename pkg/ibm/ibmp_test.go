@@ -20,8 +20,6 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-const systemNamespace = "multi-platform-controller"
-
 func parseFloat(s string) float64 {
 	f, err := strconv.ParseFloat(s, 64)
 	Expect(err).NotTo(HaveOccurred())

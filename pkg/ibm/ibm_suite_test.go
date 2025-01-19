@@ -7,6 +7,8 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+const systemNamespace = "multi-platform-controller"
+
 func TestIbm(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Ibm Suite")
