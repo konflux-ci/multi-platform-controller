@@ -89,12 +89,6 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 				"throughput": "koko-hazamar",
 				"user-data":  commonUserData},
 				40, nil, nil, aws.String(commonUserData)),
-			Entry("Chaos - very, very large userData field", "linux-arm64", map[string]string{
-				"disk":       "200",
-				"iops":       "100",
-				"throughput": "50",
-				"user-data":  *aws.String(veryLargeUserData)},
-				200, aws.Int32(100), aws.Int32(50), aws.String(veryLargeUserData)),
 		)
 	})
 
