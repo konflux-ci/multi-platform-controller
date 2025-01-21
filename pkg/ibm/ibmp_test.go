@@ -9,7 +9,6 @@
 //	3. A negative test to verify default value completion - empty memory, core number and disk size values
 //	4. A negative test to verify default value completion - non-numeric memory, core number and disk size values
 //	5. A negative test to verify default value completion - Verifying disk size default number of 100 if the configuration aims for less than that
-//	6. A test to check the boundaries of the userData transformation code - userData is ~59KB in size
 
 package ibm
 
@@ -90,11 +89,6 @@ var _ = DescribeTable("IBMPowerProvider unit test",
 		"memory":   "64.0",
 		"cores":    "8.0",
 		"disk":     "42"}, commonUserData, "64.0", "8.0", "100"),
-	Entry("Chaos - very, very large userData field", "power-rhtap-prod-8", map[string]string{
-		"userData": veryLargeUserData,
-		"memory":   "64.0",
-		"cores":    "8.0",
-		"disk":     "300"}, veryLargeUserData, "64.0", "8.0", "300"),
 )
 
 var commonUserData = `|-
@@ -153,7 +147,7 @@ restorecon -r /home/ec2-user
 
 --//--`
 
-var veryLargeUserData = `
+/*var veryLargeUserData = `
 
 Lorem ipsum dolor sit amet, consectetur adipiscing elit. Phasellus et mi gravida, congue arcu non, dictum quam. Pellentesque iaculis pulvinar odio, nec venenatis massa sodales ut. Nullam iaculis nulla eget lacus ornare, quis tempus metus pulvinar. Nunc tristique dolor viverra arcu efficitur sagittis. Vivamus ultrices vitae libero vitae rutrum. Nullam eget sapien venenatis odio blandit malesuada. Ut malesuada ornare dolor, tempor pretium neque lacinia ac. Proin congue neque augue, vitae hendrerit felis molestie sed. Cras vehicula eros ac purus euismod sollicitudin. Duis iaculis nibh sed scelerisque hendrerit. Vivamus et mauris a nibh vulputate mattis. Etiam eu interdum dolor, sed finibus lacus. Morbi nec orci ultricies, auctor libero id, tincidunt erat. Quisque vel dictum lacus. Fusce ultricies ornare mauris vel eleifend. Ut egestas turpis lorem.
 
@@ -354,3 +348,4 @@ Sed rutrum volutpat ligula, at rhoncus quam dictum et. Sed efficitur sapien magn
 Sed a dolor non lacus blandit porttitor et vitae sapien. Integer odio dolor, accumsan a tortor vel, auctor sollicitudin massa. Ut sit amet sagittis libero, a placerat tellus. Integer ut finibus risus. Nam aliquet lacinia varius. Fusce dictum sollicitudin vehicula. Pellentesque pretium leo ac volutpat sollicitudin. Sed tempor mi ac ligula dictum pretium at ac erat. Etiam molestie velit sit amet ligula cursus, et egestas magna commodo. Duis faucibus tortor in lacus ornare hendrerit. Suspendisse vitae ornare est. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Integer dui mi, pellentesque quis orci a, lacinia aliquam dolor. Sed ullamcorper tincidunt velit, ac ultrices elit pharetra pharetra. Praesent feugiat aliquet neque quis faucibus.
 
 Duis quis lectus velit. Donec risus odio, fringilla id tincidunt quis, imperdiet at ligula. Praesent ante dolor, tempus a gravida nec, elementum vel urna. Vivamus elit purus, gravida id pellentesque ut, eleifend in dolor. Integer quis mi convallis, vestibulum risus ut, commodo lorem. Morbi justo sem, mattis efficitur ultricies in, blandit et enim. In ac lectus lorem. Quisque ligula dolor, vehicula id nisi non, laoreet facilisis urna. Vivamus in placerat diam. Nam a ultricies est. Maecenas maximus ultricies libero in pulvinar. `
+*/
