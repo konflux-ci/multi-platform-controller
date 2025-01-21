@@ -26,8 +26,12 @@ func parseFloat(s string) float64 {
 	return f
 }
 
+func encodeUserData(s string) string {
+	return base64.StdEncoding.EncodeToString([]byte(s))
+}
+
 var _ = DescribeTable("IBMPowerProvider unit test",
-	func(platform string, testConfig map[string]string, expectedMemory string, expectedCores string, expectedDisk string) {
+	func(platform string, testConfig map[string]string, expectedUserData string, expectedMemory string, expectedCores string, expectedDisk string) {
 		config := map[string]string{
 			"dynamic." + platform + ".key":       "test-key",
 			"dynamic." + platform + ".image":     "test-image",
@@ -36,7 +40,7 @@ var _ = DescribeTable("IBMPowerProvider unit test",
 			"dynamic." + platform + ".crn":       "test-crn",
 			"dynamic." + platform + ".network":   "test-network",
 			"dynamic." + platform + ".system":    "test-system",
-			"dynamic." + platform + ".user-data": "test-userData",
+			"dynamic." + platform + ".user-data": testConfig["userData"],
 			"dynamic." + platform + ".memory":    testConfig["memory"],
 			"dynamic." + platform + ".cores":     testConfig["cores"],
 			"dynamic." + platform + ".disk":      testConfig["disk"]}
@@ -53,7 +57,7 @@ var _ = DescribeTable("IBMPowerProvider unit test",
 		Expect(providerConfig.CRN).To(Equal("test-crn"))
 		Expect(providerConfig.Network).To(Equal("test-network"))
 		Expect(providerConfig.System).To(Equal("test-system"))
-		Expect(providerConfig.UserData).To(Equal(base64.StdEncoding.EncodeToString([]byte("test-userData"))))
+		Expect(providerConfig.UserData).To(Equal(encodeUserData(expectedUserData)))
 		Expect(providerConfig.Cores).To(Equal(parseFloat(expectedCores)))
 		Expect(providerConfig.Memory).To(Equal(parseFloat(expectedMemory)))
 		Expect(providerConfig.Disk).To(Equal(parseFloat(expectedDisk)))
@@ -61,23 +65,84 @@ var _ = DescribeTable("IBMPowerProvider unit test",
 	},
 
 	Entry("Positive - valid config map keys", "power-rhtap-prod-2", map[string]string{
-		"memory": "64.0",
-		"cores":  "8.0",
-		"disk":   "300"}, "64.0", "8.0", "300"),
+		"userData": commonUserData,
+		"memory":   "64.0",
+		"cores":    "8.0",
+		"disk":     "300"}, commonUserData, "64.0", "8.0", "300"),
 	Entry("Negative - nonexistant platform name", "koko-hazamar", map[string]string{
-		"memory": "64.0",
-		"cores":  "8.0",
-		"disk":   "300"}, "64.0", "8.0", "300"),
+		"userData": commonUserData,
+		"memory":   "64.0",
+		"cores":    "8.0",
+		"disk":     "300"}, commonUserData, "64.0", "8.0", "300"),
 	Entry("Negative - missing config data", "ppc6", map[string]string{
-		"memory": "",
-		"cores":  "",
-		"disk":   ""}, "2", "0.25", "100"),
+		"userData": commonUserData,
+		"memory":   "",
+		"cores":    "",
+		"disk":     ""}, commonUserData, "2", "0.25", "100"),
 	Entry("Negative - non-numeral config data", "ppc6", map[string]string{
-		"memory": "koko-hazamar",
-		"cores":  "koko-hazamar",
-		"disk":   "koko-hazamar"}, "2", "0.25", "100"),
+		"userData": commonUserData,
+		"memory":   "koko-hazamar",
+		"cores":    "koko-hazamar",
+		"disk":     "koko-hazamar"}, commonUserData, "2", "0.25", "100"),
 	Entry("Negative - disk size too small", "power-rhtap-prod-2", map[string]string{
-		"memory": "64.0",
-		"cores":  "8.0",
-		"disk":   "42"}, "64.0", "8.0", "100"),
+		"userData": commonUserData,
+		"memory":   "64.0",
+		"cores":    "8.0",
+		"disk":     "42"}, commonUserData, "64.0", "8.0", "100"),
 )
+
+var commonUserData = `|-
+Content-Type: multipart/mixed; boundary="//"
+MIME-Version: 1.0
+  
+--//
+Content-Type: text/cloud-config; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="cloud-config.txt"
+
+#cloud-config
+cloud_final_modules:
+  - [scripts-user, always]
+  
+--//
+Content-Type: text/x-shellscript; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="userdata.txt"
+
+#!/bin/bash -ex
+  
+if lsblk -no FSTYPE /dev/nvme1n1 | grep -qE "\S"; then
+ echo "File system exists on the disk."
+else
+ echo "No file system found on the disk /dev/nvme1n1"
+ mkfs -t xfs /dev/nvme1n1
+fi
+
+mount /dev/nvme1n1 /home
+
+if [ -d "/home/var-lib-containers" ]; then
+ echo "Directory "/home/var-lib-containers" exist"
+else
+ echo "Directory "/home/var-lib-containers" doesn|t exist"
+ mkdir -p /home/var-lib-containers /var/lib/containers
+fi
+
+mount --bind /home/var-lib-containers /var/lib/containers
+
+if [ -d "/home/ec2-user" ]; then
+echo "ec2-user home exists"
+else
+echo "ec2-user home doesnt exist"
+mkdir -p /home/ec2-user/.ssh
+chown -R ec2-user /home/ec2-user
+fi
+
+sed -n "s,.*\(ssh-.*\s\),\1,p" /root/.ssh/authorized_keys > /home/ec2-user/.ssh/authorized_keys
+chown ec2-user /home/ec2-user/.ssh/authorized_keys
+chmod 600 /home/ec2-user/.ssh/authorized_keys
+chmod 700 /home/ec2-user/.ssh
+restorecon -r /home/ec2-user
+
+--//--`
