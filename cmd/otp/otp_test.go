@@ -2,21 +2,12 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
-
-func loopCompare(s []string, target string) bool {
-	// turns out simple comparison operators function the fastest in Go string comparison...
-	for _, str := range s {
-		if str == target {
-			return true
-		}
-	}
-	return false
-}
 
 var _ = Describe("OTP unit tests", func() {
 
@@ -27,7 +18,7 @@ var _ = Describe("OTP unit tests", func() {
 	Describe("Testing GenerateRandomString", func() {
 
 		It("GenerateRandomString should generate random strings without errors", func() {
-			var testRounds = 10000
+			var testRounds = 100000
 
 			var ideticalStrings = 0
 			var errorCount = 0
@@ -37,12 +28,15 @@ var _ = Describe("OTP unit tests", func() {
 				randStr, err := GenerateRandomString(20)
 				if err != nil {
 					errorCount++
-				} else if loopCompare(randomStrings, randStr) {
-					ideticalStrings++
 				} else {
 					randomStrings = append(randomStrings, randStr)
 				}
-
+			}
+			sort.Strings(randomStrings)
+			for i := 1; i < len(randomStrings); i++ {
+				if randomStrings[i] == randomStrings[i-1] {
+					ideticalStrings++
+				}
 			}
 			runTime := time.Since(startTime)
 			fmt.Printf("Generated %d random strings in %s\n", testRounds, runTime)
