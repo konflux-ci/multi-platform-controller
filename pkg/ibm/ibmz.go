@@ -28,9 +28,6 @@ func IBMZProvider(arch string, config map[string]string, systemNamespace string)
 	if err != nil {
 		volumeSize = 100
 	}
-	archArr := strings.Split(arch, "-")
-	archTag := strings.Join(archArr[:len(archArr)-1], "-")
-
 	return IBMZDynamicConfig{
 		Region:          config["dynamic."+arch+".region"],
 		Key:             config["dynamic."+arch+".key"],
@@ -43,7 +40,6 @@ func IBMZProvider(arch string, config map[string]string, systemNamespace string)
 		Profile:         config["dynamic."+arch+".profile"],
 		PrivateIP:       privateIp,
 		Disk:            volumeSize,
-		ArchTag:         archTag,
 		SystemNamespace: systemNamespace,
 	}
 }
@@ -58,7 +54,7 @@ func (r IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.
 	if err != nil {
 		return "", err
 	}
-	name := instanceTag + "-" + r.ArchTag + "-" + strings.Replace(strings.ToLower(base64.URLEncoding.EncodeToString(md5.New().Sum(binary))[0:20]), "_", "-", -1) + "x" //#nosec
+	name := instanceTag + "-" + strings.Replace(strings.ToLower(base64.URLEncoding.EncodeToString(md5.New().Sum(binary))[0:20]), "_", "-", -1) + "x" //#nosec
 
 	vpc, err := r.lookupVpc(vpcService)
 	if err != nil {
@@ -134,9 +130,8 @@ func (r IBMZDynamicConfig) CountInstances(kubeClient client.Client, ctx context.
 		return 0, err
 	}
 	count := 0
-	prefix := instanceTag + "-" + r.ArchTag + "-"
 	for _, instance := range instances.Instances {
-		if strings.HasPrefix(*instance.Name, prefix) {
+		if strings.HasPrefix(*instance.Name, instanceTag) {
 			count++
 		}
 	}
@@ -426,7 +421,6 @@ type IBMZDynamicConfig struct {
 	ImageId         string
 	Url             string
 	Profile         string
-	ArchTag         string
 	Disk            int
 	PrivateIP       bool
 }
