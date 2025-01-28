@@ -56,6 +56,15 @@ spec:
         export USERNAME=u-$(echo "$TASKRUN_NAME$NAMESPACE" | md5sum | cut -b-28)
         
         cat >script.sh <<EOF
+        # resize the root partition & filesystem if needed (ppc64le only)
+        if  [ "$(uname -m)" == "ppc64le" ]; then
+          echo "Resizing root partition"
+          DRIVE="$(fdisk -l 2>/dev/null |awk '/^Disk \/dev\/mapper/ {print substr($2,0,length($2)-1)}')"
+          echo yes | parted $DRIVE ---pretend-input-tty resizepart 3 100%
+          partprobe $DRIVE
+          xfs_growfs /
+        fi
+
         sudo dnf install podman -y
         rm -f $USERNAME $USERNAME.pub
         # sometimes it hits  "useradd: cannot lock /etc/passwd; try again later" error, so need to repeat
