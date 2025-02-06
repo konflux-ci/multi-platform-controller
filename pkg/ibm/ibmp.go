@@ -4,25 +4,19 @@ import (
 	"context"
 	"crypto/md5" //#nosec
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/IBM-Cloud/power-go-client/power/models"
-
-	"github.com/IBM/go-sdk-core/v5/core"
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
-	v1 "k8s.io/api/core/v1"
-	types2 "k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func IBMPowerProvider(platform string, config map[string]string, systemNamespace string) cloud.CloudProvider {
+// CreateIbmPowerCfg returns an IBM PowerPC cloud configuration that implements the CloudProvider interface.
+func CreateIbmPowerConfig(platform string, config map[string]string, systemNamespace string) cloud.CloudProvider {
 	mem, err := strconv.ParseFloat(config["dynamic."+platform+".memory"], 64)
 	if err != nil {
 		mem = 2
@@ -32,7 +26,8 @@ func IBMPowerProvider(platform string, config map[string]string, systemNamespace
 		cores = 0.25
 	}
 	volumeSize, err := strconv.ParseFloat(config["dynamic."+platform+".disk"], 64)
-	if err != nil || volumeSize < 100 { // IMB docs says it is potentially unwanted to downsize the bootable volume
+	// IBM docs say it is potentially undesireable to downsize the bootable volume
+	if err != nil || volumeSize < 100 {
 		volumeSize = 100
 	}
 
@@ -44,7 +39,7 @@ func IBMPowerProvider(platform string, config map[string]string, systemNamespace
 
 	return IBMPowerDynamicConfig{
 		Key:             config["dynamic."+platform+".key"],
-		Image:           config["dynamic."+platform+".image"],
+		ImageId:         config["dynamic."+platform+".image"],
 		Secret:          config["dynamic."+platform+".secret"],
 		Url:             config["dynamic."+platform+".url"],
 		CRN:             config["dynamic."+platform+".crn"],
@@ -59,417 +54,194 @@ func IBMPowerProvider(platform string, config map[string]string, systemNamespace
 	}
 }
 
-func (r IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunName string, instanceTag string, _ map[string]string) (cloud.InstanceIdentifier, error) {
-	service, err := r.authenticatedService(ctx, kubeClient)
+// LaunchInstance creates a Power Systems Virtual Server instance and returns its identifier. This function
+// is implemented as part of the CloudProvider interface, which is why some of the arguments are unused for this particular
+// implementation.
+func (ibmp IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunName string, instanceTag string, _ map[string]string) (cloud.InstanceIdentifier, error) {
+	service, err := ibmp.authenticatedService(ctx, kubeClient)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create an authenticated base service: %w", err)
 	}
 
 	binary, err := uuid.New().MarshalBinary()
 	if err != nil {
 		return "", err
 	}
-	name := instanceTag + "-" + strings.Replace(strings.ToLower(base64.URLEncoding.EncodeToString(md5.New().Sum(binary))[0:20]), "_", "-", -1) + "x" //#nosec
-	instance, err := r.createServerInstance(ctx, service, name)
+	instanceName := instanceTag + "-" + strings.Replace(
+		strings.ToLower(base64.URLEncoding.EncodeToString(md5.New().Sum(binary))[0:20]), "_", "-", -1,
+	) + "x" //#nosec
+	instanceId, err := ibmp.createServerInstance(ctx, service, instanceName)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create a PVM instance: %w", err)
 	}
-	return instance, err
+	return instanceId, err
 
 }
 
-func (r IBMPowerDynamicConfig) CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error) {
-	instances, err := r.fetchInstances(ctx, kubeClient)
+// CountInstances returns the number of Power Systems Virtual Server instances whose names start with instanceTag.
+func (ibmz IBMPowerDynamicConfig) CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error) {
+	instances, err := ibmz.fetchInstances(ctx, kubeClient)
 	if err != nil {
-		return 0, err
+		return -1, fmt.Errorf("failed to fetch PVM instances: %w", err)
 	}
-	count := len(instances.PvmInstances)
+
+	count := 0
 	for _, instance := range instances.PvmInstances {
-		if !strings.HasPrefix(*instance.ServerName, instanceTag) {
-			count--
+		if strings.HasPrefix(*instance.ServerName, instanceTag) {
+			count++
 		}
 	}
 	return count, nil
 }
 
-func (r IBMPowerDynamicConfig) authenticatedService(ctx context.Context, kubeClient client.Client) (*core.BaseService, error) {
-	apiKey := ""
-	if kubeClient == nil {
-		apiKey = os.Getenv("IBM_CLOUD_API_KEY")
-	} else {
-		s := v1.Secret{}
-		err := kubeClient.Get(ctx, types2.NamespacedName{Name: r.Secret, Namespace: r.SystemNamespace}, &s)
-		if err != nil {
-			return nil, err
-		}
-		apiKey = string(s.Data["api-key"])
-	}
-	serviceOptions := &core.ServiceOptions{
-		URL: r.Url,
-		Authenticator: &core.IamAuthenticator{
-			ApiKey: apiKey,
-		},
-	}
-
-	baseService, err := core.NewBaseService(serviceOptions)
-	if err != nil {
-		return nil, err
-	}
-	return baseService, nil
-}
-
-func (r IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
+// GetInstanceAddress returns the IP Address associated with the instanceID Power Systems Virtual Server instance.
+func (ibmz IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
 	log := logr.FromContextOrDiscard(ctx)
-	service, err := r.authenticatedService(ctx, kubeClient)
+	service, err := ibmz.authenticatedService(ctx, kubeClient)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create an authenticated base service: %w", err)
 	}
-	ip, err := r.lookupIp(ctx, service, string(instanceId))
+
+	ip, err := ibmz.lookupIp(ctx, service, string(instanceId))
 	if err != nil {
-		log.Error(err, "Failed to lookup IP", "instanceId", instanceId, "error", err.Error())
-		return "", nil //todo: check for permanent errors
+		log.Error(err, "failed to lookup IP address", "instanceId", instanceId)
+		return "", nil //TODO: check for permanent errors
 	}
 	if err = checkAddressLive(ctx, ip); err != nil {
-		log.Error(err, "Failed to check address", "instanceId", instanceId, "error", err.Error())
+		log.Error(err, "failed to resolve IP address", "instanceId", instanceId)
 		return "", nil
 	}
 	return ip, nil
 }
 
-func (r IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
+// ListInstances returns a collection of accessible Power Systems Virtual Server instances whose names start with instanceTag.
+func (ibmp IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
 	log := logr.FromContextOrDiscard(ctx)
-	log.Info("Listing ppc instances", "tag", instanceTag)
-	instances, err := r.fetchInstances(ctx, kubeClient)
+	log.Info("Listing PVM instances", "tag", instanceTag)
+	pvmInstancesCollection, err := ibmp.fetchInstances(ctx, kubeClient)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to fetch PVM instances: %w", err)
 	}
 
-	ret := make([]cloud.CloudVMInstance, 0, len(instances.PvmInstances))
-	for _, instance := range instances.PvmInstances {
+	// Ensure all listed instances have a reachable IP address
+	vmInstances := make([]cloud.CloudVMInstance, 0, len(pvmInstancesCollection.PvmInstances))
+	for _, instance := range pvmInstancesCollection.PvmInstances {
 		if !strings.HasPrefix(*instance.ServerName, instanceTag) {
 			continue
 		}
-		identifier := cloud.InstanceIdentifier(*instance.PvmInstanceID)
-		createdAt := time.Time(instance.CreationDate)
-		ip, err := r.instanceIP(instance.PvmInstanceID, instance.Networks)
+		ip, err := ibmp.instanceIP(instance.PvmInstanceID, instance.Networks)
 		if err != nil {
-			log.Error(err, "not listing instance as address cannot be assigned yet", "instance", identifier)
+			log.Error(err, "not listing instance as an IP address could not be assigned", "instanceId", *instance.PvmInstanceID)
 			continue
 		}
 		if err = checkAddressLive(ctx, ip); err != nil {
-			log.Error(err, "not listing instance as address cannot be accessed yet", "instanceId", identifier, "error", err.Error())
+			log.Error(err, "not listing instance as address cannot be accessed yet", "instanceId", *instance.PvmInstanceID)
 			continue
 		}
-		ret = append(ret, cloud.CloudVMInstance{InstanceId: identifier, Address: ip, StartTime: createdAt})
+		newVmInstance := cloud.CloudVMInstance{
+			InstanceId: cloud.InstanceIdentifier(*instance.PvmInstanceID),
+			Address:    ip,
+			StartTime:  time.Time(instance.CreationDate),
+		}
+		vmInstances = append(vmInstances, newVmInstance)
 
 	}
-	log.Info("Listing ppc instances done.", "count", len(ret))
-	return ret, nil
+	log.Info("Finished listing PVM instances.", "count", len(vmInstances))
+	return vmInstances, nil
 
 }
 
-func (r IBMPowerDynamicConfig) fetchInstances(ctx context.Context, kubeClient client.Client) (models.PVMInstances, error) {
-	log := logr.FromContextOrDiscard(ctx)
-	service, err := r.authenticatedService(ctx, kubeClient)
-	if err != nil {
-		return models.PVMInstances{}, err
-	}
-	builder := core.NewRequestBuilder(core.GET).WithContext(ctx)
-	builder.EnableGzipCompression = service.GetEnableGzipCompression()
-
-	pathParamsMap := map[string]string{
-		"cloud": r.pCloudId(),
-	}
-	_, err = builder.ResolveRequestURL(r.Url, `/pcloud/v1/cloud-instances/{cloud}/pvm-instances`, pathParamsMap)
-	if err != nil {
-		return models.PVMInstances{}, err
-	}
-	builder.AddHeader("CRN", r.CRN)
-	builder.AddHeader("Accept", "application/json")
-
-	request, err := builder.Build()
-	if err != nil {
-		return models.PVMInstances{}, err
-	}
-
-	instances := models.PVMInstances{}
-	_, err = service.Request(request, &instances)
-	if err != nil {
-		log.Error(err, "Failed to request instances")
-		return models.PVMInstances{}, err
-	}
-	return instances, nil
-}
-func (r IBMPowerDynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
+// TerminateInstance tries to delete a specific Power Systems Virtual Server instance for 10 minutes or until the instance
+// is deleted.
+func (ibmp IBMPowerDynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info("attempting to terminate power server", "instance", instanceId)
-	service, err := r.authenticatedService(ctx, kubeClient)
+	service, err := ibmp.authenticatedService(ctx, kubeClient)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create an authenticated base service: %w", err)
 	}
-	_ = r.deleteServer(ctx, service, string(instanceId))
+	_ = ibmp.deleteServer(ctx, service, string(instanceId))
+
+	// Iterate for 10 minutes
 	timeout := time.Now().Add(time.Minute * 10)
 	go func() {
 		localCtx := context.WithoutCancel(ctx)
-		service, err := r.authenticatedService(localCtx, kubeClient)
+		service, err := ibmp.authenticatedService(localCtx, kubeClient)
 		if err != nil {
-			return
+			return // TODO: determine why an error is not returned here
 		}
+
 		for {
-			_, err := r.lookupInstance(localCtx, service, string(instanceId))
+			_, err := ibmp.lookupInstance(localCtx, service, string(instanceId))
+			// Instance has already been deleted
 			if err != nil {
-				//its gone, return
 				return
 			}
-			//we want to make really sure it is gone, delete opts don't really work when the server is starting
-			//so we just try in a loop
-			err = r.deleteServer(localCtx, service, string(instanceId))
+			//TODO: clarify comment ->we want to make really sure it is gone, delete opts don't
+			// really work when the server is starting so we just try in a loop
+			err = ibmp.deleteServer(localCtx, service, string(instanceId))
 			if err != nil {
-				log.Error(err, "failed to delete system power vm instance")
+				log.Error(err, "failed to delete PVM instance", "instanceId", instanceId)
 			}
 			if timeout.Before(time.Now()) {
 				return
 			}
+			// Sleep 10 seconds between each execution
 			time.Sleep(time.Second * 10)
 		}
 	}()
 	return nil
 }
 
-type IBMPowerDynamicConfig struct {
-	SystemNamespace string
-	Secret          string
-	Key             string
-	Image           string
-	Url             string
-	CRN             string
-	Network         string
-	Cores           float64
-	Memory          float64
-	Disk            float64
-	System          string
-	UserData        string
-	ProcType        string
-}
-
-func (r IBMPowerDynamicConfig) pCloudId() string {
-	return strings.Split(strings.Split(r.CRN, "/")[1], ":")[1]
-}
-
 func (r IBMPowerDynamicConfig) SshUser() string {
 	return "root"
 }
 
-func (r IBMPowerDynamicConfig) createServerInstance(ctx context.Context, service *core.BaseService, name string) (cloud.InstanceIdentifier, error) {
+// An IBMPowerDynamicConfig represents a configuration for an IBM PowerPC cloud instance.
+// The zero value (where each field will be assigned its type's zero value) is not a
+// valid IBMPowerDynamicConfig.
+type IBMPowerDynamicConfig struct {
+	// SystemNamespace is the name of the Kubernetes namespace where the specified
+	// secrets are stored.
+	SystemNamespace string
 
-	log := logr.FromContextOrDiscard(ctx)
-	builder := core.NewRequestBuilder(core.POST)
-	builder = builder.WithContext(ctx)
-	builder.EnableGzipCompression = service.GetEnableGzipCompression()
+	// Secret is the name of the Kubernetes ExternalSecret resource to use to
+	// connect and authenticate with the IBM cloud service.
+	Secret string
 
-	pathParamsMap := map[string]string{
-		"cloud": r.pCloudId(),
-	}
+	// Key is the name of the public SSH key to be used when creating the cloud
+	// instance.
+	Key string
 
-	network := strings.Split(r.Network, ",")
-	body := models.PVMInstanceCreate{
-		ServerName:  &name,
-		ImageID:     &r.Image,
-		Processors:  &r.Cores,
-		ProcType:    &r.ProcType,
-		Memory:      &r.Memory,
-		NetworkIDs:  network,
-		KeyPairName: r.Key,
-		SysType:     r.System,
-		UserData:    r.UserData,
-	}
-	_, err := builder.ResolveRequestURL(r.Url, `/pcloud/v1/cloud-instances/{cloud}/pvm-instances`, pathParamsMap)
-	if err != nil {
-		return "", err
-	}
-	_, err = builder.SetBodyContentJSON(&body)
-	if err != nil {
-		return "", err
-	}
-	builder.AddHeader("CRN", r.CRN)
-	builder.AddHeader("Content-Type", "application/json")
-	builder.AddHeader("Accept", "application/json")
+	// ImageId is the image to use when creating the cloud instance.
+	ImageId string
 
-	request, err := builder.Build()
-	if err != nil {
-		return "", err
-	}
+	// Url is the url to use when creating the base service for
+	// the cloud instance.
+	Url string
 
-	instances := make([]models.PVMInstance, 1)
-	_, err = service.Request(request, &instances)
-	//println(response.String())
-	if err != nil {
-		log.Error(err, "failed to start power server")
-		return "", err
-	}
-	instanceId := instances[0].PvmInstanceID
-	log.Info("started power server", "instance", instanceId)
-	r.resizeInstanceVolume(ctx, service, instanceId)
-	return cloud.InstanceIdentifier(*instanceId), nil
-}
+	// CRN is the Cloud Resource Name used to uniquely identify the cloud instance.
+	CRN string
 
-func (r IBMPowerDynamicConfig) lookupIp(ctx context.Context, service *core.BaseService, pvmId string) (string, error) {
-	instance, err := r.lookupInstance(ctx, service, pvmId)
-	if err != nil {
-		return "", err
-	}
-	return r.instanceIP(instance.PvmInstanceID, instance.Networks)
-}
+	// Network is the network ID to use when creating the cloud instance.
+	Network string
 
-func (r IBMPowerDynamicConfig) instanceIP(instanceId *string, networks []*models.PVMInstanceNetwork) (string, error) {
-	if len(networks) == 0 {
-		return "", fmt.Errorf("no networks found for pvm %s", *instanceId)
-	}
-	network := networks[0]
-	if network.ExternalIP != "" {
-		return network.ExternalIP, nil
-	} else if network.IPAddress != "" {
-		return network.IPAddress, nil
-	} else {
-		return "", fmt.Errorf("no IP address found for pvm %s", *instanceId)
-	}
-}
+	// Cores is the number of computer cores to allocate for the cloud instance.
+	Cores float64
 
-func (r IBMPowerDynamicConfig) lookupInstance(ctx context.Context, service *core.BaseService, pvmId string) (*models.PVMInstance, error) {
-	builder := core.NewRequestBuilder(core.GET)
-	builder = builder.WithContext(ctx)
-	builder.EnableGzipCompression = service.GetEnableGzipCompression()
+	// Memory is the amount of memory (in GB) allocated to the cloud instance.
+	Memory float64
 
-	pathParamsMap := map[string]string{
-		"cloud":           r.pCloudId(),
-		"pvm_instance_id": pvmId,
-	}
-	_, err := builder.ResolveRequestURL(r.Url, `/pcloud/v1/cloud-instances/{cloud}/pvm-instances/{pvm_instance_id}`, pathParamsMap)
-	if err != nil {
-		return nil, err
-	}
-	builder.AddHeader("CRN", r.CRN)
-	builder.AddHeader("Accept", "application/json")
+	// Disk is the amount of permanent storage (in GB) allocated to the instance.
+	Disk float64
 
-	request, err := builder.Build()
-	if err != nil {
-		return nil, err
-	}
+	// System is the type of system to start in the cloud instance.
+	System string
 
-	instance := models.PVMInstance{}
-	_, err = service.Request(request, &instance)
-	//println(response.String())
-	if err != nil {
-		return nil, err
-	}
-	return &instance, nil
-}
+	// TODO: determine what this is for (see commonUserData in ibmp_test.go)
+	UserData string
 
-func (r IBMPowerDynamicConfig) deleteServer(ctx context.Context, service *core.BaseService, pvmId string) error {
-
-	builder := core.NewRequestBuilder(core.DELETE)
-	builder = builder.WithContext(ctx)
-	builder.EnableGzipCompression = service.GetEnableGzipCompression()
-
-	pathParamsMap := map[string]string{
-		"cloud":           r.pCloudId(),
-		"pvm_instance_id": pvmId,
-	}
-	_, err := builder.ResolveRequestURL(r.Url, `/pcloud/v1/cloud-instances/{cloud}/pvm-instances/{pvm_instance_id}`, pathParamsMap)
-	if err != nil {
-		return err
-	}
-	builder.AddQuery("delete_data_volumes", "true")
-	builder.AddHeader("CRN", r.CRN)
-	builder.AddHeader("Accept", "application/json")
-
-	request, err := builder.Build()
-	if err != nil {
-		return err
-	}
-
-	var rawResponse map[string]json.RawMessage
-	_, err = service.Request(request, &rawResponse)
-	return err
-}
-
-// asynchronously resize volume when it's ID become known
-func (r IBMPowerDynamicConfig) resizeInstanceVolume(ctx context.Context, service *core.BaseService, id *string) {
-	log := logr.FromContextOrDiscard(ctx)
-	timeout := time.Now().Add(time.Minute * 10)
-	go func() {
-		localCtx := context.WithoutCancel(ctx)
-		for {
-			time.Sleep(10 * time.Second)
-			if timeout.Before(time.Now()) {
-				log.Info("Resizing timeout reached")
-				return
-			}
-			instance, err := r.lookupInstance(localCtx, service, *id)
-			if err != nil {
-				log.Error(err, "failed to get instance for resize, retrying is 10s")
-				continue
-			}
-			// no volumes yet, wait more
-			if len(instance.VolumeIDs) == 0 {
-				continue
-			}
-
-			log.Info("Current volume", "size", *instance.DiskSize, "instance", *id)
-			if *instance.DiskSize == r.Disk {
-				//nothing to do
-				return
-			}
-
-			log.Info("Resizing instance volume", "instance", *id, "volumeID", instance.VolumeIDs[0], "size", r.Disk)
-			err = r.updateVolume(localCtx, service, instance.VolumeIDs[0])
-			if err != nil {
-				// API is quite unstable, randomly throwing conflicts or bad requests, so makes sense to repeat calls
-				continue
-			}
-			return
-		}
-	}()
-}
-
-func (r IBMPowerDynamicConfig) updateVolume(ctx context.Context, service *core.BaseService, volumeId string) error {
-
-	log := logr.FromContextOrDiscard(ctx)
-	builder := core.NewRequestBuilder(core.PUT)
-	builder = builder.WithContext(ctx)
-	builder.EnableGzipCompression = service.GetEnableGzipCompression()
-
-	pathParamsMap := map[string]string{
-		"cloud":  r.pCloudId(),
-		"volume": volumeId,
-	}
-
-	body := models.UpdateVolume{
-		Size: r.Disk,
-	}
-	_, err := builder.ResolveRequestURL(r.Url, `/pcloud/v1/cloud-instances/{cloud}/volumes/{volume}`, pathParamsMap)
-	if err != nil {
-		return err
-	}
-	_, err = builder.SetBodyContentJSON(&body)
-	if err != nil {
-		return err
-	}
-	builder.AddHeader("CRN", r.CRN)
-	builder.AddHeader("Content-Type", "application/json")
-	builder.AddHeader("Accept", "application/json")
-
-	request, err := builder.Build()
-	if err != nil {
-		return err
-	}
-
-	var vRef models.VolumeReference
-	_, err = service.Request(request, &vRef)
-	if err != nil {
-		log.Error(err, "failed to update pvm volume")
-		return err
-	}
-	log.Info("Volume size updated", "volumeId", vRef.VolumeID, "size", vRef.Size)
-	return nil
+	// ProcessorType is the processor type to be used in the cloud instance.
+	// Possible values are "dedicated", "shared", and "capped".
+	ProcType string
 }

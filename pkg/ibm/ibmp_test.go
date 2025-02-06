@@ -45,13 +45,13 @@ var _ = DescribeTable("IBMPowerProvider unit test",
 			"dynamic." + platform + ".cores":     testConfig["cores"],
 			"dynamic." + platform + ".disk":      testConfig["disk"]}
 
-		provider := IBMPowerProvider(platform, config, systemNamespace)
+		provider := CreateIbmPowerConfig(platform, config, systemNamespace)
 		Expect(provider).ToNot(BeNil())
 		providerConfig := provider.(IBMPowerDynamicConfig)
 		Expect(providerConfig).ToNot(BeNil())
 
 		Expect(providerConfig.Key).To(Equal("test-key"))
-		Expect(providerConfig.Image).To(Equal("test-image"))
+		Expect(providerConfig.ImageId).To(Equal("test-image"))
 		Expect(providerConfig.Secret).To(Equal("test-secret"))
 		Expect(providerConfig.Url).To(Equal("test-url"))
 		Expect(providerConfig.CRN).To(Equal("test-crn"))
