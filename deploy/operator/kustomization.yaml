@@ -11,7 +11,7 @@ resources:
   - clean-shared-host.yaml
   - openshift-specific-rbac.yaml
   - update-host.yaml
-  - metricservice.yaml
+  - metrics_service.yaml
 patches:
   - target:
       kind: ClusterRole
@@ -20,10 +20,7 @@ patches:
       - op: add
         path: "/metadata/labels"
         value: {"rbac.authorization.k8s.io/aggregate-to-edit": "true"}
-
-
-patchesStrategicMerge:
-  # Protect the /metrics endpoint by putting it behind auth.
-  # If you want your controller-manager to expose the /metrics
-  # endpoint w/o any authn/z, please comment the following line.
-  - manager_auth_proxy_patch.yaml
+  - target:
+      name: multi-platform-controller
+      kind: Deployment
+    path: manager_metrics_patch.yaml
