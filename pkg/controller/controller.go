@@ -29,6 +29,7 @@ var (
 )
 
 const TaskRunLabel = "tekton.dev/taskRun"
+const TaskLabel = "tekton.dev/task"
 
 func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 	// do not check tekton in kcp
@@ -80,9 +81,17 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 		return nil, lerr
 	}
 	podSelector = podSelector.Add(*podLabels)
+
+	taskrunSelector := labels.NewSelector()
+	trLabels, lerr := labels.NewRequirement(TaskLabel, selection.In, []string{"buildah-remote", "buildah-remote-oci-ta", "clean-shared-host", "provision-shared-host", "update-host"})
+	if lerr != nil {
+		return nil, lerr
+	}
+	taskrunSelector = taskrunSelector.Add(*trLabels)
+
 	options.Cache = cache.Options{
 		ByObject: map[client.Object]cache.ByObject{
-			&pipelinev1.TaskRun{}: {},
+			&pipelinev1.TaskRun{}: {Label: taskrunSelector},
 			&v1.Secret{}:          {Label: secretSelector},
 			&v1.ConfigMap{}:       {Label: configMapSelector},
 			&v1.Pod{}:             {Label: podSelector},
