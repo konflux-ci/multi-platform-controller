@@ -1,8 +1,13 @@
+// Package ibm implements methods described in the [cloud] package for interacting with IBM cloud instances.
+// Currently System Z and PowerPC cloud instances are supported with System Z running Virtual Private Cloud
+// (VPC) instances and PowerPC running Power Systems Virtual Server (PVM) instances.
+//
+// All methods of the CloudProvider interface are implemented and separated from other helper functions used
+// across the methods.
 package ibm
 
 import (
-	"context"
-	"crypto/md5" //#nosec
+	"context" // TODO: clarify comment -> #nosec
 	"encoding/base64"
 	"fmt"
 	"strconv"
@@ -10,7 +15,6 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/google/uuid"
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -57,20 +61,18 @@ func CreateIbmPowerConfig(platform string, config map[string]string, systemNames
 // LaunchInstance creates a Power Systems Virtual Server instance and returns its identifier. This function
 // is implemented as part of the CloudProvider interface, which is why some of the arguments are unused for this particular
 // implementation.
-func (ibmp IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunName string, instanceTag string, _ map[string]string) (cloud.InstanceIdentifier, error) {
-	service, err := ibmp.authenticatedService(ctx, kubeClient)
+func (ibmp IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, _ string, instanceTag string, _ map[string]string) (cloud.InstanceIdentifier, error) {
+	service, err := ibmp.createAuthenticatedBaseService(ctx, kubeClient)
 	if err != nil {
 		return "", fmt.Errorf("failed to create an authenticated base service: %w", err)
 	}
 
-	binary, err := uuid.New().MarshalBinary()
+	instanceName, err := createInstanceName(instanceTag)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create an instance name: %w", err)
 	}
-	instanceName := instanceTag + "-" + strings.Replace(
-		strings.ToLower(base64.URLEncoding.EncodeToString(md5.New().Sum(binary))[0:20]), "_", "-", -1,
-	) + "x" //#nosec
-	instanceId, err := ibmp.createServerInstance(ctx, service, instanceName)
+
+	instanceId, err := ibmp.createInstance(ctx, service, instanceName)
 	if err != nil {
 		return "", fmt.Errorf("failed to create a PVM instance: %w", err)
 	}
@@ -79,8 +81,8 @@ func (ibmp IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx c
 }
 
 // CountInstances returns the number of Power Systems Virtual Server instances whose names start with instanceTag.
-func (ibmz IBMPowerDynamicConfig) CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error) {
-	instances, err := ibmz.fetchInstances(ctx, kubeClient)
+func (ibmp IBMPowerDynamicConfig) CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error) {
+	instances, err := ibmp.getAllInstances(ctx, kubeClient)
 	if err != nil {
 		return -1, fmt.Errorf("failed to fetch PVM instances: %w", err)
 	}
@@ -95,21 +97,26 @@ func (ibmz IBMPowerDynamicConfig) CountInstances(kubeClient client.Client, ctx c
 }
 
 // GetInstanceAddress returns the IP Address associated with the instanceID Power Systems Virtual Server instance.
-func (ibmz IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
+func (ibmp IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
 	log := logr.FromContextOrDiscard(ctx)
-	service, err := ibmz.authenticatedService(ctx, kubeClient)
+	service, err := ibmp.createAuthenticatedBaseService(ctx, kubeClient)
 	if err != nil {
 		return "", fmt.Errorf("failed to create an authenticated base service: %w", err)
 	}
 
-	ip, err := ibmz.lookupIp(ctx, service, string(instanceId))
+	instance, err := ibmp.getInstance(ctx, service, string(instanceId))
 	if err != nil {
-		log.Error(err, "failed to lookup IP address", "instanceId", instanceId)
-		return "", nil //TODO: check for permanent errors
+		return "", fmt.Errorf("failed to find instance %s: %w", instanceId, err)
 	}
-	if err = checkAddressLive(ctx, ip); err != nil {
+	ip, err := retrieveInstanceIP(*instance.PvmInstanceID, instance.Networks)
+	if err != nil {
+		log.Error(err, "failed to lookup IP", "instanceId", instanceId)
+		return "", nil // TODO: find permanent errors
+	}
+
+	if err = checkIfIpIsLive(ctx, ip); err != nil {
 		log.Error(err, "failed to resolve IP address", "instanceId", instanceId)
-		return "", nil
+		return "", nil // TODO: figure out why an error is not returned here
 	}
 	return ip, nil
 }
@@ -118,7 +125,7 @@ func (ibmz IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, c
 func (ibmp IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info("Listing PVM instances", "tag", instanceTag)
-	pvmInstancesCollection, err := ibmp.fetchInstances(ctx, kubeClient)
+	pvmInstancesCollection, err := ibmp.getAllInstances(ctx, kubeClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch PVM instances: %w", err)
 	}
@@ -129,14 +136,18 @@ func (ibmp IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx co
 		if !strings.HasPrefix(*instance.ServerName, instanceTag) {
 			continue
 		}
-		ip, err := ibmp.instanceIP(instance.PvmInstanceID, instance.Networks)
+		ip, err := retrieveInstanceIP(*instance.PvmInstanceID, instance.Networks)
 		if err != nil {
 			log.Error(err, "not listing instance as an IP address could not be assigned", "instanceId", *instance.PvmInstanceID)
 			continue
 		}
-		if err = checkAddressLive(ctx, ip); err != nil {
-			log.Error(err, "not listing instance as address cannot be accessed yet", "instanceId", *instance.PvmInstanceID)
-			continue
+		if err = checkIfIpIsLive(ctx, ip); err != nil {
+			log.Error(
+				err,
+				"not listing instance as its IP address could not be accessed",
+				"instanceId", *instance.PvmInstanceID,
+				"ip", ip,
+			)
 		}
 		newVmInstance := cloud.CloudVMInstance{
 			InstanceId: cloud.InstanceIdentifier(*instance.PvmInstanceID),
@@ -156,30 +167,30 @@ func (ibmp IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx co
 func (ibmp IBMPowerDynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info("attempting to terminate power server", "instance", instanceId)
-	service, err := ibmp.authenticatedService(ctx, kubeClient)
+	service, err := ibmp.createAuthenticatedBaseService(ctx, kubeClient)
 	if err != nil {
 		return fmt.Errorf("failed to create an authenticated base service: %w", err)
 	}
-	_ = ibmp.deleteServer(ctx, service, string(instanceId))
+	_ = ibmp.deleteInstance(ctx, service, string(instanceId))
 
 	// Iterate for 10 minutes
 	timeout := time.Now().Add(time.Minute * 10)
 	go func() {
 		localCtx := context.WithoutCancel(ctx)
-		service, err := ibmp.authenticatedService(localCtx, kubeClient)
+		service, err := ibmp.createAuthenticatedBaseService(localCtx, kubeClient)
 		if err != nil {
 			return // TODO: determine why an error is not returned here
 		}
 
 		for {
-			_, err := ibmp.lookupInstance(localCtx, service, string(instanceId))
+			_, err := ibmp.getInstance(localCtx, service, string(instanceId))
 			// Instance has already been deleted
 			if err != nil {
 				return
 			}
 			//TODO: clarify comment ->we want to make really sure it is gone, delete opts don't
 			// really work when the server is starting so we just try in a loop
-			err = ibmp.deleteServer(localCtx, service, string(instanceId))
+			err = ibmp.deleteInstance(localCtx, service, string(instanceId))
 			if err != nil {
 				log.Error(err, "failed to delete PVM instance", "instanceId", instanceId)
 			}
