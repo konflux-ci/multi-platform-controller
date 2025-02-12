@@ -1,7 +1,6 @@
 package aws
 
 import (
-	"context"
 	"encoding/base64"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -94,15 +93,14 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 
 	// This test is only here to check AWS connectivity in a very primitive and quick way until KFLUXINFRA-1065
 	// work starts
-	Describe("Testing pingSSHIp", func() {
-		DescribeTable("Testing the ability to ping via SSH a remote AWS ec2 instance",
+	Describe("Testing pingIpAddress", func() {
+		DescribeTable("Testing the ability to ping a remote AWS ec2 instance via SSH",
 			func(testInstanceIP string, shouldFail bool) {
 
-				ec2IPAddress, err := pingSSHIp(context.TODO(), testInstanceIP)
+				err := pingIpAddress(testInstanceIP)
 
 				if !shouldFail {
 					Expect(err).Should(BeNil())
-					Expect(testInstanceIP).Should(Equal(ec2IPAddress))
 				} else {
 					Expect(err).Should(HaveOccurred())
 				}

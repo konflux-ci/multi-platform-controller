@@ -89,81 +89,9 @@ func (ec AwsEc2DynamicConfig) LaunchInstance(kubeClient client.Client, ctx conte
 	}
 	ec2Client := ec2.NewFromConfig(cfg)
 
-	// Specify the parameters for the new EC2 instance
-	var subnet *string
-	var securityGroups []string = nil
-	var securityGroupIds []string = nil
-	var instanceProfile *types.IamInstanceProfileSpecification
-	var instanceMarketOpts *types.InstanceMarketOptionsRequest
-
-	if ec.SubnetId != "" {
-		subnet = aws.String(ec.SubnetId)
-	}
-	if ec.SecurityGroup != "" {
-		securityGroups = []string{ec.SecurityGroup}
-	}
-	if ec.SecurityGroupId != "" {
-		securityGroupIds = []string{ec.SecurityGroupId}
-	}
-	if ec.InstanceProfileName != "" || ec.InstanceProfileArn != "" {
-		instanceProfile = &types.IamInstanceProfileSpecification{}
-		if ec.InstanceProfileName != "" {
-			instanceProfile.Name = aws.String(ec.InstanceProfileName)
-		}
-		if ec.InstanceProfileArn != "" {
-			instanceProfile.Arn = aws.String(ec.InstanceProfileArn)
-		}
-	}
-
-	if ec.MaxSpotInstancePrice != "" {
-		instanceMarketOpts = &types.InstanceMarketOptionsRequest{
-			MarketType: types.MarketTypeSpot,
-			SpotOptions: &types.SpotMarketOptions{
-				MaxPrice:                     aws.String(ec.MaxSpotInstancePrice),
-				InstanceInterruptionBehavior: types.InstanceInterruptionBehaviorTerminate,
-				SpotInstanceType:             types.SpotInstanceTypeOneTime,
-			},
-		}
-	}
-
-	instanceTags := []types.Tag{
-		{Key: aws.String(MultiPlatformManaged), Value: aws.String("true")},
-		{Key: aws.String(cloud.InstanceTag), Value: aws.String(instanceTag)},
-		{Key: aws.String("Name"), Value: aws.String("multi-platform-builder-" + name)},
-	}
-	for k, v := range additionalInstanceTags {
-		instanceTags = append(instanceTags, types.Tag{Key: aws.String(k), Value: aws.String(v)})
-	}
-
-	// Configure & launch EC2 instance
-	launchInput := &ec2.RunInstancesInput{
-		KeyName:            aws.String(ec.KeyName),
-		ImageId:            aws.String(ec.Ami), //TODO: clarify comment -> ARM RHEL
-		InstanceType:       types.InstanceType(ec.InstanceType),
-		MinCount:           aws.Int32(1),
-		MaxCount:           aws.Int32(1),
-		EbsOptimized:       aws.Bool(true),
-		SecurityGroups:     securityGroups,
-		SecurityGroupIds:   securityGroupIds,
-		IamInstanceProfile: instanceProfile,
-		SubnetId:           subnet,
-		UserData:           ec.UserData,
-		BlockDeviceMappings: []types.BlockDeviceMapping{{
-			DeviceName:  aws.String("/dev/sda1"),
-			VirtualName: aws.String("ephemeral0"),
-			Ebs: &types.EbsBlockDevice{
-				DeleteOnTermination: aws.Bool(true),
-				VolumeSize:          aws.Int32(ec.Disk),
-				VolumeType:          types.VolumeTypeGp3,
-				Iops:                ec.Iops,
-				Throughput:          ec.Throughput,
-			},
-		}},
-		InstanceInitiatedShutdownBehavior: types.ShutdownBehaviorTerminate,
-		InstanceMarketOptions:             instanceMarketOpts,
-		TagSpecifications: []types.TagSpecification{
-			{ResourceType: types.ResourceTypeInstance, Tags: instanceTags},
-		},
+	launchInput, err := ec.configureInstance(name, instanceTag, additionalInstanceTags)
+	if err != nil {
+		return "", fmt.Errorf("failed to configure a launch input for the EC2 instance: %w", err)
 	}
 
 	// Launch the new EC2 instance
@@ -195,15 +123,10 @@ func (ec AwsEc2DynamicConfig) CountInstances(kubeClient client.Client, ctx conte
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info("Attempting to count AWS EC2 instances")
 
-	// Use AWS credentials and configuration to create an EC2 client
-	secretCredentials := SecretCredentialsProvider{Name: ec.Secret, Namespace: ec.SystemNamespace, Client: kubeClient}
-	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithCredentialsProvider(secretCredentials),
-		config.WithRegion(ec.Region))
+	ec2Client, err := ec.createClient(kubeClient, ctx)
 	if err != nil {
-		return -1, fmt.Errorf("failed to create an AWS config for an EC2 client: %w", err)
+		return -1, fmt.Errorf("failed to create an EC2 client: %w", err)
 	}
-	ec2Client := ec2.NewFromConfig(cfg)
 
 	// Retrieve and count instances
 	instancesOutput, err := ec2Client.DescribeInstances(ctx,
@@ -237,15 +160,10 @@ func (ec AwsEc2DynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx c
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info(fmt.Sprintf("Attempting to get AWS EC instance %s's IP address", instanceId))
 
-	// Use AWS credentials and configuration to create an EC2 client
-	secretCredentials := SecretCredentialsProvider{Name: ec.Secret, Namespace: ec.SystemNamespace, Client: kubeClient}
-	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithCredentialsProvider(secretCredentials),
-		config.WithRegion(ec.Region))
+	ec2Client, err := ec.createClient(kubeClient, ctx)
 	if err != nil {
-		return "", fmt.Errorf("failed to create an AWS config for an EC2 client: %w", err)
+		return "", fmt.Errorf("failed to create an EC2 client: %w", err)
 	}
-	ec2Client := ec2.NewFromConfig(cfg)
 
 	// Get instance
 	instancesOutput, err := ec2Client.DescribeInstances(ctx,
@@ -261,7 +179,7 @@ func (ec AwsEc2DynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx c
 	if len(instancesOutput.Reservations) > 0 {
 		if len(instancesOutput.Reservations[0].Instances) > 0 {
 			instance := instancesOutput.Reservations[0].Instances[0]
-			ip, err := ec.checkInstanceConnectivity(ctx, &instance)
+			ip, err := ec.validateIpAddress(ctx, &instance)
 			// This might be a transient error, so only log it; wait longer for
 			// the instance to be ready
 			if err != nil {
@@ -278,15 +196,10 @@ func (ec AwsEc2DynamicConfig) TerminateInstance(kubeClient client.Client, ctx co
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info(fmt.Sprintf("Attempting to terminate AWS EC2 instance %s", instanceId))
 
-	// Use AWS credentials and configuration to create an EC2 client
-	secretCredentials := SecretCredentialsProvider{Name: ec.Secret, Namespace: ec.SystemNamespace, Client: kubeClient}
-	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithCredentialsProvider(secretCredentials),
-		config.WithRegion(ec.Region))
+	ec2Client, err := ec.createClient(kubeClient, ctx)
 	if err != nil {
-		return fmt.Errorf("failed to create an AWS config for an EC2 client: %w", err)
+		return fmt.Errorf("failed to create an EC2 client: %w", err)
 	}
-	ec2Client := ec2.NewFromConfig(cfg)
 
 	_, err = ec2Client.TerminateInstances(ctx, &ec2.TerminateInstancesInput{InstanceIds: []string{string(instanceId)}})
 	return err
@@ -297,15 +210,10 @@ func (ec AwsEc2DynamicConfig) ListInstances(kubeClient client.Client, ctx contex
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info("Attempting to list AWS EC2 instances")
 
-	// Use AWS credentials and configuration to create an EC2 client
-	secretCredentials := SecretCredentialsProvider{Name: ec.Secret, Namespace: ec.SystemNamespace, Client: kubeClient}
-	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithCredentialsProvider(secretCredentials),
-		config.WithRegion(ec.Region))
+	ec2Client, err := ec.createClient(kubeClient, ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create an AWS config for an EC2 client: %w", err)
+		return nil, fmt.Errorf("failed to create an EC2 client: %w", err)
 	}
-	ec2Client := ec2.NewFromConfig(cfg)
 
 	// Retrieve instances
 	instancesOutput, err := ec2Client.DescribeInstances(ctx,
@@ -329,7 +237,7 @@ func (ec AwsEc2DynamicConfig) ListInstances(kubeClient client.Client, ctx contex
 			// Verify the instance is running an is of the specified VM "flavor"
 			if instance.State.Name != types.InstanceStateNameTerminated && string(instance.InstanceType) == ec.InstanceType {
 				// Only list instance if it has an accessible IP
-				ip, err := ec.checkInstanceConnectivity(ctx, &instance)
+				ip, err := ec.validateIpAddress(ctx, &instance)
 				if err != nil {
 					log.Error(
 						err,
