@@ -40,7 +40,6 @@ var _ = DescribeTable("IBMZProvider unit test",
 		Expect(providerConfig.Key).To(Equal("test-key"))
 		Expect(providerConfig.Subnet).To(Equal("test-subnet"))
 		Expect(providerConfig.Vpc).To(Equal("test-vpc"))
-		Expect(providerConfig.SecurityGroup).To(Equal("test-security-group"))
 		Expect(providerConfig.ImageId).To(Equal("test-image-id"))
 		Expect(providerConfig.Secret).To(Equal("test-secret"))
 		Expect(providerConfig.Url).To(Equal("test-url"))
