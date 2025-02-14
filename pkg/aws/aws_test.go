@@ -1,7 +1,6 @@
 package aws
 
 import (
-	"context"
 	"encoding/base64"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -44,9 +43,9 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 					"dynamic." + platformName + ".throughput":            testConfig["throughput"],
 					"dynamic." + platformName + ".user-data":             testConfig["user-data"],
 				}
-				provider := Ec2Provider(platformName, config, systemNamespace)
+				provider := CreateEc2Config(platformName, config, systemNamespace)
 				Expect(provider).ToNot(BeNil())
-				providerConfig := provider.(AwsDynamicConfig)
+				providerConfig := provider.(AwsEc2DynamicConfig)
 				Expect(providerConfig).ToNot(BeNil())
 
 				Expect(providerConfig.Region).To(Equal("test-region"))
@@ -57,7 +56,7 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 				Expect(providerConfig.SecurityGroup).To(Equal("test-security-group"))
 				Expect(providerConfig.SecurityGroupId).To(Equal("test-security-group-id"))
 				Expect(providerConfig.SubnetId).To(Equal("test-subnet-id"))
-				Expect(providerConfig.SpotInstancePrice).To(Equal("test-spot-price"))
+				Expect(providerConfig.MaxSpotInstancePrice).To(Equal("test-spot-price"))
 				Expect(providerConfig.InstanceProfileName).To(Equal("test-instance-profile-name"))
 				Expect(providerConfig.InstanceProfileArn).To(Equal("test-instance-profile-arn"))
 				Expect(providerConfig.Disk).To(Equal(int32(expectedDisk)))
@@ -94,15 +93,14 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 
 	// This test is only here to check AWS connectivity in a very primitive and quick way until KFLUXINFRA-1065
 	// work starts
-	Describe("Testing pingSSHIp", func() {
-		DescribeTable("Testing the ability to ping via SSH a remote AWS ec2 instance",
+	Describe("Testing pingIpAddress", func() {
+		DescribeTable("Testing the ability to ping a remote AWS ec2 instance via SSH",
 			func(testInstanceIP string, shouldFail bool) {
 
-				ec2IPAddress, err := pingSSHIp(context.TODO(), testInstanceIP)
+				err := pingIpAddress(testInstanceIP)
 
 				if !shouldFail {
 					Expect(err).Should(BeNil())
-					Expect(testInstanceIP).Should(Equal(ec2IPAddress))
 				} else {
 					Expect(err).Should(HaveOccurred())
 				}
@@ -117,7 +115,7 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 
 	Describe("Testing SshUser", func() {
 		It("The simplest damn test", func() {
-			var awsTestInstance AwsDynamicConfig
+			var awsTestInstance AwsEc2DynamicConfig
 			sshUser := awsTestInstance.SshUser()
 
 			Expect(sshUser).Should(Equal("ec2-user"))
