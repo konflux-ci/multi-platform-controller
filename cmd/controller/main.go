@@ -5,6 +5,7 @@ import (
 	mpcmetrics "github.com/konflux-ci/multi-platform-controller/pkg/metrics"
 	"os"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 
 	zap2 "go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -32,7 +33,10 @@ func main() {
 	var enableLeaderElection bool
 	var probeAddr string
 	var abAPIExportName string
+	var secureMetrics bool
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
+	flag.BoolVar(&secureMetrics, "metrics-secure", true,
+		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.StringVar(&abAPIExportName, "api-export-name", "jvm-build-service", "The name of the jvm-build-service APIExport.")
 
@@ -61,7 +65,11 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "5483be8f.redhat.com",
-		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
+		Metrics: metricsserver.Options{
+			BindAddress:    metricsAddr,
+			SecureServing:  secureMetrics,
+			FilterProvider: filters.WithAuthenticationAndAuthorization,
+		},
 	}
 
 	mgr, err = controller.NewManager(restConfig, mopts)

@@ -42,6 +42,8 @@ spec:
             - "--v=4"
             - "--zap-log-level=4"
             - "--zap-devel=true"
+            - "--health-probe-bind-address=:8081"
+            - "--metrics-secure=true"
           resources:
             requests:
               memory: "512Mi"
