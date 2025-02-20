@@ -31,7 +31,7 @@ var _ = DescribeTable("IBMZProvider unit test",
 			"dynamic." + arch + ".private-ip":     testConfig["private-ip"],
 			"dynamic." + arch + ".disk":           testConfig["disk"],
 		}
-		provider := IBMZProvider(arch, config, systemNamespace)
+		provider := CreateIbmZCloudConfig(arch, config, systemNamespace)
 		Expect(provider).ToNot(BeNil())
 		providerConfig := provider.(IBMZDynamicConfig)
 		Expect(providerConfig).ToNot(BeNil())
