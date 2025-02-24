@@ -232,6 +232,27 @@ func (pw IBMPowerDynamicConfig) TerminateInstance(kubeClient client.Client, ctx 
 	return nil
 }
 
+// GetState returns ibmp's VM state from the IBM Power Systems Virtual Server service.
+// See https://cloud.ibm.com/apidocs/power-cloud#pcloud-pvminstances-get for more information.
+func (ibmp IBMPowerDynamicConfig) GetState(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
+	service, err := ibmp.createAuthenticatedBaseService(ctx, kubeClient)
+	if err != nil {
+		return "", fmt.Errorf("failed to create an authenticated base service: %w", err)
+	}
+
+	instance, err := ibmp.getInstance(ctx, service, string(instanceId))
+	// Probably still waiting for the instance to come up
+	if err != nil {
+		return "", nil
+	}
+
+	// An instance in a failed state has a status of "ERROR" and a health of "CRITICAL"
+	if *instance.Status == "ERROR" && instance.Health.Status == "CRITICAL" {
+		return "FAILED", nil
+	}
+	return "OK", nil
+}
+
 func (pw IBMPowerDynamicConfig) SshUser() string {
 	return "root"
 }
