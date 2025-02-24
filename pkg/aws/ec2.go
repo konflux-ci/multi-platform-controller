@@ -1,11 +1,14 @@
+// Package aws implements methods described in the [cloud] package for interacting with AWS cloud instances.
+// Currently only EC2 instances are supported.
+//
+// All methods of the CloudProvider interface are implemented and separated from other helper functions used
+// across the methods.
 package aws
 
 import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"net"
-	"os"
 	"strconv"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -14,15 +17,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/go-logr/logr"
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
-	v1 "k8s.io/api/core/v1"
-	types2 "k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const MultiPlatformManaged = "MultiPlatformManaged"
 
-// Ec2Provider returns an AWS EC2 configuration that implements the CloudProvider interface.
-func Ec2Provider(platformName string, config map[string]string, systemNamespace string) cloud.CloudProvider {
+// CreateEc2CloudConfig returns an AWS EC2 cloud configuration that implements the CloudProvider interface.
+func CreateEc2CloudConfig(platformName string, config map[string]string, systemNamespace string) cloud.CloudProvider {
 	disk, err := strconv.Atoi(config["dynamic."+platformName+".disk"])
 	if err != nil {
 		disk = 40
@@ -53,7 +54,7 @@ func Ec2Provider(platformName string, config map[string]string, systemNamespace 
 		userDataPtr = &base54val
 	}
 
-	return AwsDynamicConfig{Region: config["dynamic."+platformName+".region"],
+	return AwsEc2DynamicConfig{Region: config["dynamic."+platformName+".region"],
 		Ami:                 config["dynamic."+platformName+".ami"],
 		InstanceType:        config["dynamic."+platformName+".instance-type"],
 		KeyName:             config["dynamic."+platformName+".key-name"],
@@ -73,16 +74,15 @@ func Ec2Provider(platformName string, config map[string]string, systemNamespace 
 }
 
 // LaunchInstance creates an EC2 instance and returns its identifier.
-func (r AwsDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, name string, instanceTag string, additionalInstanceTags map[string]string) (cloud.InstanceIdentifier, error) {
+func (ec AwsEc2DynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, name string, instanceTag string, additionalInstanceTags map[string]string) (cloud.InstanceIdentifier, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info(fmt.Sprintf("attempting to launch AWS EC2 instance for %s", name))
 
 	// Use AWS credentials and configuration to create an EC2 client
-	// TODO: Why is 'multi-platform-controller' used as the namespace here instead of ec's SystemNamespace?
-	secretCredentials := SecretCredentialsProvider{Name: r.Secret, Namespace: "multi-platform-controller", Client: kubeClient}
+	secretCredentials := SecretCredentialsProvider{Name: ec.Secret, Namespace: ec.SystemNamespace, Client: kubeClient}
 	cfg, err := config.LoadDefaultConfig(ctx,
 		config.WithCredentialsProvider(secretCredentials),
-		config.WithRegion(r.Region))
+		config.WithRegion(ec.Region))
 	if err != nil {
 		return "", fmt.Errorf("failed to create an AWS config for an EC2 client: %w", err)
 	}
@@ -92,25 +92,25 @@ func (r AwsDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.C
 
 	// Specify the parameters for the new EC2 instance
 	var subnet *string
-	if r.SubnetId != "" {
-		subnet = aws.String(r.SubnetId)
+	if ec.SubnetId != "" {
+		subnet = aws.String(ec.SubnetId)
 	}
 	var securityGroups []string = nil
-	if r.SecurityGroup != "" {
-		securityGroups = []string{r.SecurityGroup}
+	if ec.SecurityGroup != "" {
+		securityGroups = []string{ec.SecurityGroup}
 	}
 	var securityGroupIds []string = nil
-	if r.SecurityGroupId != "" {
-		securityGroupIds = []string{r.SecurityGroupId}
+	if ec.SecurityGroupId != "" {
+		securityGroupIds = []string{ec.SecurityGroupId}
 	}
 	var instanceProfile *types.IamInstanceProfileSpecification
-	if r.InstanceProfileName != "" || r.InstanceProfileArn != "" {
+	if ec.InstanceProfileName != "" || ec.InstanceProfileArn != "" {
 		instanceProfile = &types.IamInstanceProfileSpecification{}
-		if r.InstanceProfileName != "" {
-			instanceProfile.Name = aws.String(r.InstanceProfileName)
+		if ec.InstanceProfileName != "" {
+			instanceProfile.Name = aws.String(ec.InstanceProfileName)
 		}
-		if r.InstanceProfileArn != "" {
-			instanceProfile.Arn = aws.String(r.InstanceProfileArn)
+		if ec.InstanceProfileArn != "" {
+			instanceProfile.Arn = aws.String(ec.InstanceProfileArn)
 		}
 	}
 
@@ -125,9 +125,9 @@ func (r AwsDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.C
 	}
 
 	launchInput := &ec2.RunInstancesInput{
-		KeyName:            aws.String(r.KeyName),
-		ImageId:            aws.String(r.Ami), //ARM RHEL
-		InstanceType:       types.InstanceType(r.InstanceType),
+		KeyName:            aws.String(ec.KeyName),
+		ImageId:            aws.String(ec.Ami), //ARM RHEL
+		InstanceType:       types.InstanceType(ec.InstanceType),
 		MinCount:           aws.Int32(1),
 		MaxCount:           aws.Int32(1),
 		EbsOptimized:       aws.Bool(true),
@@ -135,22 +135,35 @@ func (r AwsDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.C
 		SecurityGroupIds:   securityGroupIds,
 		IamInstanceProfile: instanceProfile,
 		SubnetId:           subnet,
-		UserData:           r.UserData,
+		UserData:           ec.UserData,
 		BlockDeviceMappings: []types.BlockDeviceMapping{{
 			DeviceName:  aws.String("/dev/sda1"),
 			VirtualName: aws.String("ephemeral0"),
-			Ebs:         &types.EbsBlockDevice{DeleteOnTermination: aws.Bool(true), VolumeSize: aws.Int32(r.Disk), VolumeType: types.VolumeTypeGp3, Iops: r.Iops, Throughput: r.Throughput},
+			Ebs: &types.EbsBlockDevice{
+				DeleteOnTermination: aws.Bool(true),
+				VolumeSize:          aws.Int32(ec.Disk),
+				VolumeType:          types.VolumeTypeGp3,
+				Iops:                ec.Iops,
+				Throughput:          ec.Throughput,
+			},
 		}},
 		InstanceInitiatedShutdownBehavior: types.ShutdownBehaviorTerminate,
 		TagSpecifications:                 []types.TagSpecification{{ResourceType: types.ResourceTypeInstance, Tags: instanceTags}},
 	}
-	spotInstanceRequested := r.SpotInstancePrice != ""
+	spotInstanceRequested := ec.SpotInstancePrice != ""
 	if spotInstanceRequested {
-		launchInput.InstanceMarketOptions = &types.InstanceMarketOptionsRequest{MarketType: types.MarketTypeSpot, SpotOptions: &types.SpotMarketOptions{MaxPrice: aws.String(r.SpotInstancePrice), InstanceInterruptionBehavior: types.InstanceInterruptionBehaviorTerminate, SpotInstanceType: types.SpotInstanceTypeOneTime}}
+		launchInput.InstanceMarketOptions = &types.InstanceMarketOptionsRequest{
+			MarketType: types.MarketTypeSpot,
+			SpotOptions: &types.SpotMarketOptions{
+				MaxPrice:                     aws.String(ec.SpotInstancePrice),
+				InstanceInterruptionBehavior: types.InstanceInterruptionBehaviorTerminate,
+				SpotInstanceType:             types.SpotInstanceTypeOneTime,
+			},
+		}
 	}
 
 	// Launch the new EC2 instance
-	result, err := ec2Client.RunInstances(ctx, launchInput)
+	runInstancesOutput, err := ec2Client.RunInstances(ctx, launchInput)
 	if err != nil {
 		// Check to see if there were market options for spot instances.
 		// Launching can often fail if there are market options and no spot instances.
@@ -160,36 +173,36 @@ func (r AwsDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.C
 		// If market options were specified, try launching again without any market options.
 		log.Error(err, fmt.Sprintf("failed to launch spot instance, attempting to launch normal EC2 instance for %s", name))
 		launchInput.InstanceMarketOptions = nil
-		result, err = ec2Client.RunInstances(ctx, launchInput)
+		runInstancesOutput, err = ec2Client.RunInstances(ctx, launchInput)
 		if err != nil {
 			return "", fmt.Errorf("failed to launch EC2 instance for %s: %w", name, err)
 		}
 	}
 
-	if len(result.Instances) > 0 {
+	if len(runInstancesOutput.Instances) > 0 {
 		//TODO: clarify comment -> hard coded 10m timeout
-		return cloud.InstanceIdentifier(*result.Instances[0].InstanceId), nil
+		return cloud.InstanceIdentifier(*runInstancesOutput.Instances[0].InstanceId), nil
 	} else {
 		return "", fmt.Errorf("no EC2 instances were created")
 	}
 }
 
 // CountInstances returns the number of EC2 instances whose names start with instanceTag.
-func (r AwsDynamicConfig) CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error) {
+func (ec AwsEc2DynamicConfig) CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info("Attempting to count AWS EC2 instances")
 
-	secretCredentials := SecretCredentialsProvider{Name: r.Secret, Namespace: r.SystemNamespace, Client: kubeClient}
+	secretCredentials := SecretCredentialsProvider{Name: ec.Secret, Namespace: ec.SystemNamespace, Client: kubeClient}
 	cfg, err := config.LoadDefaultConfig(ctx,
 		config.WithCredentialsProvider(secretCredentials),
-		config.WithRegion(r.Region))
+		config.WithRegion(ec.Region))
 	if err != nil {
 		return -1, fmt.Errorf("failed to create an EC2 client: %w", err)
 	}
 
 	// Create an EC2 client
 	ec2Client := ec2.NewFromConfig(cfg)
-	res, err := ec2Client.DescribeInstances(
+	instancesOutput, err := ec2Client.DescribeInstances(
 		ctx,
 		&ec2.DescribeInstancesInput{
 			Filters: []types.Filter{
@@ -204,11 +217,11 @@ func (r AwsDynamicConfig) CountInstances(kubeClient client.Client, ctx context.C
 	}
 
 	count := 0
-	for _, res := range res.Reservations {
-		for _, inst := range res.Instances {
+	for _, reservation := range instancesOutput.Reservations {
+		for _, instance := range reservation.Instances {
 			// Verify the instance is running an is of the specified VM "flavor"
-			if inst.State.Name != types.InstanceStateNameTerminated && string(inst.InstanceType) == r.InstanceType {
-				log.Info(fmt.Sprintf("Counting instance %s towards running count", *inst.InstanceId))
+			if instance.State.Name != types.InstanceStateNameTerminated && string(instance.InstanceType) == ec.InstanceType {
+				log.Info(fmt.Sprintf("Counting instance %s towards running count", *instance.InstanceId))
 				count++
 			}
 		}
@@ -218,21 +231,21 @@ func (r AwsDynamicConfig) CountInstances(kubeClient client.Client, ctx context.C
 
 // GetInstanceAddress returns the IP Address associated with the instanceId EC2 instance. If none is found, an empty
 // string is returned.
-func (r AwsDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
+func (ec AwsEc2DynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info(fmt.Sprintf("Attempting to get AWS EC2 instance %s's IP address", instanceId))
 
-	secretCredentials := SecretCredentialsProvider{Name: r.Secret, Namespace: r.SystemNamespace, Client: kubeClient}
+	secretCredentials := SecretCredentialsProvider{Name: ec.Secret, Namespace: ec.SystemNamespace, Client: kubeClient}
 	cfg, err := config.LoadDefaultConfig(ctx,
 		config.WithCredentialsProvider(secretCredentials),
-		config.WithRegion(r.Region))
+		config.WithRegion(ec.Region))
 	if err != nil {
 		return "", fmt.Errorf("failed to create an EC2 client: %w", err)
 	}
 
 	// Create an EC2 client and get instance
 	ec2Client := ec2.NewFromConfig(cfg)
-	res, err := ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{InstanceIds: []string{string(instanceId)}})
+	instancesOutput, err := ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{InstanceIds: []string{string(instanceId)}})
 	if err != nil {
 		// This might be a transient error, so only log it
 		log.Error(err, "failed to retrieve instance", "instanceId", instanceId)
@@ -240,49 +253,25 @@ func (r AwsDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx conte
 	}
 
 	// Get IP address
-	if len(res.Reservations) > 0 {
-		if len(res.Reservations[0].Instances) > 0 {
-			instance := res.Reservations[0].Instances[0]
-			address, err := r.checkInstanceConnectivity(ctx, &instance)
+	if len(instancesOutput.Reservations) > 0 {
+		if len(instancesOutput.Reservations[0].Instances) > 0 {
+			instance := instancesOutput.Reservations[0].Instances[0]
+			ip, err := ec.checkInstanceConnectivity(ctx, &instance)
 			// This might be a transient error, so only log it; wait longer for
 			// the instance to be ready
 			if err != nil {
 				return "", nil
 			}
-			return address, nil
+			return ip, nil
 		}
 	}
 	return "", nil
 }
 
-// checkInstanceConnectivity returns instance's IP address if it can be resolved.
-func (r AwsDynamicConfig) checkInstanceConnectivity(ctx context.Context, instance *types.Instance) (string, error) {
-	if instance.PublicDnsName != nil && *instance.PublicDnsName != "" {
-		return pingSSHIp(ctx, *instance.PublicDnsName)
-	} else if instance.PrivateIpAddress != nil && *instance.PrivateIpAddress != "" {
-		return pingSSHIp(ctx, *instance.PrivateIpAddress)
-	}
-	return "", nil
-}
-
-// pingSSHIp returns the provided IP address if it can be resolved.
-func pingSSHIp(ctx context.Context, ipAddress string) (string, error) {
-	server, _ := net.ResolveTCPAddr("tcp", ipAddress+":22")
-	conn, err := net.DialTCP("tcp", nil, server)
-	if err != nil {
-		log := logr.FromContextOrDiscard(ctx)
-		log.Error(err, "failed to connect to AWS instance")
-		return "", err
-	}
-	defer conn.Close()
-
-	return ipAddress, nil
-}
-
 // TerminateInstance tries to delete the instanceId EC2 instance.
-func (r AwsDynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instance cloud.InstanceIdentifier) error {
+func (r AwsEc2DynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
 	log := logr.FromContextOrDiscard(ctx)
-	log.Info(fmt.Sprintf("Attempting to terminate AWS EC2 instance %s", instance))
+	log.Info(fmt.Sprintf("Attempting to terminate AWS EC2 instance %s", instanceId))
 
 	secretCredentials := SecretCredentialsProvider{Name: r.Secret, Namespace: "multi-platform-controller", Client: kubeClient}
 	cfg, err := config.LoadDefaultConfig(ctx,
@@ -293,12 +282,12 @@ func (r AwsDynamicConfig) TerminateInstance(kubeClient client.Client, ctx contex
 	}
 
 	ec2Client := ec2.NewFromConfig(cfg)
-	_, err = ec2Client.TerminateInstances(ctx, &ec2.TerminateInstancesInput{InstanceIds: []string{string(instance)}})
+	_, err = ec2Client.TerminateInstances(ctx, &ec2.TerminateInstancesInput{InstanceIds: []string{string(instanceId)}})
 	return err
 }
 
 // ListInstances returns a collection of accessible EC2 instances whose names start with instanceTag.
-func (r AwsDynamicConfig) ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
+func (r AwsEc2DynamicConfig) ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info("Attempting to list AWS EC2 instances")
 
@@ -312,7 +301,7 @@ func (r AwsDynamicConfig) ListInstances(kubeClient client.Client, ctx context.Co
 
 	// Create an EC2 client & retrieve instances
 	ec2Client := ec2.NewFromConfig(cfg)
-	res, err := ec2Client.DescribeInstances(
+	instancesOutput, err := ec2Client.DescribeInstances(
 		ctx,
 		&ec2.DescribeInstancesInput{
 			Filters: []types.Filter{
@@ -327,75 +316,37 @@ func (r AwsDynamicConfig) ListInstances(kubeClient client.Client, ctx context.Co
 	}
 
 	// Append each instance to the list of CloudVMInstances
-	ret := []cloud.CloudVMInstance{}
-	for _, res := range res.Reservations {
-		for i := range res.Instances {
-			inst := res.Instances[i]
+	vmInstances := []cloud.CloudVMInstance{}
+	for _, reservation := range instancesOutput.Reservations {
+		for i := range reservation.Instances {
+			instance := reservation.Instances[i]
 			// Verify the instance is running an is of the specified VM "flavor"
-			if inst.State.Name != types.InstanceStateNameTerminated && string(inst.InstanceType) == r.InstanceType {
+			if instance.State.Name != types.InstanceStateNameTerminated && string(instance.InstanceType) == r.InstanceType {
 				// Only list instance if it has an accessible IP
-				address, err := r.checkInstanceConnectivity(ctx, &inst)
+				ip, err := r.checkInstanceConnectivity(ctx, &instance)
 				if err == nil {
 					newVmInstance := cloud.CloudVMInstance{
-						InstanceId: cloud.InstanceIdentifier(*inst.InstanceId),
-						StartTime:  *inst.LaunchTime,
-						Address:    address,
+						InstanceId: cloud.InstanceIdentifier(*instance.InstanceId),
+						StartTime:  *instance.LaunchTime,
+						Address:    ip,
 					}
-					ret = append(ret, newVmInstance)
-					log.Info(fmt.Sprintf("counting instance %s towards running count", *inst.InstanceId))
+					vmInstances = append(vmInstances, newVmInstance)
+					log.Info(fmt.Sprintf("Counting instance %s towards running count", *instance.InstanceId))
 				}
 			}
 		}
 	}
-	return ret, nil
+	return vmInstances, nil
 }
 
-// A SecretCredentialsProvider is a collection of information needed to generate
-// AWS credentials. It implements the AWS CredentialsProvider interface.
-type SecretCredentialsProvider struct {
-	// Name is the name of the the Kubernetes ExternalSecret resource that contains
-	// the SSH key's access key ID and secret access key.
-	Name string
-
-	// Namespace is the Kubernetes namespace the ExternalSecret resource resides in.
-	Namespace string
-
-	// Client is the client (if any) to use to connect to Kubernetes.
-	Client client.Client
+func (r AwsEc2DynamicConfig) SshUser() string {
+	return "ec2-user"
 }
 
-// Retrieve is one of the AWS CredntialsProvider interface's methods that uses external Kubernetes
-// secrets or local environment variables to generate AWS credentials.
-func (r SecretCredentialsProvider) Retrieve(ctx context.Context) (aws.Credentials, error) {
-	// Use local environment variables for credentials
-	if r.Client == nil {
-		// TODO: add a check if the ENVs are empty?
-		return aws.Credentials{
-			AccessKeyID:     os.Getenv("MULTI_ARCH_ACCESS_KEY"),
-			SecretAccessKey: os.Getenv("MULTI_ARCH_SECRET_KEY"),
-		}, nil
-
-	}
-
-	// Connect to Kubernetes to get credentials info
-	s := v1.Secret{}
-	nameSpacedSecret := types2.NamespacedName{Name: r.Name, Namespace: r.Namespace}
-	err := r.Client.Get(ctx, nameSpacedSecret, &s)
-	if err != nil {
-		return aws.Credentials{},
-			fmt.Errorf("failed to retrieve the secret %v from the Kubernetes client: %w", nameSpacedSecret, err)
-	}
-
-	return aws.Credentials{
-		AccessKeyID:     string(s.Data["access-key-id"]),
-		SecretAccessKey: string(s.Data["secret-access-key"]),
-	}, nil
-}
-
-// An AwsDynamicConfig represents a configuration for an AWS EC2 instance.
+// An AwsEc2DynamicConfig represents a configuration for an AWS EC2 instance.
 // The zero value (where each field will be assigned its type's zero value) is not a
 // valid AwsEc2DynamicConfig.
-type AwsDynamicConfig struct {
+type AwsEc2DynamicConfig struct {
 	// Region is the geographical area to be associated with the instance.
 	// See the [AWS region docs](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.RegionsAndAvailabilityZones.html)
 	// for valid regions.
@@ -455,8 +406,4 @@ type AwsDynamicConfig struct {
 
 	// TODO: determine what this is for (see commonUserData in ibmp_test.go)
 	UserData *string
-}
-
-func (r AwsDynamicConfig) SshUser() string {
-	return "ec2-user"
 }
