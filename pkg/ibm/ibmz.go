@@ -2,10 +2,6 @@ package ibm
 
 import (
 	"context"
-	// #nosec is added to bypass the golang security scan since the cryptographic
-	// strength doesn't matter here
-	"crypto/md5" //#nosec
-	"encoding/base64"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -14,7 +10,6 @@ import (
 
 	"github.com/IBM/vpc-go-sdk/vpcv1"
 	"github.com/go-logr/logr"
-	"github.com/google/uuid"
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -44,34 +39,29 @@ func CreateIbmZCloudConfig(arch string, config map[string]string, systemNamespac
 // LaunchInstance creates a System Z Virtual Server instance and returns its identifier. This function is implemented as
 // part of the CloudProvider interface, which is why some of the arguments are unused for this particular implementation.
 func (ibmz IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunName string, instanceTag string, _ map[string]string) (cloud.InstanceIdentifier, error) {
-	vpcService, err := ibmz.authenticatedService(ctx, kubeClient)
+	vpcService, err := ibmz.createAuthenticatedVpcService(ctx, kubeClient)
 	if err != nil {
 		return "", fmt.Errorf("failed to create an authenticated VPC service: %w", err)
 	}
 
-	binary, err := uuid.New().MarshalBinary()
+	instanceName, err := createInstanceName(instanceTag)
 	if err != nil {
-		return "", fmt.Errorf("failed to create a UUID for the instance name: %w", err)
+		return "", fmt.Errorf("failed to create an instance name: %w", err)
 	}
-	// #nosec is added to bypass the golang security scan since the cryptographic
-	// strength doesn't matter here
-	md5EncodedBinary := md5.New().Sum(binary) //#nosec
-	md5EncodedString := base64.URLEncoding.EncodeToString(md5EncodedBinary)[0:20]
-	instanceName := instanceTag + "-" + strings.Replace(strings.ToLower(md5EncodedString), "_", "-", -1) + "x"
 
 	// Gather required information for the VPC instance
-	vpc, err := ibmz.lookupVpc(vpcService)
+	vpc, err := ibmz.lookUpVpc(vpcService)
 	if err != nil {
 		return "", err
 	}
 
-	key, err := ibmz.lookupSSHKey(vpcService)
+	key, err := ibmz.lookUpSshKey(vpcService)
 	if err != nil {
 		return "", err
 	}
 
 	image := ibmz.ImageId
-	subnet, err := ibmz.lookupSubnet(vpcService)
+	subnet, err := ibmz.lookUpSubnet(vpcService)
 	if err != nil {
 		return "", err
 	}
@@ -126,12 +116,12 @@ func (ibmz IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx conte
 
 // CountInstances returns the number of System Z virtual server instances whose names start with instanceTag.
 func (ibmz IBMZDynamicConfig) CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error) {
-	vpcService, err := ibmz.authenticatedService(ctx, kubeClient)
+	vpcService, err := ibmz.createAuthenticatedVpcService(ctx, kubeClient)
 	if err != nil {
 		return -1, fmt.Errorf("failed to create an authenticated VPC service: %w", err)
 	}
 
-	vpc, err := ibmz.lookupVpc(vpcService)
+	vpc, err := ibmz.lookUpVpc(vpcService)
 	if err != nil {
 		return -1, err
 	}
@@ -150,12 +140,12 @@ func (ibmz IBMZDynamicConfig) CountInstances(kubeClient client.Client, ctx conte
 
 // ListInstances returns a collection of accessible System Z virtual server instances whose names start with instanceTag.
 func (ibmz IBMZDynamicConfig) ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
-	vpcService, err := ibmz.authenticatedService(ctx, kubeClient)
+	vpcService, err := ibmz.createAuthenticatedVpcService(ctx, kubeClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create an authenticated VPC service: %w", err)
 	}
 
-	vpc, err := ibmz.lookupVpc(vpcService)
+	vpc, err := ibmz.lookUpVpc(vpcService)
 	if err != nil {
 		return nil, err
 	}
@@ -171,12 +161,12 @@ func (ibmz IBMZDynamicConfig) ListInstances(kubeClient client.Client, ctx contex
 	// Ensure all listed instances have a reachable IP address
 	for _, instance := range vpcInstances.Instances {
 		if strings.HasPrefix(*instance.Name, instanceTag) {
-			addr, err := ibmz.instanceIP(ctx, &instance, kubeClient)
+			addr, err := ibmz.assignIpToInstance(&instance, vpcService)
 			if err != nil {
 				log.Error(err, "not listing instance as IP address cannot be assigned yet", "instance", *instance.ID)
 				continue
 			}
-			if err := checkAddressLive(ctx, addr); err != nil {
+			if err := checkIfIpIsLive(ctx, addr); err != nil {
 				log.Error(err, "not listing instance as IP address cannot be accessed yet", "instance", *instance.ID)
 				continue
 			}
@@ -195,7 +185,7 @@ func (ibmz IBMZDynamicConfig) ListInstances(kubeClient client.Client, ctx contex
 // GetInstanceAddress returns the IP Address associated with the instanceID System Z virtual server instance.
 func (ibmz IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
 	log := logr.FromContextOrDiscard(ctx)
-	vpcService, err := ibmz.authenticatedService(ctx, kubeClient)
+	vpcService, err := ibmz.createAuthenticatedVpcService(ctx, kubeClient)
 	if err != nil {
 		return "", fmt.Errorf("failed to create an authenticated VPC service: %w", err)
 	}
@@ -205,13 +195,13 @@ func (ibmz IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx c
 		return "", nil // TODO: clarify comment -> not permanent, this can take a while to appear
 	}
 
-	ip, err := ibmz.instanceIP(ctx, instance, kubeClient)
+	ip, err := ibmz.assignIpToInstance(instance, vpcService)
 	if err != nil {
-		log.Error(err, "failed to lookup IP address", "instanceId", instanceId)
+		log.Error(err, "failed to look up/assign an IP address", "instanceId", instanceId)
 		return "", fmt.Errorf("failed to look up/assign an IP address for instance %s: %w", instanceId, err)
 	}
 	if ip != "" {
-		if err = checkAddressLive(ctx, ip); err != nil {
+		if err = checkIfIpIsLive(ctx, ip); err != nil {
 			return "", nil
 		}
 	}
@@ -221,7 +211,7 @@ func (ibmz IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx c
 // TerminateInstance tries to delete a specific System Z virtual server instance for 10 minutes or until the instance is deleted.
 func (ibmz IBMZDynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
 	log := logr.FromContextOrDiscard(ctx)
-	vpcService, err := ibmz.authenticatedService(context.Background(), kubeClient)
+	vpcService, err := ibmz.createAuthenticatedVpcService(context.Background(), kubeClient)
 	if err != nil {
 		return fmt.Errorf("failed to create an authenticated VPC service: %w", err)
 	}
