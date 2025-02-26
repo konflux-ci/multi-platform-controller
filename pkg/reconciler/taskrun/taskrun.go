@@ -112,7 +112,7 @@ func newReconciler(mgr ctrl.Manager, operatorNamespace string) reconcile.Reconci
 		eventRecorder:     mgr.GetEventRecorderFor("MultiPlatformTaskRun"),
 		operatorNamespace: operatorNamespace,
 		platformConfig:    map[string]PlatformConfig{},
-		cloudProviders:    map[string]func(platform string, config map[string]string, systemNamespace string) cloud.CloudProvider{"aws": aws.Ec2Provider, "ibmz": ibm.CreateIbmZCloudConfig, "ibmp": ibm.CreateIbmPowerCloudConfig},
+		cloudProviders:    map[string]func(platform string, config map[string]string, systemNamespace string) cloud.CloudProvider{"aws": aws.CreateEc2CloudConfig, "ibmz": ibm.CreateIbmZCloudConfig, "ibmp": ibm.CreateIbmPowerCloudConfig},
 	}
 }
 
