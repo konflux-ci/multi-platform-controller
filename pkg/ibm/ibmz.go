@@ -19,6 +19,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const maxS390NameLength = 63
+
 // CreateIbmZCloudConfig returns an IBM System Z cloud configuration that implements the CloudProvider interface.
 func CreateIbmZCloudConfig(arch string, config map[string]string, systemNamespace string) cloud.CloudProvider {
 	privateIp, _ := strconv.ParseBool(config["dynamic."+arch+".private-ip"])
@@ -44,6 +46,7 @@ func CreateIbmZCloudConfig(arch string, config map[string]string, systemNamespac
 // LaunchInstance creates a System Z Virtual Server instance and returns its identifier. This function is implemented as
 // part of the CloudProvider interface, which is why some of the arguments are unused for this particular implementation.
 func (ibmz IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunName string, instanceTag string, _ map[string]string) (cloud.InstanceIdentifier, error) {
+	log := logr.FromContextOrDiscard(ctx)
 	vpcService, err := ibmz.authenticatedService(ctx, kubeClient)
 	if err != nil {
 		return "", fmt.Errorf("failed to create an authenticated VPC service: %w", err)
@@ -58,6 +61,11 @@ func (ibmz IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx conte
 	md5EncodedBinary := md5.New().Sum(binary) //#nosec
 	md5EncodedString := base64.URLEncoding.EncodeToString(md5EncodedBinary)[0:20]
 	instanceName := instanceTag + "-" + strings.Replace(strings.ToLower(md5EncodedString), "_", "-", -1) + "x"
+	// workaround to avoid BadRequest-s, after config validation introduced that might be not an issue anymore
+	if len(instanceName) > maxS390NameLength {
+		log.Info("WARN: generated name too long. Instance tag need to be shortened. Truncating to the max possible length.", "tag", instanceTag)
+		instanceName = instanceName[:maxS390NameLength]
+	}
 
 	// Gather required information for the VPC instance
 	vpc, err := ibmz.lookupVpc(vpcService)
