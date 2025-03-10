@@ -22,6 +22,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const maxPPCNameLength = 47
+
 // CreateIbmPowerCloudConfig returns an IBM Power Systems cloud configuration that implements the CloudProvider interface.
 func CreateIbmPowerCloudConfig(platform string, config map[string]string, systemNamespace string) cloud.CloudProvider {
 	mem, err := strconv.ParseFloat(config["dynamic."+platform+".memory"], 64)
@@ -65,6 +67,7 @@ func CreateIbmPowerCloudConfig(platform string, config map[string]string, system
 // is implemented as part of the CloudProvider interface, which is why some of the arguments are unused for this particular
 // implementation.
 func (ibmp IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunName string, instanceTag string, _ map[string]string) (cloud.InstanceIdentifier, error) {
+	log := logr.FromContextOrDiscard(ctx)
 	service, err := ibmp.authenticatedService(ctx, kubeClient)
 	if err != nil {
 		return "", fmt.Errorf("failed to create an authenticated base service: %w", err)
@@ -80,6 +83,11 @@ func (ibmp IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx c
 	md5EncodedBinary := md5.New().Sum(binary) //#nosec
 	md5EncodedString := base64.URLEncoding.EncodeToString(md5EncodedBinary)[0:20]
 	name := instanceTag + "-" + strings.Replace(strings.ToLower(md5EncodedString), "_", "-", -1) + "x"
+	// workaround to avoid BadRequest-s, after config validation introduced that might be not an issue anymore
+	if len(name) > maxPPCNameLength {
+		log.Info("WARN: generated instance name is too long. Instance tag need to be shortened. Truncating to the max possible length.", "tag", instanceTag)
+		name = name[:maxPPCNameLength]
+	}
 
 	instance, err := ibmp.createServerInstance(ctx, service, name)
 	if err != nil {
