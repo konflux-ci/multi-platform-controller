@@ -9,14 +9,14 @@ import (
 var errorThreshold = 0.5
 
 type BackendProbe struct {
-	successes atomic.Int32
-	failures  atomic.Int32
+	successes atomic.Uint32
+	failures  atomic.Uint32
 }
 
 func NewBackendProbe() AvailabilityProbe {
 	return &BackendProbe{
-		successes: atomic.Int32{},
-		failures:  atomic.Int32{},
+		successes: atomic.Uint32{},
+		failures:  atomic.Uint32{},
 	}
 }
 
