@@ -9,28 +9,31 @@ import (
 var errorThreshold = 0.5
 
 type BackendProbe struct {
-	successes atomic.Int32
-	failures  atomic.Int32
+	successes atomic.Uint32
+	failures  atomic.Uint32
 }
 
 func NewBackendProbe() AvailabilityProbe {
 	return &BackendProbe{
-		successes: atomic.Int32{},
-		failures:  atomic.Int32{},
+		successes: atomic.Uint32{},
+		failures:  atomic.Uint32{},
 	}
 }
 
 func (q *BackendProbe) CheckAvailability(_ context.Context) error {
-	defer q.successes.Store(0)
-	defer q.failures.Store(0)
-	if q.successes.Load() == 0 {
+	// if we split the loads and the stores into two separate operations, we
+	// could miss some success and failure events, so instead load and store
+	// atomically in one operation
+	successes := q.successes.Swap(0)
+	failures := q.failures.Swap(0)
+	if successes == 0 {
 		//ok, let's consider > 1 error and 0 success not a good sign...
-		if q.failures.Load() > 1 {
+		if failures > 1 {
 			return fmt.Errorf("failure threshold high")
 		}
 	} else {
 		//non-zero successes here, let's check the error to success rate
-		if float64(q.failures.Load())/float64(q.successes.Load()) > errorThreshold {
+		if float64(failures)/float64(successes) > errorThreshold {
 			return fmt.Errorf("failure threshold high")
 		}
 	}
