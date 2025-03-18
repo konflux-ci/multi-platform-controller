@@ -244,7 +244,7 @@ func (ibmz IBMZDynamicConfig) TerminateInstance(kubeClient client.Client, ctx co
 			if err != nil {
 				// Log an error if it's the first iteration or there is a non-404 code response
 				if repeats == 0 || (resp != nil && resp.StatusCode != http.StatusNotFound) {
-					log.Error(err, "failed to delete System Z instance; unable to get instance", "instanceId", *instance.ID)
+					log.Error(err, "failed to delete System Z instance; unable to get instance", "instanceId", instanceId)
 				}
 				return
 			}
