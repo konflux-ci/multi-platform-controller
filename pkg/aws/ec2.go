@@ -252,9 +252,32 @@ func (r AwsEc2DynamicConfig) SshUser() string {
 	return "ec2-user"
 }
 
-// TODO: implement this function.
+// GetState returns ec's VM state from AWS. See https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_InstanceState.html for
+// valid states.
 func (ec AwsEc2DynamicConfig) GetState(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
-	return "ACTIVE", nil
+	log := logr.FromContextOrDiscard(ctx)
+	log.Info("Attempting to get AWS EC2 instance's IP address", "instanceId", instanceId)
+
+	// Create an EC2 client and get instance
+	ec2Client, err := ec.createClient(kubeClient, ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to create an EC2 client: %w", err)
+	}
+	instancesOutput, err := ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{InstanceIds: []string{string(instanceId)}})
+	if err != nil {
+		// This might be a transient error, so only log it
+		log.Error(err, "failed to retrieve instance", "instanceId", instanceId)
+		return "", nil
+	}
+
+	// Get state
+	if len(instancesOutput.Reservations) > 0 {
+		if len(instancesOutput.Reservations[0].Instances) > 0 {
+			instance := instancesOutput.Reservations[0].Instances[0]
+			return string(instance.State.Name), nil
+		}
+	}
+	return "FAILED", nil
 }
 
 // An AwsEc2DynamicConfig represents a configuration for an AWS EC2 instance.
