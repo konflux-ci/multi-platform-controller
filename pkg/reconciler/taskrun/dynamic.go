@@ -134,7 +134,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 					"instanceId", cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]),
 				)
 				requeueTime = time.Second * 10
-			} else if state == "FAILED" { //VM is in a failed state; try to delete the instance and unassign it from the TaskRun
+			} else if state == cloud.FailedState { //VM is in a failed state; try to delete the instance and unassign it from the TaskRun
 				log.Info("VM instance is in a failed state; will attempt to terminate, unassign from task")
 				terr := r.CloudProvider.TerminateInstance(taskRun.client, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
 				if terr != nil {

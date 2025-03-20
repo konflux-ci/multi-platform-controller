@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -265,20 +266,32 @@ func (iz IBMZDynamicConfig) TerminateInstance(kubeClient client.Client, ctx cont
 	return nil
 }
 
-// GetState returns iz's VM state from the IBM VPC service. See https://cloud.ibm.com/apidocs/vpc/latest?code=go#get-instance for
-// valid state strings.
-func (iz IBMZDynamicConfig) GetState(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
+// GetState returns instanceID's VM state from the iz cloud on the IBM VPC service.
+// See https://cloud.ibm.com/apidocs/vpc/latest?code=go#get-instance for valid state strings.
+func (iz IBMZDynamicConfig) GetState(kubeClient client.Client, ctx context.Context, instanceID cloud.InstanceIdentifier) (cloud.VMState, error) {
+	// IBM VPC VM states considered to be OK
+	okStates := []string{
+		"deleting",
+		"pending",
+		"stable",
+		"suspended",
+		"updating",
+		"waiting",
+	}
 	vpcService, err := iz.createAuthenticatedVpcService(ctx, kubeClient)
 	if err != nil {
 		return "", fmt.Errorf("failed to create an authenticated VPC service: %w", err)
 	}
 
-	instance, _, err := vpcService.GetInstance(&vpcv1.GetInstanceOptions{ID: ptr(string(instanceId))})
+	instance, _, err := vpcService.GetInstance(&vpcv1.GetInstanceOptions{ID: ptr(string(instanceID))})
 	if err != nil {
 		return "", nil // TODO: clarify comment -> not permanent, this can take a while to appear
 	}
 
-	return *instance.LifecycleState, nil
+	if slices.Contains(okStates, *instance.LifecycleState) {
+		return cloud.OKState, nil
+	}
+	return cloud.FailedState, nil
 }
 
 func (ibmz IBMZDynamicConfig) SshUser() string {
