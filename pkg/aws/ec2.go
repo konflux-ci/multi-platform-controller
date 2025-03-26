@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -53,7 +54,7 @@ func CreateEc2CloudConfig(platformName string, config map[string]string, systemN
 		userDataPtr = &base54val
 	}
 
-	return AwsEc2DynamicConfig{Region: config["dynamic."+platformName+".region"],
+	return AWSEc2DynamicConfig{Region: config["dynamic."+platformName+".region"],
 		Ami:                  config["dynamic."+platformName+".ami"],
 		InstanceType:         config["dynamic."+platformName+".instance-type"],
 		KeyName:              config["dynamic."+platformName+".key-name"],
@@ -73,9 +74,17 @@ func CreateEc2CloudConfig(platformName string, config map[string]string, systemN
 }
 
 // LaunchInstance creates an EC2 instance and returns its identifier.
-func (ec AwsEc2DynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, name string, instanceTag string, additionalInstanceTags map[string]string) (cloud.InstanceIdentifier, error) {
+func (ec AWSEc2DynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunId string, instanceTag string, additionalInstanceTags map[string]string) (cloud.InstanceIdentifier, error) {
+	err := cloud.ValidateTaskRunId(taskRunId)
+	if err != nil {
+		return "", fmt.Errorf("invalid TaskRun ID: %w", err)
+	}
+	taskRunName := strings.Split(taskRunId, ":")[1]
+	// Add TaskRun ID to additional tags
+	additionalInstanceTags[cloud.TaskRunTagKey] = taskRunId
+
 	log := logr.FromContextOrDiscard(ctx)
-	log.Info(fmt.Sprintf("attempting to launch AWS EC2 instance for %s", name))
+	log.Info("Attempting to launch AWS EC2 instance", "taskRunName", taskRunName)
 
 	// Use AWS credentials and configuration to create an EC2 client
 	ec2Client, err := ec.createClient(kubeClient, ctx)
@@ -84,20 +93,20 @@ func (ec AwsEc2DynamicConfig) LaunchInstance(kubeClient client.Client, ctx conte
 	}
 
 	// Launch the new EC2 instance
-	launchInput := ec.configureInstance(name, instanceTag, additionalInstanceTags)
+	launchInput := ec.configureInstance(taskRunName, instanceTag, additionalInstanceTags)
 	runInstancesOutput, err := ec2Client.RunInstances(ctx, launchInput)
 	if err != nil {
 		// Check to see if there were market options for spot instances.
 		// Launching can often fail if there are market options and no spot instances.
 		if launchInput.InstanceMarketOptions == nil {
-			return "", fmt.Errorf("failed to launch EC2 instance for %s: %w", name, err)
+			return "", fmt.Errorf("failed to launch EC2 instance for %s: %w", taskRunName, err)
 		}
 		// If market options were specified, try launching again without any market options.
-		log.Error(err, fmt.Sprintf("failed to launch spot instance, attempting to launch normal EC2 instance for %s", name))
+		log.Error(err, "failed to launch spot instance, attempting to launch normal EC2 instance...", "taskRunName", taskRunName)
 		launchInput.InstanceMarketOptions = nil
 		runInstancesOutput, err = ec2Client.RunInstances(ctx, launchInput)
 		if err != nil {
-			return "", fmt.Errorf("failed to launch EC2 instance for %s: %w", name, err)
+			return "", fmt.Errorf("failed to launch EC2 instance for %s: %w", taskRunName, err)
 		}
 	}
 
@@ -109,7 +118,7 @@ func (ec AwsEc2DynamicConfig) LaunchInstance(kubeClient client.Client, ctx conte
 }
 
 // CountInstances returns the number of EC2 instances whose names start with instanceTag.
-func (ec AwsEc2DynamicConfig) CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error) {
+func (ec AWSEc2DynamicConfig) CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info("Attempting to count AWS EC2 instances")
 
@@ -139,7 +148,7 @@ func (ec AwsEc2DynamicConfig) CountInstances(kubeClient client.Client, ctx conte
 		for _, instance := range reservation.Instances {
 			// Verify the instance is running an is of the specified VM "flavor"
 			if instance.State.Name != types.InstanceStateNameTerminated && string(instance.InstanceType) == ec.InstanceType {
-				log.Info(fmt.Sprintf("Counting instance %s towards running count", *instance.InstanceId))
+				log.Info("Counting instance towards running count", "instanceID", *instance.InstanceId)
 				count++
 			}
 		}
@@ -147,11 +156,11 @@ func (ec AwsEc2DynamicConfig) CountInstances(kubeClient client.Client, ctx conte
 	return count, nil
 }
 
-// GetInstanceAddress returns the IP Address associated with the instanceId EC2 instance. If none is found, an empty
+// GetInstanceAddress returns the IP Address associated with the instanceID EC2 instance. If none is found, an empty
 // string is returned.
-func (ec AwsEc2DynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
+func (ec AWSEc2DynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx context.Context, instanceID cloud.InstanceIdentifier) (string, error) {
 	log := logr.FromContextOrDiscard(ctx)
-	log.Info(fmt.Sprintf("Attempting to get AWS EC2 instance %s's IP address", instanceId))
+	log.Info("Attempting to get AWS EC2 instance's IP address", "instanceID", instanceID)
 
 	// Use AWS credentials and configuration to create an EC2 client
 	ec2Client, err := ec.createClient(kubeClient, ctx)
@@ -160,10 +169,10 @@ func (ec AwsEc2DynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx c
 	}
 
 	// Get instances
-	instancesOutput, err := ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{InstanceIds: []string{string(instanceId)}})
+	instancesOutput, err := ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{InstanceIds: []string{string(instanceID)}})
 	if err != nil {
 		// This might be a transient error, so only log it
-		log.Error(err, "failed to retrieve instance", "instanceId", instanceId)
+		log.Error(err, "failed to retrieve instance", "instanceID", instanceID)
 		return "", nil
 	}
 
@@ -183,10 +192,10 @@ func (ec AwsEc2DynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx c
 	return "", nil
 }
 
-// TerminateInstance tries to delete the instanceId EC2 instance.
-func (ec AwsEc2DynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
+// TerminateInstance tries to delete the instanceID EC2 instance.
+func (ec AWSEc2DynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instanceID cloud.InstanceIdentifier) error {
 	log := logr.FromContextOrDiscard(ctx)
-	log.Info(fmt.Sprintf("Attempting to terminate AWS EC2 instance %s", instanceId))
+	log.Info("Attempting to terminate AWS EC2 instance", "instanceID", instanceID)
 
 	// Use AWS credentials and configuration to create an EC2 client
 	ec2Client, err := ec.createClient(kubeClient, ctx)
@@ -194,12 +203,12 @@ func (ec AwsEc2DynamicConfig) TerminateInstance(kubeClient client.Client, ctx co
 		return fmt.Errorf("failed to create an EC2 client: %w", err)
 	}
 
-	_, err = ec2Client.TerminateInstances(ctx, &ec2.TerminateInstancesInput{InstanceIds: []string{string(instanceId)}})
+	_, err = ec2Client.TerminateInstances(ctx, &ec2.TerminateInstancesInput{InstanceIds: []string{string(instanceID)}})
 	return err
 }
 
 // ListInstances returns a collection of accessible EC2 instances whose names start with instanceTag.
-func (ec AwsEc2DynamicConfig) ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
+func (ec AWSEc2DynamicConfig) ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info("Attempting to list AWS EC2 instances")
 
@@ -240,7 +249,7 @@ func (ec AwsEc2DynamicConfig) ListInstances(kubeClient client.Client, ctx contex
 						Address:    ip,
 					}
 					vmInstances = append(vmInstances, newVmInstance)
-					log.Info(fmt.Sprintf("Counting instance %s towards running count", *instance.InstanceId))
+					log.Info("Counting instance towards running count", "instanceID", *instance.InstanceId)
 				}
 			}
 		}
@@ -248,19 +257,58 @@ func (ec AwsEc2DynamicConfig) ListInstances(kubeClient client.Client, ctx contex
 	return vmInstances, nil
 }
 
-func (r AwsEc2DynamicConfig) SshUser() string {
+func (r AWSEc2DynamicConfig) SshUser() string {
 	return "ec2-user"
 }
 
-// TODO: implement this function.
-func (ec AwsEc2DynamicConfig) GetState(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
+// GetState returns ec's instanceID VM state from AWS. See https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_InstanceState.html for
+// valid states.
+func (ec AWSEc2DynamicConfig) GetState(kubeClient client.Client, ctx context.Context, instanceID cloud.InstanceIdentifier) (string, error) {
 	return "ACTIVE", nil
 }
 
-// An AwsEc2DynamicConfig represents a configuration for an AWS EC2 instance.
+// CleanUpVms deletes any VMs in the ec cloud that are not associated with an existing Tekton TaskRun.
+func (ec AWSEc2DynamicConfig) CleanUpVms(ctx context.Context, kubeClient client.Client, existingTaskRuns map[string][]string) error {
+	log := logr.FromContextOrDiscard(ctx)
+	log.Info("Attempting to clean up orphaned AWS EC2 instances")
+
+	// Create an EC2 client
+	ec2Client, err := ec.createClient(kubeClient, ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create an EC2 client: %w", err)
+	}
+
+	// Retrieve instances
+	instancesOutput, err := ec2Client.DescribeInstances(
+		ctx,
+		&ec2.DescribeInstancesInput{
+			Filters: []types.Filter{
+				{Name: aws.String("tag:" + MultiPlatformManaged), Values: []string{"true"}},
+			},
+		},
+	)
+	if err != nil {
+		log.Error(err, "failed to retrieve EC2 instances")
+		return fmt.Errorf("failed to retrieve EC2 instances: %w", err)
+	}
+
+	// Retrieve and delete VM instances whose TaskRun does not exist.
+	vmsWithoutTaskRuns := ec.findInstancesWithoutTaskRuns(log, instancesOutput.Reservations, existingTaskRuns)
+	for _, vmName := range vmsWithoutTaskRuns {
+		err := ec.TerminateInstance(kubeClient, ctx, cloud.InstanceIdentifier(vmName))
+		if err != nil {
+			log.Error(err, "failed to terminate instance", "instanceID", vmName)
+			return fmt.Errorf("failed to terminate instance %s: %w", vmName, err)
+		}
+	}
+
+	return nil
+}
+
+// An AWSEc2DynamicConfig represents a configuration for an AWS EC2 instance.
 // The zero value (where each field will be assigned its type's zero value) is not a
-// valid AwsEc2DynamicConfig.
-type AwsEc2DynamicConfig struct {
+// valid AWSEc2DynamicConfig.
+type AWSEc2DynamicConfig struct {
 	// Region is the geographical area to be associated with the instance.
 	// See the [AWS region docs](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.RegionsAndAvailabilityZones.html)
 	// for valid regions.

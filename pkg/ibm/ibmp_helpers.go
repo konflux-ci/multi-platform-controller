@@ -125,7 +125,7 @@ func (pw IBMPowerDynamicConfig) parseCRN() (string, error) {
 
 // launchInstance returns the instance ID of the Power Systems VM instance created with an HTTP
 // request on the pw cloud instance.
-func (pw IBMPowerDynamicConfig) launchInstance(ctx context.Context, service *core.BaseService, name string) (cloud.InstanceIdentifier, error) {
+func (pw IBMPowerDynamicConfig) launchInstance(ctx context.Context, service *core.BaseService, additionalInfo map[string]string) (cloud.InstanceIdentifier, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	requestBuilder := core.NewRequestBuilder(core.POST)
 	requestBuilder = requestBuilder.WithContext(ctx)
@@ -145,6 +145,15 @@ func (pw IBMPowerDynamicConfig) launchInstance(ctx context.Context, service *cor
 	}
 
 	// Set body content and headers
+	name, ok := additionalInfo["name"]
+	if !ok {
+		return "", fmt.Errorf("failed to find the server instance's name")
+	}
+	taskRunTag, ok := additionalInfo[cloud.TaskRunTagKey]
+	if !ok {
+		return "", fmt.Errorf("failed to find the server instance's full TaskRun ID")
+	}
+
 	network := strings.Split(pw.Network, ",")
 	body := models.PVMInstanceCreate{
 		ServerName:  &name,
@@ -156,6 +165,7 @@ func (pw IBMPowerDynamicConfig) launchInstance(ctx context.Context, service *cor
 		KeyPairName: pw.Key,
 		SysType:     pw.System,
 		UserData:    pw.UserData,
+		UserTags:    []string{taskRunTag},
 	}
 	_, err = requestBuilder.SetBodyContentJSON(&body)
 	if err != nil {

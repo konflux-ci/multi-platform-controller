@@ -59,10 +59,8 @@ func CreateIBMPowerCloudConfig(platform string, config map[string]string, system
 	}
 }
 
-// LaunchInstance creates a Power Systems VM instance on the pw cloud and returns its identifier. This function
-// is implemented as part of the CloudProvider interface, which is why some of the arguments are unused for this
-// particular implementation.
-func (pw IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunName string, instanceTag string, _ map[string]string) (cloud.InstanceIdentifier, error) {
+// LaunchInstance creates a Power Systems VM instance and returns its identifier.
+func (pw IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunId string, instanceTag string, additionalTags map[string]string) (cloud.InstanceIdentifier, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	service, err := pw.createAuthenticatedBaseService(ctx, kubeClient)
 	if err != nil {
@@ -79,7 +77,16 @@ func (pw IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx con
 		instanceName = instanceName[:maxPPCNameLength]
 	}
 
-	instance, err := pw.launchInstance(ctx, service, instanceName)
+	err = cloud.ValidateTaskRunId(taskRunId)
+	if err != nil {
+		return "", fmt.Errorf("invalid TaskRun ID: %w", err)
+	}
+
+	additionalInfo := map[string]string{
+		"name":              instanceName,
+		cloud.TaskRunTagKey: taskRunId,
+	}
+	instance, err := pw.launchInstance(ctx, service, additionalInfo)
 	if err != nil {
 		err = fmt.Errorf("failed to create a Power Systems instance: %w", err)
 	}
@@ -232,15 +239,15 @@ func (pw IBMPowerDynamicConfig) TerminateInstance(kubeClient client.Client, ctx 
 	return nil
 }
 
-// GetState returns ibmp's VM state from the IBM Power Systems Virtual Server service.
+// GetState returns pw's VM state from the IBM Power Systems Virtual Server service.
 // See https://cloud.ibm.com/apidocs/power-cloud#pcloud-pvminstances-get for more information.
-func (ibmp IBMPowerDynamicConfig) GetState(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
-	service, err := ibmp.createAuthenticatedBaseService(ctx, kubeClient)
+func (pw IBMPowerDynamicConfig) GetState(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
+	service, err := pw.createAuthenticatedBaseService(ctx, kubeClient)
 	if err != nil {
 		return "", fmt.Errorf("failed to create an authenticated base service: %w", err)
 	}
 
-	instance, err := ibmp.getInstance(ctx, service, string(instanceId))
+	instance, err := pw.getInstance(ctx, service, string(instanceId))
 	// Probably still waiting for the instance to come up
 	if err != nil {
 		return "", nil
@@ -251,6 +258,67 @@ func (ibmp IBMPowerDynamicConfig) GetState(kubeClient client.Client, ctx context
 		return "FAILED", nil
 	}
 	return "OK", nil
+}
+
+// CleanUpVms deletes any VMs in the pw cloud instance that are associated with a non-existing Tekton TaskRun.
+// Each VM instance should have a tag with the associated TaskRun's namespace and name. This is compared to
+// existingTaskRuns, which is a map of namespaces to a list of TaskRuns in that namespace, to determine if this
+// VM's TaskRun still exists.
+func (pw IBMPowerDynamicConfig) CleanUpVms(kubeClient client.Client, ctx context.Context, existingTaskRuns map[string][]string) error {
+	// Get all VM instances
+	log := logr.FromContextOrDiscard(ctx)
+	log.Info("Attempting to clean up orphaned IBM Power Systems instances")
+	service, err := pw.createAuthenticatedBaseService(ctx, kubeClient)
+	if err != nil {
+		return fmt.Errorf("failed to create an authenticated base service: %w", err)
+	}
+	pvmInstancesCollection, err := pw.listInstances(ctx, service)
+	if err != nil {
+		return fmt.Errorf("failed to fetch Power Systems instances: %w", err)
+	}
+
+	// Iterate over all VM instances
+	for _, instanceRef := range pvmInstancesCollection.PvmInstances {
+		pvmInstance, err := pw.getInstance(ctx, service, *instanceRef.PvmInstanceID)
+		if err != nil {
+			msg := fmt.Sprintf("failed to get instance %s; skipping this instance...", *instanceRef.PvmInstanceID)
+			log.Error(err, msg)
+			continue
+		}
+		// Iterate over this instance's tags
+		taskRunExists := false
+		for _, tag := range pvmInstance.UserTags {
+			err := cloud.ValidateTaskRunId(tag)
+			if err != nil {
+				msg := fmt.Sprintf("WARN: invalid TaskRun ID; skipping tag %s...", tag)
+				log.Info(msg)
+				continue
+			}
+			// Try to find this instance's TaskRun
+			taskRunNamespace := strings.Split(tag, ":")[0]
+			taskRuns, ok := existingTaskRuns[taskRunNamespace]
+			if ok {
+				instanceTaskRunName := strings.Split(tag, ":")[1]
+				for _, existingTaskRunName := range taskRuns {
+					if instanceTaskRunName == existingTaskRunName {
+						taskRunExists = true
+						break
+					}
+				}
+			}
+		}
+
+		// Delete the VM instance if the TaskRun namespace or TaskRun does not exist
+		if !taskRunExists {
+			err := pw.TerminateInstance(kubeClient, ctx, cloud.InstanceIdentifier(*pvmInstance.PvmInstanceID))
+			if err != nil {
+				log.Error(err, "failed to terminate instance", "instanceId", *pvmInstance.PvmInstanceID)
+				return fmt.Errorf("failed to terminate instance %s: %w", *pvmInstance.PvmInstanceID, err)
+			}
+		}
+	}
+
+	return nil
 }
 
 func (pw IBMPowerDynamicConfig) SshUser() string {

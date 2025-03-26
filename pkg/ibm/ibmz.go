@@ -281,7 +281,12 @@ func (iz IBMZDynamicConfig) GetState(kubeClient client.Client, ctx context.Conte
 	return *instance.LifecycleState, nil
 }
 
-func (ibmz IBMZDynamicConfig) SshUser() string {
+// TODO: Implement function
+func (iz IBMZDynamicConfig) CleanUpVms(kubeClient client.Client, ctx context.Context, existingTaskRuns map[string][]string) error {
+	return nil
+}
+
+func (iz IBMZDynamicConfig) SshUser() string {
 	return "root"
 }
 
