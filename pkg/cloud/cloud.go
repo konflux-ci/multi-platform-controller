@@ -2,8 +2,9 @@ package cloud
 
 import (
 	"context"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"time"
+
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const InstanceTag = "multi-platform-instance"
@@ -15,6 +16,7 @@ type CloudProvider interface {
 	GetInstanceAddress(kubeClient client.Client, ctx context.Context, instanceId InstanceIdentifier) (string, error)
 	CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error)
 	ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]CloudVMInstance, error)
+	GetState(kubeClient client.Client, ctx context.Context, instanceId InstanceIdentifier) (string, error)
 	SshUser() string
 }
 
