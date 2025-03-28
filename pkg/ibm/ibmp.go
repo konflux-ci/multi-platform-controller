@@ -131,7 +131,7 @@ func (ibmp IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, c
 	}
 	// Don't return an error here since an IP address can take a while
 	// to become "live"
-	if err = checkAddressLive(ctx, ip); err != nil {
+	if err = checkIfIpIsLive(ctx, ip); err != nil {
 		log.Error(
 			err,
 			"failed to check if IP address was live",
@@ -165,7 +165,7 @@ func (ibmp IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx co
 			log.Error(err, "not listing instance as IP address cannot be assigned yet", "instance", identifier)
 			continue
 		}
-		if err = checkAddressLive(ctx, ip); err != nil {
+		if err = checkIfIpIsLive(ctx, ip); err != nil {
 			log.Error(
 				err,
 				"not listing instance as IP address cannot be accessed yet",
