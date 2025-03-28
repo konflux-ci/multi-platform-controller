@@ -45,7 +45,7 @@ var _ = DescribeTable("IBMPowerProvider unit test",
 			"dynamic." + platform + ".cores":     testConfig["cores"],
 			"dynamic." + platform + ".disk":      testConfig["disk"]}
 
-		provider := CreateIbmPowerCloudConfig(platform, config, systemNamespace)
+		provider := CreateIBMPowerCloudConfig(platform, config, systemNamespace)
 		Expect(provider).ToNot(BeNil())
 		providerConfig := provider.(IBMPowerDynamicConfig)
 		Expect(providerConfig).ToNot(BeNil())
