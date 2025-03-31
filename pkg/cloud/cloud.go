@@ -16,6 +16,7 @@ type CloudProvider interface {
 	GetInstanceAddress(kubeClient client.Client, ctx context.Context, instanceId InstanceIdentifier) (string, error)
 	CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error)
 	ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]CloudVMInstance, error)
+	GetState(kubeClient client.Client, ctx context.Context, instanceId InstanceIdentifier) (string, error)
 	SshUser() string
 }
 

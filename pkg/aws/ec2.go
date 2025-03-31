@@ -252,6 +252,11 @@ func (r AwsEc2DynamicConfig) SshUser() string {
 	return "ec2-user"
 }
 
+// TODO: implement this function.
+func (ec AwsEc2DynamicConfig) GetState(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
+	return "ACTIVE", nil
+}
+
 // An AwsEc2DynamicConfig represents a configuration for an AWS EC2 instance.
 // The zero value (where each field will be assigned its type's zero value) is not a
 // valid AwsEc2DynamicConfig.
