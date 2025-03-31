@@ -12,7 +12,6 @@ import (
 	"strconv"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/go-logr/logr"
@@ -24,7 +23,7 @@ const MultiPlatformManaged = "MultiPlatformManaged"
 
 // CreateEc2CloudConfig returns an AWS EC2 cloud configuration that implements the CloudProvider interface.
 func CreateEc2CloudConfig(platformName string, config map[string]string, systemNamespace string) cloud.CloudProvider {
-	disk, err := strconv.Atoi(config["dynamic."+platformName+".disk"])
+	disk, err := strconv.ParseInt(config["dynamic."+platformName+".disk"], 10, 32)
 	if err != nil {
 		disk = 40
 	}
@@ -55,21 +54,21 @@ func CreateEc2CloudConfig(platformName string, config map[string]string, systemN
 	}
 
 	return AwsEc2DynamicConfig{Region: config["dynamic."+platformName+".region"],
-		Ami:                 config["dynamic."+platformName+".ami"],
-		InstanceType:        config["dynamic."+platformName+".instance-type"],
-		KeyName:             config["dynamic."+platformName+".key-name"],
-		Secret:              config["dynamic."+platformName+".aws-secret"],
-		SecurityGroup:       config["dynamic."+platformName+".security-group"],
-		SecurityGroupId:     config["dynamic."+platformName+".security-group-id"],
-		SubnetId:            config["dynamic."+platformName+".subnet-id"],
-		SpotInstancePrice:   config["dynamic."+platformName+".spot-price"],
-		InstanceProfileName: config["dynamic."+platformName+".instance-profile-name"],
-		InstanceProfileArn:  config["dynamic."+platformName+".instance-profile-arn"],
-		SystemNamespace:     systemNamespace,
-		Disk:                int32(disk),
-		Iops:                iops,
-		Throughput:          throughput,
-		UserData:            userDataPtr,
+		Ami:                  config["dynamic."+platformName+".ami"],
+		InstanceType:         config["dynamic."+platformName+".instance-type"],
+		KeyName:              config["dynamic."+platformName+".key-name"],
+		Secret:               config["dynamic."+platformName+".aws-secret"],
+		SecurityGroup:        config["dynamic."+platformName+".security-group"],
+		SecurityGroupId:      config["dynamic."+platformName+".security-group-id"],
+		SubnetId:             config["dynamic."+platformName+".subnet-id"],
+		MaxSpotInstancePrice: config["dynamic."+platformName+".spot-price"],
+		InstanceProfileName:  config["dynamic."+platformName+".instance-profile-name"],
+		InstanceProfileArn:   config["dynamic."+platformName+".instance-profile-arn"],
+		SystemNamespace:      systemNamespace,
+		Disk:                 int32(disk),
+		Iops:                 iops,
+		Throughput:           throughput,
+		UserData:             userDataPtr,
 	}
 }
 
@@ -79,95 +78,18 @@ func (ec AwsEc2DynamicConfig) LaunchInstance(kubeClient client.Client, ctx conte
 	log.Info(fmt.Sprintf("attempting to launch AWS EC2 instance for %s", name))
 
 	// Use AWS credentials and configuration to create an EC2 client
-	secretCredentials := SecretCredentialsProvider{Name: ec.Secret, Namespace: ec.SystemNamespace, Client: kubeClient}
-	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithCredentialsProvider(secretCredentials),
-		config.WithRegion(ec.Region))
+	ec2Client, err := ec.createClient(kubeClient, ctx)
 	if err != nil {
-		return "", fmt.Errorf("failed to create an AWS config for an EC2 client: %w", err)
-	}
-
-	// Create an EC2 client
-	ec2Client := ec2.NewFromConfig(cfg)
-
-	// Specify the parameters for the new EC2 instance
-	var subnet *string
-	if ec.SubnetId != "" {
-		subnet = aws.String(ec.SubnetId)
-	}
-	var securityGroups []string = nil
-	if ec.SecurityGroup != "" {
-		securityGroups = []string{ec.SecurityGroup}
-	}
-	var securityGroupIds []string = nil
-	if ec.SecurityGroupId != "" {
-		securityGroupIds = []string{ec.SecurityGroupId}
-	}
-	var instanceProfile *types.IamInstanceProfileSpecification
-	if ec.InstanceProfileName != "" || ec.InstanceProfileArn != "" {
-		instanceProfile = &types.IamInstanceProfileSpecification{}
-		if ec.InstanceProfileName != "" {
-			instanceProfile.Name = aws.String(ec.InstanceProfileName)
-		}
-		if ec.InstanceProfileArn != "" {
-			instanceProfile.Arn = aws.String(ec.InstanceProfileArn)
-		}
-	}
-
-	instanceTags := []types.Tag{
-		{Key: aws.String(MultiPlatformManaged), Value: aws.String("true")},
-		{Key: aws.String(cloud.InstanceTag), Value: aws.String(instanceTag)},
-		{Key: aws.String("Name"), Value: aws.String("multi-platform-builder-" + name)},
-	}
-
-	for k, v := range additionalInstanceTags {
-		instanceTags = append(instanceTags, types.Tag{Key: aws.String(k), Value: aws.String(v)})
-	}
-
-	launchInput := &ec2.RunInstancesInput{
-		KeyName:            aws.String(ec.KeyName),
-		ImageId:            aws.String(ec.Ami), //ARM RHEL
-		InstanceType:       types.InstanceType(ec.InstanceType),
-		MinCount:           aws.Int32(1),
-		MaxCount:           aws.Int32(1),
-		EbsOptimized:       aws.Bool(true),
-		SecurityGroups:     securityGroups,
-		SecurityGroupIds:   securityGroupIds,
-		IamInstanceProfile: instanceProfile,
-		SubnetId:           subnet,
-		UserData:           ec.UserData,
-		BlockDeviceMappings: []types.BlockDeviceMapping{{
-			DeviceName:  aws.String("/dev/sda1"),
-			VirtualName: aws.String("ephemeral0"),
-			Ebs: &types.EbsBlockDevice{
-				DeleteOnTermination: aws.Bool(true),
-				VolumeSize:          aws.Int32(ec.Disk),
-				VolumeType:          types.VolumeTypeGp3,
-				Iops:                ec.Iops,
-				Throughput:          ec.Throughput,
-			},
-		}},
-		InstanceInitiatedShutdownBehavior: types.ShutdownBehaviorTerminate,
-		TagSpecifications:                 []types.TagSpecification{{ResourceType: types.ResourceTypeInstance, Tags: instanceTags}},
-	}
-	spotInstanceRequested := ec.SpotInstancePrice != ""
-	if spotInstanceRequested {
-		launchInput.InstanceMarketOptions = &types.InstanceMarketOptionsRequest{
-			MarketType: types.MarketTypeSpot,
-			SpotOptions: &types.SpotMarketOptions{
-				MaxPrice:                     aws.String(ec.SpotInstancePrice),
-				InstanceInterruptionBehavior: types.InstanceInterruptionBehaviorTerminate,
-				SpotInstanceType:             types.SpotInstanceTypeOneTime,
-			},
-		}
+		return "", fmt.Errorf("failed to create an EC2 client: %w", err)
 	}
 
 	// Launch the new EC2 instance
+	launchInput := ec.configureInstance(name, instanceTag, additionalInstanceTags)
 	runInstancesOutput, err := ec2Client.RunInstances(ctx, launchInput)
 	if err != nil {
 		// Check to see if there were market options for spot instances.
 		// Launching can often fail if there are market options and no spot instances.
-		if !spotInstanceRequested {
+		if launchInput.InstanceMarketOptions == nil {
 			return "", fmt.Errorf("failed to launch EC2 instance for %s: %w", name, err)
 		}
 		// If market options were specified, try launching again without any market options.
@@ -182,9 +104,8 @@ func (ec AwsEc2DynamicConfig) LaunchInstance(kubeClient client.Client, ctx conte
 	if len(runInstancesOutput.Instances) > 0 {
 		//TODO: clarify comment -> hard coded 10m timeout
 		return cloud.InstanceIdentifier(*runInstancesOutput.Instances[0].InstanceId), nil
-	} else {
-		return "", fmt.Errorf("no EC2 instances were created")
 	}
+	return "", fmt.Errorf("no EC2 instances were created")
 }
 
 // CountInstances returns the number of EC2 instances whose names start with instanceTag.
@@ -192,16 +113,13 @@ func (ec AwsEc2DynamicConfig) CountInstances(kubeClient client.Client, ctx conte
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info("Attempting to count AWS EC2 instances")
 
-	secretCredentials := SecretCredentialsProvider{Name: ec.Secret, Namespace: ec.SystemNamespace, Client: kubeClient}
-	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithCredentialsProvider(secretCredentials),
-		config.WithRegion(ec.Region))
+	// Use AWS credentials and configuration to create an EC2 client
+	ec2Client, err := ec.createClient(kubeClient, ctx)
 	if err != nil {
 		return -1, fmt.Errorf("failed to create an EC2 client: %w", err)
 	}
 
-	// Create an EC2 client
-	ec2Client := ec2.NewFromConfig(cfg)
+	// Get instances
 	instancesOutput, err := ec2Client.DescribeInstances(
 		ctx,
 		&ec2.DescribeInstancesInput{
@@ -235,16 +153,13 @@ func (ec AwsEc2DynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx c
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info(fmt.Sprintf("Attempting to get AWS EC2 instance %s's IP address", instanceId))
 
-	secretCredentials := SecretCredentialsProvider{Name: ec.Secret, Namespace: ec.SystemNamespace, Client: kubeClient}
-	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithCredentialsProvider(secretCredentials),
-		config.WithRegion(ec.Region))
+	// Use AWS credentials and configuration to create an EC2 client
+	ec2Client, err := ec.createClient(kubeClient, ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to create an EC2 client: %w", err)
 	}
 
-	// Create an EC2 client and get instance
-	ec2Client := ec2.NewFromConfig(cfg)
+	// Get instances
 	instancesOutput, err := ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{InstanceIds: []string{string(instanceId)}})
 	if err != nil {
 		// This might be a transient error, so only log it
@@ -256,7 +171,7 @@ func (ec AwsEc2DynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx c
 	if len(instancesOutput.Reservations) > 0 {
 		if len(instancesOutput.Reservations[0].Instances) > 0 {
 			instance := instancesOutput.Reservations[0].Instances[0]
-			ip, err := ec.checkInstanceConnectivity(ctx, &instance)
+			ip, err := ec.validateIPAddress(ctx, &instance)
 			// This might be a transient error, so only log it; wait longer for
 			// the instance to be ready
 			if err != nil {
@@ -269,38 +184,32 @@ func (ec AwsEc2DynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx c
 }
 
 // TerminateInstance tries to delete the instanceId EC2 instance.
-func (r AwsEc2DynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
+func (ec AwsEc2DynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info(fmt.Sprintf("Attempting to terminate AWS EC2 instance %s", instanceId))
 
-	secretCredentials := SecretCredentialsProvider{Name: r.Secret, Namespace: "multi-platform-controller", Client: kubeClient}
-	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithCredentialsProvider(secretCredentials),
-		config.WithRegion(r.Region))
+	// Use AWS credentials and configuration to create an EC2 client
+	ec2Client, err := ec.createClient(kubeClient, ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create an EC2 client: %w", err)
 	}
 
-	ec2Client := ec2.NewFromConfig(cfg)
 	_, err = ec2Client.TerminateInstances(ctx, &ec2.TerminateInstancesInput{InstanceIds: []string{string(instanceId)}})
 	return err
 }
 
 // ListInstances returns a collection of accessible EC2 instances whose names start with instanceTag.
-func (r AwsEc2DynamicConfig) ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
+func (ec AwsEc2DynamicConfig) ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info("Attempting to list AWS EC2 instances")
 
-	secretCredentials := SecretCredentialsProvider{Name: r.Secret, Namespace: r.SystemNamespace, Client: kubeClient}
-	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithCredentialsProvider(secretCredentials),
-		config.WithRegion(r.Region))
+	// Use AWS credentials and configuration to create an EC2 client
+	ec2Client, err := ec.createClient(kubeClient, ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create an EC2 client: %w", err)
 	}
 
-	// Create an EC2 client & retrieve instances
-	ec2Client := ec2.NewFromConfig(cfg)
+	// Get instances
 	instancesOutput, err := ec2Client.DescribeInstances(
 		ctx,
 		&ec2.DescribeInstancesInput{
@@ -321,9 +230,9 @@ func (r AwsEc2DynamicConfig) ListInstances(kubeClient client.Client, ctx context
 		for i := range reservation.Instances {
 			instance := reservation.Instances[i]
 			// Verify the instance is running an is of the specified VM "flavor"
-			if instance.State.Name != types.InstanceStateNameTerminated && string(instance.InstanceType) == r.InstanceType {
+			if instance.State.Name != types.InstanceStateNameTerminated && string(instance.InstanceType) == ec.InstanceType {
 				// Only list instance if it has an accessible IP
-				ip, err := r.checkInstanceConnectivity(ctx, &instance)
+				ip, err := ec.validateIPAddress(ctx, &instance)
 				if err == nil {
 					newVmInstance := cloud.CloudVMInstance{
 						InstanceId: cloud.InstanceIdentifier(*instance.InstanceId),
@@ -372,10 +281,10 @@ type AwsEc2DynamicConfig struct {
 	// secrets are stored.
 	SystemNamespace string
 
-	// SecurityGroup is the name of the scurity group to be used on the instance.
+	// SecurityGroup is the name of the security group to be used on the instance.
 	SecurityGroup string
 
-	// SecurityGroupID is the unique identifier of the scurity group to be used on
+	// SecurityGroupID is the unique identifier of the security group to be used on
 	// the instance.
 	SecurityGroupId string
 
@@ -385,9 +294,9 @@ type AwsEc2DynamicConfig struct {
 	// Disk is the amount of permanent storage (in GB) to allocate the instance.
 	Disk int32
 
-	// SpotInstancePrice is the maximum price (TODO: find out format) the user
+	// MaxSpotInstancePrice is the maximum price (TODO: find out format) the user
 	// is willing to pay for an EC2 [Spot instance](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-spot-instances.html)
-	SpotInstancePrice string
+	MaxSpotInstancePrice string
 
 	// InstanceProfileName is the name of the instance profile (a container for
 	// an AWS IAM role attached to an EC2 instance).

@@ -3,6 +3,7 @@ package ibm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -17,21 +18,36 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// authenticatedService generates a base service with an API key-based IAM (Identity and Access
+// retrieveInstanceIP returns a string representing the IP address of instance instanceId.
+func retrieveInstanceIp(instanceId string, networks []*models.PVMInstanceNetwork) (string, error) {
+	if len(networks) == 0 {
+		return "", fmt.Errorf("no networks found for Power Systems VM %s", instanceId)
+	}
+	network := networks[0]
+	if network.ExternalIP != "" {
+		return network.ExternalIP, nil
+	} else if network.IPAddress != "" {
+		return network.IPAddress, nil
+	} else {
+		return "", fmt.Errorf("no IP address found for Power Systems VM %s", instanceId)
+	}
+}
+
+// createAuthenticatedBaseService generates a base communication service with an API key-based IAM (Identity and Access
 // Management) authenticator.
-func (r IBMPowerDynamicConfig) authenticatedService(ctx context.Context, kubeClient client.Client) (*core.BaseService, error) {
+func (pw IBMPowerDynamicConfig) createAuthenticatedBaseService(ctx context.Context, kubeClient client.Client) (*core.BaseService, error) {
 	apiKey := ""
 	if kubeClient == nil { // Get API key from an environment variable
 		apiKey = os.Getenv("IBM_CLOUD_API_KEY")
-	} else { // Get API key from the ibmp Kubernetes Secret
-		s := v1.Secret{}
-		namespacedSecret := types2.NamespacedName{Name: r.Secret, Namespace: r.SystemNamespace}
-		err := kubeClient.Get(ctx, namespacedSecret, &s)
+	} else { // Get API key from pw's Kubernetes Secret
+		secret := v1.Secret{}
+		namespacedSecret := types2.NamespacedName{Name: pw.Secret, Namespace: pw.SystemNamespace}
+		err := kubeClient.Get(ctx, namespacedSecret, &secret)
 		if err != nil {
 			return nil, fmt.Errorf("failed to retrieve the secret %s from the Kubernetes client: %w", namespacedSecret, err)
 		}
 
-		apiKeyByte, ok := s.Data["api-key"]
+		apiKeyByte, ok := secret.Data["api-key"]
 		if !ok {
 			return nil, fmt.Errorf("the secret %s did not have an API key field", namespacedSecret)
 		}
@@ -39,7 +55,7 @@ func (r IBMPowerDynamicConfig) authenticatedService(ctx context.Context, kubeCli
 	}
 
 	serviceOptions := &core.ServiceOptions{
-		URL: r.Url,
+		URL: pw.Url,
 		Authenticator: &core.IamAuthenticator{
 			ApiKey: apiKey,
 		},
@@ -48,30 +64,29 @@ func (r IBMPowerDynamicConfig) authenticatedService(ctx context.Context, kubeCli
 	return baseService, err
 }
 
-// fetchInstances returns all of the Power Systems Virtual Server instances on r's cloud instance.
-func (r IBMPowerDynamicConfig) fetchInstances(ctx context.Context, kubeClient client.Client) (models.PVMInstances, error) {
+// listInstances returns all of the Power Systems VM instances on the pw cloud instance.
+func (pw IBMPowerDynamicConfig) listInstances(ctx context.Context, service *core.BaseService) (models.PVMInstances, error) {
 	log := logr.FromContextOrDiscard(ctx)
-	service, err := r.authenticatedService(ctx, kubeClient)
+	requestBuilder := core.NewRequestBuilder(core.GET).WithContext(ctx)
+	requestBuilder.EnableGzipCompression = service.GetEnableGzipCompression()
+
+	// Parameterize the request
+	cloudId, err := pw.parseCRN()
 	if err != nil {
-		return models.PVMInstances{}, fmt.Errorf("failed to create an authenticated base service: %w", err)
+		return models.PVMInstances{}, fmt.Errorf("failed to retrieve cloud service instance ID: %w", err)
 	}
-
-	// Formulate the HTTP GET request
-	builder := core.NewRequestBuilder(core.GET).WithContext(ctx)
-	builder.EnableGzipCompression = service.GetEnableGzipCompression()
-
 	pathParamsMap := map[string]string{
-		"cloud": r.pCloudId(),
+		"cloud": cloudId,
 	}
-	_, err = builder.ResolveRequestURL(r.Url, `/pcloud/v1/cloud-instances/{cloud}/pvm-instances`, pathParamsMap)
+	_, err = requestBuilder.ResolveRequestURL(pw.Url, `/pcloud/v1/cloud-instances/{cloud}/pvm-instances`, pathParamsMap)
 	if err != nil {
 		return models.PVMInstances{}, fmt.Errorf("failed to encode the request with parameters: %w", err)
 	}
 
-	builder.AddHeader("CRN", r.CRN)
-	builder.AddHeader("Accept", "application/json")
-
-	request, err := builder.Build()
+	// Add headers and build request
+	requestBuilder.AddHeader("CRN", pw.CRN)
+	requestBuilder.AddHeader("Accept", "application/json")
+	request, err := requestBuilder.Build()
 	if err != nil {
 		return models.PVMInstances{}, fmt.Errorf("failed to build the HTTP request: %w", err)
 	}
@@ -80,118 +95,118 @@ func (r IBMPowerDynamicConfig) fetchInstances(ctx context.Context, kubeClient cl
 	instances := models.PVMInstances{}
 	_, err = service.Request(request, &instances)
 	if err != nil {
-		log.Error(err, "Failed to request instances")
-		return models.PVMInstances{}, err
+		log.Error(err, "failed to list all Power Systems VM instances")
+		return models.PVMInstances{},
+			fmt.Errorf("failed to list all Power Systems VM instances on cloud %s: %w", cloudId, err)
 	}
 	return instances, nil
 }
 
-// pCloudId returns the service instance of ibmp's Cloud Resource Name.
+// parseCRN returns the service instance of pw's Cloud Resource Name.
 // See the [IBM CRN docs](https://cloud.ibm.com/docs/account?topic=account-crn#service-instance-crn)
 // for more information on CRN formatting.
-func (r IBMPowerDynamicConfig) pCloudId() string {
-	return strings.Split(strings.Split(r.CRN, "/")[1], ":")[1]
+func (pw IBMPowerDynamicConfig) parseCRN() (string, error) {
+	locationIndex := 5
+	serviceInstanceIndex := 7
+	crnSegments := strings.Split(pw.CRN, ":")
+
+	if crnSegments[locationIndex] == "global" {
+		errMsg := "this resource is global and has no service instance"
+		return "", errors.New(errMsg)
+	}
+	serviceInstance := crnSegments[serviceInstanceIndex]
+	if serviceInstance == "" {
+		errMsg := "the service instance is null"
+		return "", errors.New(errMsg)
+	}
+
+	return serviceInstance, nil
 }
 
-// createServerInstance returns the instance ID of the Power Systems Virtual Server Instance created with an HTTP
-// request on r's cloud instance.
-func (r IBMPowerDynamicConfig) createServerInstance(ctx context.Context, service *core.BaseService, name string) (cloud.InstanceIdentifier, error) {
+// launchInstance returns the instance ID of the Power Systems VM instance created with an HTTP
+// request on the pw cloud instance.
+func (pw IBMPowerDynamicConfig) launchInstance(ctx context.Context, service *core.BaseService, name string) (cloud.InstanceIdentifier, error) {
 	log := logr.FromContextOrDiscard(ctx)
-	builder := core.NewRequestBuilder(core.POST)
-	builder = builder.WithContext(ctx)
-	builder.EnableGzipCompression = service.GetEnableGzipCompression()
+	requestBuilder := core.NewRequestBuilder(core.POST)
+	requestBuilder = requestBuilder.WithContext(ctx)
+	requestBuilder.EnableGzipCompression = service.GetEnableGzipCompression()
 
-	// Set request values
+	// Parameterize the request
+	cloudId, err := pw.parseCRN()
+	if err != nil {
+		return "", fmt.Errorf("failed to retrieve cloud service instance ID: %w", err)
+	}
 	pathParamsMap := map[string]string{
-		"cloud": r.pCloudId(),
+		"cloud": cloudId,
 	}
-
-	network := strings.Split(r.Network, ",")
-	body := models.PVMInstanceCreate{
-		ServerName:  &name,
-		ImageID:     &r.ImageId,
-		Processors:  &r.Cores,
-		ProcType:    &r.ProcType,
-		Memory:      &r.Memory,
-		NetworkIDs:  network,
-		KeyPairName: r.Key,
-		SysType:     r.System,
-		UserData:    r.UserData,
-	}
-	_, err := builder.ResolveRequestURL(r.Url, `/pcloud/v1/cloud-instances/{cloud}/pvm-instances`, pathParamsMap)
+	_, err = requestBuilder.ResolveRequestURL(pw.Url, `/pcloud/v1/cloud-instances/{cloud}/pvm-instances`, pathParamsMap)
 	if err != nil {
 		return "", fmt.Errorf("failed to encode the request with parameters: %w", err)
 	}
-	_, err = builder.SetBodyContentJSON(&body)
+
+	// Set body content and headers
+	network := strings.Split(pw.Network, ",")
+	body := models.PVMInstanceCreate{
+		ServerName:  &name,
+		ImageID:     &pw.ImageId,
+		Processors:  &pw.Cores,
+		ProcType:    &pw.ProcType,
+		Memory:      &pw.Memory,
+		NetworkIDs:  network,
+		KeyPairName: pw.Key,
+		SysType:     pw.System,
+		UserData:    pw.UserData,
+	}
+	_, err = requestBuilder.SetBodyContentJSON(&body)
 	if err != nil {
 		return "", fmt.Errorf("failed to set the body of the request: %w", err)
 	}
-	builder.AddHeader("CRN", r.CRN)
-	builder.AddHeader("Content-Type", "application/json")
-	builder.AddHeader("Accept", "application/json")
+	requestBuilder.AddHeader("CRN", pw.CRN)
+	requestBuilder.AddHeader("Content-Type", "application/json")
+	requestBuilder.AddHeader("Accept", "application/json")
 
-	request, err := builder.Build()
+	// Create and send the POST request
+	request, err := requestBuilder.Build()
 	if err != nil {
 		return "", fmt.Errorf("failed to build the HTTP request: %w", err)
 	}
-
-	// Send the request
 	instances := make([]models.PVMInstance, 1)
 	_, err = service.Request(request, &instances)
 	if err != nil {
-		log.Error(err, "failed to start Power Systems virtual server")
-		return "", err
+		log.Error(err, "failed to launch a Power Systems VM instance")
+		return "", fmt.Errorf("failed to launch a Power Systems VM instance: %w", err)
 	}
 
 	instanceId := instances[0].PvmInstanceID
-	log.Info("started power server", "instance", instanceId)
-	r.resizeInstanceVolume(ctx, service, instanceId)
+	log.Info("Launched PowerPC instance", "instance", instanceId)
+	pw.resizeInstanceVolume(ctx, service, instanceId)
 	return cloud.InstanceIdentifier(*instanceId), nil
 }
 
-// lookupIp returns a string representing the IP address of the instance with ID pvmId.
-func (r IBMPowerDynamicConfig) lookupIp(ctx context.Context, service *core.BaseService, pvmId string) (string, error) {
-	instance, err := r.lookupInstance(ctx, service, pvmId)
+// getInstance returns the specified Power Systems VM instance on the pw cloud instance.
+func (pw IBMPowerDynamicConfig) getInstance(ctx context.Context, service *core.BaseService, pvmId string) (*models.PVMInstance, error) {
+	requestBuilder := core.NewRequestBuilder(core.GET)
+	requestBuilder = requestBuilder.WithContext(ctx)
+	requestBuilder.EnableGzipCompression = service.GetEnableGzipCompression()
+
+	// Parameterize the request
+	cloudId, err := pw.parseCRN()
 	if err != nil {
-		return "", err
+		return &models.PVMInstance{}, fmt.Errorf("failed to retrieve cloud service instance ID: %w", err)
 	}
-	return r.instanceIP(instance.PvmInstanceID, instance.Networks)
-}
-
-// instanceIP returns a string representing the IP address of instance instanceId.
-func (r IBMPowerDynamicConfig) instanceIP(instanceId *string, networks []*models.PVMInstanceNetwork) (string, error) {
-	if len(networks) == 0 {
-		return "", fmt.Errorf("no networks found for Power Systems VM %s", *instanceId)
-	}
-	network := networks[0]
-	if network.ExternalIP != "" {
-		return network.ExternalIP, nil
-	} else if network.IPAddress != "" {
-		return network.IPAddress, nil
-	} else {
-		return "", fmt.Errorf("no IP address found for Power Systems VM %s", *instanceId)
-	}
-}
-
-// lookupInstance returns the specified Power Systems Virtual Server instance on r's cloud instance.
-func (r IBMPowerDynamicConfig) lookupInstance(ctx context.Context, service *core.BaseService, pvmId string) (*models.PVMInstance, error) {
-	// Formulate the HTTP GET request
-	builder := core.NewRequestBuilder(core.GET)
-	builder = builder.WithContext(ctx)
-	builder.EnableGzipCompression = service.GetEnableGzipCompression()
-
 	pathParamsMap := map[string]string{
-		"cloud":           r.pCloudId(),
+		"cloud":           cloudId,
 		"pvm_instance_id": pvmId,
 	}
-	_, err := builder.ResolveRequestURL(r.Url, `/pcloud/v1/cloud-instances/{cloud}/pvm-instances/{pvm_instance_id}`, pathParamsMap)
+	_, err = requestBuilder.ResolveRequestURL(pw.Url, `/pcloud/v1/cloud-instances/{cloud}/pvm-instances/{pvm_instance_id}`, pathParamsMap)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode the request with parameters: %w", err)
 	}
-	builder.AddHeader("CRN", r.CRN)
-	builder.AddHeader("Accept", "application/json")
 
-	request, err := builder.Build()
+	// Add headers and build the request
+	requestBuilder.AddHeader("CRN", pw.CRN)
+	requestBuilder.AddHeader("Accept", "application/json")
+	request, err := requestBuilder.Build()
 	if err != nil {
 		return nil, fmt.Errorf("failed to build the HTTP request: %w", err)
 	}
@@ -200,46 +215,51 @@ func (r IBMPowerDynamicConfig) lookupInstance(ctx context.Context, service *core
 	instance := models.PVMInstance{}
 	_, err = service.Request(request, &instance)
 	if err != nil {
-		return nil, fmt.Errorf("failed to GET Power Systems VM instance %s: %w", pvmId, err)
+		return nil, fmt.Errorf("failed to get the Power Systems VM instance %s: %w", pvmId, err)
 	}
 	return &instance, nil
 }
 
-// deleteServer removes the specified Power Systems Virtual Server instance from r's cloud instance.
-func (r IBMPowerDynamicConfig) deleteServer(ctx context.Context, service *core.BaseService, pvmId string) error {
-	// Formulate the HTTP DELETE request
-	builder := core.NewRequestBuilder(core.DELETE)
-	builder = builder.WithContext(ctx)
-	builder.EnableGzipCompression = service.GetEnableGzipCompression()
+// deleteInstance removes the specified Power Systems VM instance from the pw cloud instance.
+func (pw IBMPowerDynamicConfig) deleteInstance(ctx context.Context, service *core.BaseService, pvmId string) error {
+	requestBuilder := core.NewRequestBuilder(core.DELETE)
+	requestBuilder = requestBuilder.WithContext(ctx)
+	requestBuilder.EnableGzipCompression = service.GetEnableGzipCompression()
 
+	// Parameterize the request
+	cloudId, err := pw.parseCRN()
+	if err != nil {
+		return fmt.Errorf("failed to retrieve cloud service instance ID: %w", err)
+	}
 	pathParamsMap := map[string]string{
-		"cloud":           r.pCloudId(),
+		"cloud":           cloudId,
 		"pvm_instance_id": pvmId,
 	}
-	_, err := builder.ResolveRequestURL(r.Url, `/pcloud/v1/cloud-instances/{cloud}/pvm-instances/{pvm_instance_id}`, pathParamsMap)
+	_, err = requestBuilder.ResolveRequestURL(pw.Url, `/pcloud/v1/cloud-instances/{cloud}/pvm-instances/{pvm_instance_id}`, pathParamsMap)
 	if err != nil {
 		return fmt.Errorf("failed to encode the request with parameters: %w", err)
 	}
-	builder.AddQuery("delete_data_volumes", "true")
-	builder.AddHeader("CRN", r.CRN)
-	builder.AddHeader("Accept", "application/json")
 
-	request, err := builder.Build()
+	// Add headers/queries and build the request
+	requestBuilder.AddQuery("delete_data_volumes", "true")
+	requestBuilder.AddHeader("CRN", pw.CRN)
+	requestBuilder.AddHeader("Accept", "application/json")
+	request, err := requestBuilder.Build()
 	if err != nil {
 		return fmt.Errorf("failed to build the HTTP request: %w", err)
 	}
 
-	// Execute the request
+	// Execute the DELETE request
 	var rawResponse map[string]json.RawMessage
 	_, err = service.Request(request, &rawResponse)
 	if err != nil {
-		err = fmt.Errorf("failed to DELETE Power System VM instance %s: %w", pvmId, err)
+		err = fmt.Errorf("failed to delete the Power System VM instance %s: %w", pvmId, err)
 	}
 	return err
 }
 
-// resizeInstanceVolume asynchronously resizes the instance id's volume.
-func (r IBMPowerDynamicConfig) resizeInstanceVolume(ctx context.Context, service *core.BaseService, id *string) {
+// resizeInstanceVolume asynchronously resizes the id instance's volume.
+func (pw IBMPowerDynamicConfig) resizeInstanceVolume(ctx context.Context, service *core.BaseService, id *string) {
 	log := logr.FromContextOrDiscard(ctx)
 	sleepTime := 10
 	// Iterate for 10 minutes
@@ -253,9 +273,9 @@ func (r IBMPowerDynamicConfig) resizeInstanceVolume(ctx context.Context, service
 				log.Info("Resizing timeout reached")
 				return
 			}
-			instance, err := r.lookupInstance(localCtx, service, *id)
+			instance, err := pw.getInstance(localCtx, service, *id)
 			if err != nil {
-				log.Error(err, "failed to get Power Systems VM instance for resize, retrying is %s", sleepTime)
+				log.Error(err, fmt.Sprintf("failed to get Power Systems VM instance for resize, retrying in %d s", sleepTime))
 				continue
 			}
 			// No volumes yet, try again in 10 seconds
@@ -265,61 +285,64 @@ func (r IBMPowerDynamicConfig) resizeInstanceVolume(ctx context.Context, service
 
 			log.Info("Current volume", "size", *instance.DiskSize, "instance", *id)
 			// Nothing to do since the volume size is the same as the specified size
-			if *instance.DiskSize == r.Disk {
+			if *instance.DiskSize == pw.Disk {
 				return
 			}
 
 			// This API is quite unstable and randomly throws conflicts or bad requests. Try multiple times.
-			log.Info("Resizing instance volume", "instance", *id, "volumeID", instance.VolumeIDs[0], "size", r.Disk)
-			err = r.updateVolume(localCtx, service, instance.VolumeIDs[0])
+			log.Info("Resizing instance volume", "instance", *id, "volumeID", instance.VolumeIDs[0], "size", pw.Disk)
+			err = pw.updateVolume(localCtx, service, instance.VolumeIDs[0])
 			if err != nil {
 				continue
 			}
-			log.Info("Successfully resized instance volume", "instance", *id, "volumeID", instance.VolumeIDs[0], "size", r.Disk)
+			log.Info("Successfully resized instance volume", "instance", *id, "volumeID", instance.VolumeIDs[0], "size", pw.Disk)
 			return
 		}
 	}()
 }
 
-// updateVolume changes volumeID's size to r's disk size via HTTP.
-func (r IBMPowerDynamicConfig) updateVolume(ctx context.Context, service *core.BaseService, volumeId string) error {
+// updateVolume changes volumeID's size to pw's disk size via HTTP.
+func (pw IBMPowerDynamicConfig) updateVolume(ctx context.Context, service *core.BaseService, volumeId string) error {
 	log := logr.FromContextOrDiscard(ctx)
-	builder := core.NewRequestBuilder(core.PUT)
-	builder = builder.WithContext(ctx)
-	builder.EnableGzipCompression = service.GetEnableGzipCompression()
+	requestBuilder := core.NewRequestBuilder(core.PUT)
+	requestBuilder = requestBuilder.WithContext(ctx)
+	requestBuilder.EnableGzipCompression = service.GetEnableGzipCompression()
 
-	// Parameterize PUT request
+	// Parameterize the request
+	cloudId, err := pw.parseCRN()
+	if err != nil {
+		return fmt.Errorf("failed to retrieve cloud service instance ID: %w", err)
+	}
 	pathParamsMap := map[string]string{
-		"cloud":  r.pCloudId(),
+		"cloud":  cloudId,
 		"volume": volumeId,
 	}
-	_, err := builder.ResolveRequestURL(r.Url, `/pcloud/v1/cloud-instances/{cloud}/volumes/{volume}`, pathParamsMap)
+	_, err = requestBuilder.ResolveRequestURL(pw.Url, `/pcloud/v1/cloud-instances/{cloud}/volumes/{volume}`, pathParamsMap)
 	if err != nil {
 		return fmt.Errorf("failed to encode the request with parameters: %w", err)
 	}
 
 	// Set request body and headers
 	body := models.UpdateVolume{
-		Size: r.Disk,
+		Size: pw.Disk,
 	}
-	_, err = builder.SetBodyContentJSON(&body)
+	_, err = requestBuilder.SetBodyContentJSON(&body)
 	if err != nil {
 		return err
 	}
-	builder.AddHeader("CRN", r.CRN)
-	builder.AddHeader("Content-Type", "application/json")
-	builder.AddHeader("Accept", "application/json")
+	requestBuilder.AddHeader("CRN", pw.CRN)
+	requestBuilder.AddHeader("Content-Type", "application/json")
+	requestBuilder.AddHeader("Accept", "application/json")
 
-	request, err := builder.Build()
+	// Build and execute PUT request
+	request, err := requestBuilder.Build()
 	if err != nil {
 		return fmt.Errorf("failed to build the HTTP request: %w", err)
 	}
-
-	// Execute the request
 	var vRef models.VolumeReference
 	_, err = service.Request(request, &vRef)
 	if err != nil {
-		log.Error(err, "failed to update pvm volume")
+		log.Error(err, "failed to update PVM volume")
 		return fmt.Errorf("failed to update volume %s: %w", volumeId, err)
 	}
 	log.Info("Volume size updated", "volumeId", vRef.VolumeID, "size", vRef.Size)
