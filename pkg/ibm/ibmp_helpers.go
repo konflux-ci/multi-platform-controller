@@ -255,7 +255,7 @@ func (r IBMPowerDynamicConfig) resizeInstanceVolume(ctx context.Context, service
 			}
 			instance, err := r.lookupInstance(localCtx, service, *id)
 			if err != nil {
-				log.Error(err, "failed to get Power Systems VM instance for resize")
+				log.Error(err, fmt.Sprintf("failed to get Power Systems VM instance for resize, retrying in %d s", sleepTime))
 				continue
 			}
 			// No volumes yet, try again in 10 seconds
