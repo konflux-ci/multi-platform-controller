@@ -279,7 +279,7 @@ spec:
       - name: BINARY_IMAGE
         value: $(params.output-image)
       runAfter:
-        - build-image-index
+      - build-image-index
       taskRef:
         params:
         - name: name
