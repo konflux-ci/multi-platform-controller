@@ -2,6 +2,8 @@ package ibm
 
 import (
 	"context"
+	"slices"
+
 	// #nosec is added to bypass the golang security scan since the cryptographic
 	// strength doesn't matter here
 	"crypto/md5" //#nosec
@@ -17,6 +19,7 @@ import (
 	"github.com/IBM/vpc-go-sdk/vpcv1"
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
+	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
 	v1 "k8s.io/api/core/v1"
 	types2 "k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -85,9 +88,9 @@ func (iz IBMZDynamicConfig) lookUpSubnet(vpcService *vpcv1.VpcV1) (*vpcv1.Subnet
 	return subnet, nil
 }
 
-// lookUpSshKey looks for iz's SSH key in the provided IBM Virtual Private Cloud service's API.
+// lookUpSSHKey looks for iz's SSH key in the provided IBM Virtual Private Cloud service's API.
 // Either the corresponding key or an error with a nil object is returned.
-func (iz IBMZDynamicConfig) lookUpSshKey(vpcService *vpcv1.VpcV1) (*vpcv1.Key, error) {
+func (iz IBMZDynamicConfig) lookUpSSHKey(vpcService *vpcv1.VpcV1) (*vpcv1.Key, error) {
 	keys, _, err := vpcService.ListKeys(&vpcv1.ListKeysOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list VPC keys: %w", err)
@@ -238,9 +241,9 @@ func assignNewlyAllocatedIP(instance *vpcv1.Instance, vpcService *vpcv1.VpcV1) (
 	return *ip.Address, nil
 }
 
-// assignIpToInstance finds an available IP address and assigns it to the Virtual Private Cloud instance and
+// assignIPToInstance finds an available IP address and assigns it to the Virtual Private Cloud instance and
 // its network interface. The string version of the IP address (an empty string if none was found) is returned.
-func (iz IBMZDynamicConfig) assignIpToInstance(instance *vpcv1.Instance, vpcService *vpcv1.VpcV1) (string, error) {
+func (iz IBMZDynamicConfig) assignIPToInstance(instance *vpcv1.Instance, vpcService *vpcv1.VpcV1) (string, error) {
 
 	if iz.PrivateIP {
 		for _, i := range instance.NetworkInterfaces {
@@ -286,4 +289,42 @@ func (iz IBMZDynamicConfig) assignIpToInstance(instance *vpcv1.Instance, vpcServ
 	// we are charged for the full month TODO: clarify this portion of comment -> (60c)
 	ip, err = assignNewlyAllocatedIP(instance, vpcService)
 	return ip, err
+}
+
+// findInstancesWithoutTaskRuns iterates over instances retrieved from the iz cloud and returns a list of those that
+// are associated with a non-existing Tekton TaskRun. Each instance's volume should have a tag with the associated
+// TaskRun's namespace and name. This is compared to existingTaskRuns, which is a map of namespaces to a list of
+// TaskRuns in that namespace, to determine if this instance's TaskRun still exists.
+func (iz IBMZDynamicConfig) findInstancesWithoutTaskRuns(log logr.Logger, vpcService *vpcv1.VpcV1, instances []vpcv1.Instance, existingTaskRuns map[string][]string) []string {
+	var instancesWithoutTaskRuns []string
+
+	// Iterate over all VM instances
+	for _, instance := range instances {
+		volumeId := instance.VolumeAttachments[0].ID
+		// Get instance's volume; assumes only one volume per instance
+		volume, _, err := vpcService.GetVolume(&vpcv1.GetVolumeOptions{ID: volumeId})
+		if err != nil {
+			msg := fmt.Sprintf("failed to get instance %s's volume; skipping this instance...", *instance.ID)
+			log.Error(err, msg)
+			continue
+		}
+		// Iterate over the volume's tags
+		for _, volumeTag := range volume.UserTags {
+			err := cloud.ValidateTaskRunId(volumeTag)
+			if err != nil {
+				log.Error(err, "invalid TaskRun ID; appending to list anyway...", "instanceID", *instance.ID)
+				break
+			}
+
+			// Try to find this instance's TaskRun
+			taskRunInfo := strings.Split(volumeTag, ":")
+			taskRunNamespace, taskRunName := taskRunInfo[0], taskRunInfo[1]
+			taskRuns, ok := existingTaskRuns[taskRunNamespace]
+			// Add the VM instance to the unassociated list if the TaskRun namespace or TaskRun does not exist
+			if !ok || !slices.Contains(taskRuns, taskRunName) {
+				instancesWithoutTaskRuns = append(instancesWithoutTaskRuns, *instance.ID)
+			}
+		}
+	}
+	return instancesWithoutTaskRuns
 }
