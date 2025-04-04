@@ -801,6 +801,11 @@ func (m *MockCloud) GetInstanceAddress(kubeClient runtimeclient.Client, ctx cont
 	return addr, nil
 }
 
+// TODO: implement
+func (m *MockCloud) GetState(kubeClient runtimeclient.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
+	return "ACTIVE", nil
+}
+
 func MockCloudSetup(platform string, data map[string]string, systemnamespace string) cloud.CloudProvider {
 	return &cloudImpl
 }

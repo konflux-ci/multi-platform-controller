@@ -67,47 +67,37 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 				if terr != nil {
 					log.Error(err, "Failed to terminate instance")
 				}
-				delete(tr.Labels, AssignedHost)
-				delete(tr.Annotations, CloudInstanceId)
-				delete(tr.Annotations, CloudDynamicPlatform)
-				updateErr := taskRun.client.Update(ctx, tr)
-				if updateErr != nil {
-					log.Error(updateErr, "Could not unassign task after timeout")
-					return reconcile.Result{}, err
-				} else {
-					return reconcile.Result{}, err
+				unassignErr := r.removeInstanceFromTask(taskRun, ctx, tr)
+				if unassignErr != nil {
+					log.Error(unassignErr, "Could not unassign task after timeout")
 				}
+				return reconcile.Result{}, err
 			}
 		}
 	}
-	//this is called multiple times
-	//the first time starts the instance
-	//then it can be called repeatedly until the instance has an address
-	//this lets us avoid blocking the main thread
+	// This section is called multiple times due to the task being re-queued:
+	// The 1st time starts the instance.
+	// Any future iterations are for repeatedly attempting to get the instance's IP address.
+	// This code structure avoids blocking the main thread.
 	if tr.Annotations[CloudInstanceId] != "" {
-		log.Info("attempting to get instance address", "instance", tr.Annotations[CloudInstanceId])
-		//we already have an instance, get its address
+		log.Info("Attempting to get instance's IP address", "instance", tr.Annotations[CloudInstanceId])
+		//An instance already exists, so get its IP address
 		address, err := r.CloudProvider.GetInstanceAddress(taskRun.client, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
-		if err != nil {
-			log.Error(err, "Failed to get instance address for cloud host")
-			//ugh, try and unassign
+		if err != nil { // A permanent error occurred when fetching the IP address for the VM
+			log.Error(err, "failed to get instance address for cloud host")
+			//Try to delete the instance and unassign it from the TaskRun
 			terr := r.CloudProvider.TerminateInstance(taskRun.client, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
 			if terr != nil {
-				message := fmt.Sprintf("Failed to terminate %s instance for %s", r.instanceTag, tr.Name)
+				message := fmt.Sprintf("failed to terminate %s instance for %s", r.instanceTag, tr.Name)
 				r.eventRecorder.Event(tr, "Normal", "TerminateFailed", message)
 				log.Error(terr, message)
 			}
-			delete(tr.Labels, AssignedHost)
-			delete(tr.Annotations, CloudInstanceId)
-			delete(tr.Annotations, CloudDynamicPlatform)
-			updateErr := taskRun.client.Update(ctx, tr)
-			if updateErr != nil {
-				log.Error(updateErr, "Could not unassign task after instance address failure")
-				return reconcile.Result{}, err
-			} else {
-				return reconcile.Result{}, err
+			unassignErr := r.removeInstanceFromTask(taskRun, ctx, tr)
+			if unassignErr != nil {
+				log.Error(unassignErr, "failed to unassign instance from task after instance address retrieval failure")
 			}
-		} else if address != "" {
+			return reconcile.Result{}, err
+		} else if address != "" { // An IP address was successfully retrieved for the the VM
 			tr.Labels[AssignedHost] = tr.Annotations[CloudInstanceId]
 			tr.Annotations[CloudAddress] = address
 			err := taskRun.client.Update(ctx, tr)
@@ -119,33 +109,50 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 			r.eventRecorder.Event(tr, "Normal", "Provisioning", message)
 			err = launchProvisioningTask(taskRun, ctx, tr, secretName, r.sshSecret, address, r.CloudProvider.SshUser(), r.platform, r.sudoCommands)
 			if err != nil {
-				//ugh, try and unassign
-				err := r.CloudProvider.TerminateInstance(taskRun.client, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
-				if err != nil {
-					log.Error(err, "Failed to terminate instance")
+				//Try to delete the instance and unassign it from the TaskRun
+				terr := r.CloudProvider.TerminateInstance(taskRun.client, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
+				if terr != nil {
+					message := fmt.Sprintf("failed to terminate %s instance for %s", r.instanceTag, tr.Name)
+					log.Error(terr, message)
 				}
-
-				delete(tr.Labels, AssignedHost)
-				delete(tr.Annotations, CloudInstanceId)
-				delete(tr.Annotations, CloudDynamicPlatform)
-				updateErr := taskRun.client.Update(ctx, tr)
-				if updateErr != nil {
-					log.Error(updateErr, "Could not unassign task after provisioning failure")
-					return reconcile.Result{}, err
+				unassignErr := r.removeInstanceFromTask(taskRun, ctx, tr)
+				if unassignErr != nil {
+					log.Error(unassignErr, "failed to unassign instance from task after provisioning failure")
 				} else {
-					log.Error(err, "Failed to provision cloud host")
-					return reconcile.Result{}, err
-
+					log.Error(err, "failed to provision cloud host")
 				}
+				return reconcile.Result{}, err
 			}
 			return reconcile.Result{}, nil
-		} else {
-			//we are waiting for the instance to come up
-			//so just requeue
-			return reconcile.Result{RequeueAfter: time.Second * 10}, nil
+		} else { // A transient error (that wasn't returned) occurred when fetching the IP address for the VM
+			state, err := r.CloudProvider.GetState(taskRun.client, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
+			requeueTime := time.Minute
+			if err != nil { //An error occurred while getting the VM state; re-queue quickly since random API errors are prominent
+				log.Error(
+					err,
+					"failed to get the state for instance",
+					"instanceId", cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]),
+				)
+				requeueTime = time.Second * 10
+			} else if state == "FAILED" { //VM is in a failed state; try to delete the instance and unassign it from the TaskRun
+				log.Info("VM instance is in a failed state; will attempt to terminate, unassign from task")
+				terr := r.CloudProvider.TerminateInstance(taskRun.client, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
+				if terr != nil {
+					message := fmt.Sprintf("failed to terminate %s instance for %s", r.instanceTag, tr.Name)
+					r.eventRecorder.Event(tr, "Normal", "TerminateFailed", message)
+					log.Error(terr, message)
+				}
+				unassignErr := r.removeInstanceFromTask(taskRun, ctx, tr)
+				if unassignErr != nil {
+					msg := fmt.Sprintf("failed to unassign instance %s from task after instance termination", r.instanceTag)
+					log.Error(unassignErr, msg)
+				}
+			}
+			//Always try to re-queue the task
+			return reconcile.Result{RequeueAfter: requeueTime}, nil
 		}
 	}
-	//first check this would not exceed the max tasks
+	// First check that creating this VM would not exceed the maximum VM platforms configured
 	instanceCount, err := r.CloudProvider.CountInstances(taskRun.client, ctx, r.instanceTag)
 	if instanceCount >= r.maxInstances || err != nil {
 		if err != nil {
@@ -244,4 +251,13 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 
 	return reconcile.Result{RequeueAfter: 2 * time.Minute}, nil
 
+}
+
+// Tries to remove the instance information from the task and returns a non-nil error if it was unable to.
+func (dr DynamicResolver) removeInstanceFromTask(reconcileTaskRun *ReconcileTaskRun, ctx context.Context, taskRun *v1.TaskRun) error {
+	delete(taskRun.Labels, AssignedHost)
+	delete(taskRun.Annotations, CloudInstanceId)
+	delete(taskRun.Annotations, CloudDynamicPlatform)
+	updateErr := reconcileTaskRun.client.Update(ctx, taskRun)
+	return updateErr
 }

@@ -29,7 +29,7 @@ spec:
     - name: show-sbom
       params:
       - name: IMAGE_URL
-        value: $(tasks.build-container.results.IMAGE_URL)
+        value: $(tasks.build-image-index.results.IMAGE_URL)
       taskRef:
         params:
         - name: name
@@ -107,6 +107,10 @@ spec:
       description: Build a source image.
       name: build-source-image
       type: string
+    - default: "false"
+      description: Add built image into an OCI image index
+      name: build-image-index
+      type: string
     - default: []
       description: Array of --build-arg values ("arg=value" strings) for buildah
       name: build-args
@@ -118,10 +122,10 @@ spec:
     results:
     - description: ""
       name: IMAGE_URL
-      value: $(tasks.build-container.results.IMAGE_URL)
+      value: $(tasks.build-image-index.results.IMAGE_URL)
     - description: ""
       name: IMAGE_DIGEST
-      value: $(tasks.build-container.results.IMAGE_DIGEST)
+      value: $(tasks.build-image-index.results.IMAGE_DIGEST)
     - description: ""
       name: CHAINS-GIT_URL
       value: $(tasks.clone-repository.results.url)
@@ -238,12 +242,41 @@ spec:
       workspaces:
       - name: source
         workspace: workspace
+    - name: build-image-index
+      params:
+        - name: IMAGE
+          value: $(params.output-image)
+        - name: COMMIT_SHA
+          value: $(tasks.clone-repository.results.commit)
+        - name: IMAGE_EXPIRES_AFTER
+          value: $(params.image-expires-after)
+        - name: ALWAYS_BUILD_INDEX
+          value: $(params.build-image-index)
+        - name: IMAGES
+          value:
+            - $(tasks.build-container.results.IMAGE_URL)@$(tasks.build-container.results.IMAGE_DIGEST)
+      runAfter:
+        - build-container
+      taskRef:
+        params:
+          - name: name
+            value: build-image-index
+          - name: bundle
+            value: quay.io/konflux-ci/tekton-catalog/task-build-image-index:0.1@sha256:95be274b6d0432d4671e2c41294ec345121bdf01284b1c6c46b5537dc6b37e15
+          - name: kind
+            value: task
+        resolver: bundles
+      when:
+        - input: $(tasks.init.results.build)
+          operator: in
+          values:
+            - "true"
     - name: build-source-image
       params:
       - name: BINARY_IMAGE
         value: $(params.output-image)
       runAfter:
-      - build-container
+      - build-image-index
       taskRef:
         params:
         - name: name
@@ -265,14 +298,62 @@ spec:
       workspaces:
       - name: workspace
         workspace: workspace
+    - name: sast-shell-check
+      params:
+        - name: image-digest
+          value: $(tasks.build-image-index.results.IMAGE_DIGEST)
+        - name: image-url
+          value: $(tasks.build-image-index.results.IMAGE_URL)
+      runAfter:
+        - build-image-index
+      taskRef:
+        params:
+          - name: name
+            value: sast-shell-check
+          - name: bundle
+            value: quay.io/konflux-ci/tekton-catalog/task-sast-shell-check:0.1@sha256:1b3d68c33a92dfc3da3975581cae80c99c8d1995cab519ae98c6331b5677ded0
+          - name: kind
+            value: task
+        resolver: bundles
+      when:
+        - input: $(params.skip-checks)
+          operator: in
+          values:
+            - "false"
+      workspaces:
+        - name: workspace
+          workspace: workspace
+    - name: sast-unicode-check
+      params:
+        - name: image-url
+          value: $(tasks.build-image-index.results.IMAGE_URL)
+      runAfter:
+        - build-image-index
+      taskRef:
+        params:
+          - name: name
+            value: sast-unicode-check
+          - name: bundle
+            value: quay.io/konflux-ci/tekton-catalog/task-sast-unicode-check:0.1@sha256:b1a9af196a79baa75632ef494eb6db987f57e870d882d47f5b495e1441c01e3b
+          - name: kind
+            value: task
+        resolver: bundles
+      when:
+        - input: $(params.skip-checks)
+          operator: in
+          values:
+            - "false"
+      workspaces:
+        - name: workspace
+          workspace: workspace
     - name: deprecated-base-image-check
       params:
       - name: IMAGE_URL
-        value: $(tasks.build-container.results.IMAGE_URL)
+        value: $(tasks.build-image-index.results.IMAGE_URL)
       - name: IMAGE_DIGEST
-        value: $(tasks.build-container.results.IMAGE_DIGEST)
+        value: $(tasks.build-image-index.results.IMAGE_DIGEST)
       runAfter:
-      - build-container
+      - build-image-index
       taskRef:
         params:
         - name: name
@@ -290,11 +371,11 @@ spec:
     - name: clair-scan
       params:
       - name: image-digest
-        value: $(tasks.build-container.results.IMAGE_DIGEST)
+        value: $(tasks.build-image-index.results.IMAGE_DIGEST)
       - name: image-url
-        value: $(tasks.build-container.results.IMAGE_URL)
+        value: $(tasks.build-image-index.results.IMAGE_URL)
       runAfter:
-      - build-container
+      - build-image-index
       taskRef:
         params:
         - name: name
@@ -312,11 +393,11 @@ spec:
     - name: rpms-signature-scan
       params:
       - name: image-digest
-        value: $(tasks.build-container.results.IMAGE_DIGEST)
+        value: $(tasks.build-image-index.results.IMAGE_DIGEST)
       - name: image-url
-        value: $(tasks.build-container.results.IMAGE_URL)
+        value: $(tasks.build-image-index.results.IMAGE_URL)
       runAfter:
-      - build-container
+      - build-image-index
       taskRef:
         params:
         - name: name
@@ -329,9 +410,9 @@ spec:
     - name: ecosystem-cert-preflight-checks
       params:
       - name: image-url
-        value: $(tasks.build-container.results.IMAGE_URL)
+        value: $(tasks.build-image-index.results.IMAGE_URL)
       runAfter:
-      - build-container
+      - build-image-index
       taskRef:
         params:
         - name: name
@@ -348,7 +429,7 @@ spec:
         - "false"
     - name: sast-snyk-check
       runAfter:
-      - build-container
+      - build-image-index
       taskRef:
         params:
         - name: name
@@ -368,17 +449,17 @@ spec:
         workspace: workspace
       params:
       - name: image-digest
-        value: $(tasks.build-container.results.IMAGE_DIGEST)
+        value: $(tasks.build-image-index.results.IMAGE_DIGEST)
       - name: image-url
-        value: $(tasks.build-container.results.IMAGE_URL)
+        value: $(tasks.build-image-index.results.IMAGE_URL)
     - name: clamav-scan
       params:
       - name: image-digest
-        value: $(tasks.build-container.results.IMAGE_DIGEST)
+        value: $(tasks.build-image-index.results.IMAGE_DIGEST)
       - name: image-url
-        value: $(tasks.build-container.results.IMAGE_URL)
+        value: $(tasks.build-image-index.results.IMAGE_URL)
       runAfter:
-      - build-container
+      - build-image-index
       taskRef:
         params:
         - name: name
@@ -396,9 +477,9 @@ spec:
     - name: apply-tags
       params:
       - name: IMAGE
-        value: $(tasks.build-container.results.IMAGE_URL)
+        value: $(tasks.build-image-index.results.IMAGE_URL)
       runAfter:
-      - build-container
+      - build-image-index
       taskRef:
         params:
         - name: name
