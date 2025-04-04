@@ -3,6 +3,7 @@ package taskrun
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
@@ -25,7 +26,7 @@ import (
 const systemNamespace = "multi-platform-controller"
 const userNamespace = "default"
 
-var cloudImpl MockCloud = MockCloud{Addressses: map[cloud.InstanceIdentifier]string{}}
+var cloudImpl MockCloud = MockCloud{Addresses: map[cloud.InstanceIdentifier]string{}}
 
 func setupClientAndReconciler(objs []runtimeclient.Object) (runtimeclient.Client, *ReconcileTaskRun) {
 	scheme := runtime.NewScheme()
@@ -161,7 +162,7 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			Expect(params["NAMESPACE"]).To(Equal(userNamespace))
 			Expect(params["USER"]).To(Equal("root"))
 			Expect(params["HOST"]).Should(Equal("test.host.com"))
-			Expect(cloudImpl.Addressses[("test")]).Should(Equal("test.host.com"))
+			Expect(cloudImpl.Addresses[("test")]).Should(Equal("test.host.com"))
 
 			runSuccessfulProvision(provision, GinkgoT(), client, tr, reconciler)
 
@@ -177,7 +178,7 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			_, err := reconciler.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
 			Expect(err).ShouldNot(HaveOccurred())
 
-			Expect(cloudImpl.Addressses["multi-platform-builder-test"]).Should(BeEmpty())
+			Expect(cloudImpl.Addresses["multi-platform-builder-test"]).Should(BeEmpty())
 		})
 	})
 
@@ -239,7 +240,7 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			tr := getUserTaskRun(GinkgoT(), client, "test")
 			Expect(tr.Labels[AssignedHost]).To(BeEmpty())
 			Expect(cloudImpl.Running).Should(Equal(0))
-			Expect(cloudImpl.Addressses["multi-platform-builder-test"]).Should(BeEmpty())
+			Expect(cloudImpl.Addresses["multi-platform-builder-test"]).Should(BeEmpty())
 		})
 	})
 
@@ -273,7 +274,7 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			tr := getUserTaskRun(GinkgoT(), client, "test")
 			Expect(tr.Labels[AssignedHost]).To(BeEmpty())
 			Expect(cloudImpl.Running).Should(Equal(0))
-			Expect(cloudImpl.Addressses["multi-platform-builder-test"]).Should(BeEmpty())
+			Expect(cloudImpl.Addresses["multi-platform-builder-test"]).Should(BeEmpty())
 		})
 	})
 
@@ -304,7 +305,7 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			_, err := reconciler.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
 			Expect(err).ShouldNot(HaveOccurred())
 
-			Expect(cloudImpl.Addressses["multi-platform-builder-test"]).Should(BeEmpty())
+			Expect(cloudImpl.Addresses["multi-platform-builder-test"]).Should(BeEmpty())
 			Expect(cloudImpl.Running).Should(Equal(0))
 		})
 	})
@@ -344,7 +345,7 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			_, err := reconciler.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
 			Expect(err).ShouldNot(HaveOccurred())
 
-			Expect(len(cloudImpl.Addressses)).Should(Equal(1))
+			Expect(len(cloudImpl.Addresses)).Should(Equal(1))
 		})
 	})
 
@@ -751,14 +752,14 @@ func createLocalHostConfig() []runtimeclient.Object {
 type MockCloud struct {
 	Running           int
 	Terminated        int
-	Addressses        map[cloud.InstanceIdentifier]string
+	Addresses         map[cloud.InstanceIdentifier]string
 	FailGetAddress    bool
 	TimeoutGetAddress bool
 }
 
 func (m *MockCloud) ListInstances(kubeClient runtimeclient.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
 	ret := []cloud.CloudVMInstance{}
-	for k, v := range m.Addressses {
+	for k, v := range m.Addresses {
 		ret = append(ret, cloud.CloudVMInstance{InstanceId: k, StartTime: time.Now(), Address: v})
 	}
 	return ret, nil
@@ -772,18 +773,25 @@ func (m *MockCloud) SshUser() string {
 	return "root"
 }
 
-func (m *MockCloud) LaunchInstance(kubeClient runtimeclient.Client, ctx context.Context, name string, instanceTag string, additionalTags map[string]string) (cloud.InstanceIdentifier, error) {
+func (m *MockCloud) LaunchInstance(kubeClient runtimeclient.Client, ctx context.Context, taskRunId string, instanceTag string, additionalTags map[string]string) (cloud.InstanceIdentifier, error) {
 	m.Running++
+	// Check that taskRunId is the correct format
+	taskRunIdComponents := strings.Split(taskRunId, ":")
+	if len(taskRunIdComponents) != 2 {
+		return "", fmt.Errorf("%s was not of the correct format <namespace>:<name>", taskRunId)
+	}
+	name := taskRunIdComponents[1]
+
 	addr := string(name) + ".host.com"
 	identifier := cloud.InstanceIdentifier(name)
-	m.Addressses[identifier] = addr
+	m.Addresses[identifier] = addr
 	return identifier, nil
 }
 
 func (m *MockCloud) TerminateInstance(kubeClient runtimeclient.Client, ctx context.Context, instance cloud.InstanceIdentifier) error {
 	m.Running--
 	m.Terminated++
-	delete(m.Addressses, instance)
+	delete(m.Addresses, instance)
 	return nil
 }
 
@@ -793,10 +801,10 @@ func (m *MockCloud) GetInstanceAddress(kubeClient runtimeclient.Client, ctx cont
 	} else if m.TimeoutGetAddress {
 		return "", nil
 	}
-	addr := m.Addressses[instanceId]
+	addr := m.Addresses[instanceId]
 	if addr == "" {
 		addr = string(instanceId) + ".host.com"
-		m.Addressses[instanceId] = addr
+		m.Addresses[instanceId] = addr
 	}
 	return addr, nil
 }
@@ -804,6 +812,11 @@ func (m *MockCloud) GetInstanceAddress(kubeClient runtimeclient.Client, ctx cont
 // TODO: implement
 func (m *MockCloud) GetState(kubeClient runtimeclient.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
 	return "ACTIVE", nil
+}
+
+// TODO: Implement function
+func (m *MockCloud) CleanUpVms(ctx context.Context, kubeClient runtimeclient.Client, taskRunInfo map[string][]string) error {
+	return nil
 }
 
 func MockCloudSetup(platform string, data map[string]string, systemnamespace string) cloud.CloudProvider {
