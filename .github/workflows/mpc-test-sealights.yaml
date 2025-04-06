@@ -81,7 +81,7 @@ jobs:
       - name: Run the SeaLights scan
         run: |
           echo "[Sealights] Running the SeaLights scan"
-          ./slcli scan --bsid buildSessionId.txt  --path-to-scanner ./slgoagent --workspacepath ./ --scm git --scmBaseUrl https://github.com/konflux-ci/multi-platform-controller --scmVersion “0” --scmProvider github
+          ./slcli scan --bsid buildSessionId.txt --enable-ginkgo --path-to-scanner ./slgoagent --workspacepath ./ --scm git --scmBaseUrl https://github.com/konflux-ci/multi-platform-controller --scmVersion “0” --scmProvider github
       - name: Build
         run: make build
       - name: Test
