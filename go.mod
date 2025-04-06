@@ -2,7 +2,7 @@ module github.com/konflux-ci/multi-platform-controller
 
 go 1.23.0
 
-toolchain go1.23.4
+toolchain go1.24.2
 
 require (
 	github.com/IBM-Cloud/power-go-client v1.7.0
