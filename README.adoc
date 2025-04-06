@@ -30,7 +30,7 @@ Dynamic:: Dynamic allocation will allocate a host from a selected cloud provider
 
 Dynamic Pools:: This is a combination of the above two. This has all of the config options of the first two, and a time to live. Hosts are only started on an as-needed basis, so the pool will scale to zero if there is no load. When a host is created it will join the pool, and will execute concurrent jobs up to the limit specified by the concurrency `param`. If all hosts are full another VM will be requested from the cloud provider, up to the `max-instances` limit. Once a host has reached its time-to-live it is no longer schedulable, and once all running jobs are completed it is shut down.
 
-Once a host has been allocated then it is provisioned by a Tekton task. This task will create a non-privileged user to run the build, and create an SSH key for that user. Once this key is created it is send to the OTP server to be consumed by the task, and a secret is created that contains the OTP password.
+Once a host has been allocated then it is provisioned by a Tekton task. This task will create a non-privileged user to run the build, and create an SSH key for that user. Once this key is created, it is send to the OTP server to be consumed by the task, and a secret is created that contains the OTP password.
 
 === The OTP Server
 
