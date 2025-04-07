@@ -45,6 +45,7 @@ jobs:
           go-version-file: "./go.mod"
       - name: Install ginkgo
         run: |
+          echo "[MPC] installing Ginkgo"
           go get github.com/onsi/ginkgo/v2@v2.22.2
           go install github.com/onsi/ginkgo/v2/ginkgo
       - name: Download SeaLights Go agent and CLI tool
