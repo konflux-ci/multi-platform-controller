@@ -215,6 +215,94 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 		})
 	})
 
+	Describe("Test Change Host Config", func() {
+		var client runtimeclient.Client
+		var reconciler *ReconcileTaskRun
+
+		BeforeEach(func() {
+			client, reconciler = setupClientAndReconciler(createDynamicHostConfig())
+
+		})
+
+		It("should update the host configuration correctly", func() {
+			tr := runUserPipeline(GinkgoT(), client, reconciler, "test")
+			provision := getProvisionTaskRun(GinkgoT(), client, tr)
+			params := map[string]string{}
+			for _, i := range provision.Spec.Params {
+				params[i.Name] = i.Value.StringVal
+
+			}
+
+			Expect(params["SECRET_NAME"]).To(Equal("multi-platform-ssh-test"))
+			Expect(params["TASKRUN_NAME"]).To(Equal("test"))
+			Expect(params["NAMESPACE"]).To(Equal(userNamespace))
+			Expect(params["USER"]).To(Equal("root"))
+			Expect(params["HOST"]).To(Equal("test.host.com"))
+			Expect(cloudImpl.Addressses["test"]).To(Equal("test.host.com"))
+
+			runSuccessfulProvision(provision, GinkgoT(), client, tr, reconciler)
+
+			Expect(client.Get(context.Background(), types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)).To(Succeed())
+			tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			tr.Status.SetCondition(&apis.Condition{
+				Type:               apis.ConditionSucceeded,
+				Status:             "True",
+				LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now().Add(time.Hour * -2)}},
+			})
+			Expect(client.Update(context.Background(), tr)).To(Succeed())
+
+			_, err := reconciler.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(cloudImpl.Addressses["multi-platform-builder-test"]).To(BeEmpty())
+
+			// Now change the config map
+			trl := pipelinev1.TaskRunList{}
+			Expect(client.List(context.Background(), &trl)).To(Succeed())
+			for _, t := range trl.Items {
+				Expect(client.Delete(context.Background(), &t)).To(Succeed())
+
+			}
+
+			vm := createHostConfigMap()
+
+			cm := v1.ConfigMap{}
+			Expect(client.Get(context.Background(), types.NamespacedName{Namespace: systemNamespace, Name: HostConfig}, &cm)).To(Succeed())
+			cm.Data = vm.Data
+			Expect(client.Update(context.Background(), &cm)).To(Succeed())
+
+			tr = runUserPipeline(GinkgoT(), client, reconciler, "test")
+			provision = getProvisionTaskRun(GinkgoT(), client, tr)
+			params = map[string]string{}
+			for _, i := range provision.Spec.Params {
+				params[i.Name] = i.Value.StringVal
+
+			}
+
+			Expect(params["SECRET_NAME"]).To(Equal("multi-platform-ssh-test"))
+			Expect(params["TASKRUN_NAME"]).To(Equal("test"))
+			Expect(params["NAMESPACE"]).To(Equal(userNamespace))
+			Expect(params["USER"]).To(Equal("ec2-user"))
+			Expect(params["HOST"]).To(BeElementOf("ec2-34-227-115-211.compute-1.amazonaws.com", "ec2-54-165-44-192.compute-1.amazonaws.com"))
+
+			runSuccessfulProvision(provision, GinkgoT(), client, tr, reconciler)
+
+			Expect(client.Get(context.Background(), types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)).To(Succeed())
+			tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			tr.Status.SetCondition(&apis.Condition{
+				Type:               apis.ConditionSucceeded,
+				Status:             "True",
+				LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now().Add(time.Hour * -2)}},
+			})
+			Expect(client.Update(context.Background(), tr)).To(Succeed())
+
+			_, err = reconciler.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
+			Expect(err).ToNot(HaveOccurred())
+
+		})
+
+	})
+
 	Describe("Test Allocate Cloud Host Instance Failure", func() {
 		var client runtimeclient.Client
 		var reconciler *ReconcileTaskRun
