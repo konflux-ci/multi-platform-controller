@@ -43,6 +43,11 @@ jobs:
         uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5
         with:
           go-version-file: "./go.mod"
+      - name: Install ginkgo
+        run: |
+            echo "[MPC] installing Ginkgo"
+            go get github.com/onsi/ginkgo/v2@v2.22.2
+            go install github.com/onsi/ginkgo/v2/ginkgo
       - name: Download SeaLights Go agent and CLI tool
         run: |
           echo "[Sealights] Downloading Sealights Golang & CLI Agents..."
