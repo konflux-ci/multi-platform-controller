@@ -7,7 +7,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const InstanceTag = "multi-platform-instance"
+const (
+	InstanceTag = "multi-platform-instance"
+	OKState     = VMState("OK")
+	FailedState = VMState("FAILED")
+)
 
 type CloudProvider interface {
 	LaunchInstance(kubeClient client.Client, ctx context.Context, name string, instanceTag string, additionalInstanceTags map[string]string) (InstanceIdentifier, error)
@@ -16,7 +20,7 @@ type CloudProvider interface {
 	GetInstanceAddress(kubeClient client.Client, ctx context.Context, instanceId InstanceIdentifier) (string, error)
 	CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error)
 	ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]CloudVMInstance, error)
-	GetState(kubeClient client.Client, ctx context.Context, instanceId InstanceIdentifier) (string, error)
+	GetState(kubeClient client.Client, ctx context.Context, instanceId InstanceIdentifier) (VMState, error)
 	SshUser() string
 }
 
@@ -27,3 +31,4 @@ type CloudVMInstance struct {
 }
 
 type InstanceIdentifier string
+type VMState string
