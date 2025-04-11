@@ -3,6 +3,7 @@ package taskrun
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
@@ -25,7 +26,7 @@ import (
 const systemNamespace = "multi-platform-controller"
 const userNamespace = "default"
 
-var cloudImpl MockCloud = MockCloud{Addressses: map[cloud.InstanceIdentifier]string{}}
+var cloudImpl MockCloud = MockCloud{Instances: map[cloud.InstanceIdentifier]MockInstance{}}
 
 func setupClientAndReconciler(objs []runtimeclient.Object) (runtimeclient.Client, *ReconcileTaskRun) {
 	scheme := runtime.NewScheme()
@@ -161,7 +162,11 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			Expect(params["NAMESPACE"]).To(Equal(userNamespace))
 			Expect(params["USER"]).To(Equal("root"))
 			Expect(params["HOST"]).Should(Equal("test.host.com"))
-			Expect(cloudImpl.Addressses[("test")]).Should(Equal("test.host.com"))
+
+			_, ok := cloudImpl.Instances[("test")]
+			Expect(ok).Should(Equal(true))
+			Expect(cloudImpl.Instances[("test")].Address).Should(Equal("test.host.com"))
+			Expect(cloudImpl.Instances[("test")].taskRun).Should(Equal("test task run"))
 
 			runSuccessfulProvision(provision, GinkgoT(), client, tr, reconciler)
 
@@ -177,7 +182,8 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			_, err := reconciler.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
 			Expect(err).ShouldNot(HaveOccurred())
 
-			Expect(cloudImpl.Addressses["multi-platform-builder-test"]).Should(BeEmpty())
+			_, ok = cloudImpl.Instances[("multi-platform-builder-test")]
+			Expect(ok).Should(Equal(false))
 		})
 	})
 
@@ -238,7 +244,11 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			Expect(params["NAMESPACE"]).To(Equal(userNamespace))
 			Expect(params["USER"]).To(Equal("root"))
 			Expect(params["HOST"]).To(Equal("test.host.com"))
-			Expect(cloudImpl.Addressses["test"]).To(Equal("test.host.com"))
+
+			_, ok := cloudImpl.Instances[("test")]
+			Expect(ok).Should(Equal(true))
+			Expect(cloudImpl.Instances[("test")].Address).Should(Equal("test.host.com"))
+			Expect(cloudImpl.Instances[("test")].taskRun).Should(Equal("test task run"))
 
 			runSuccessfulProvision(provision, GinkgoT(), client, tr, reconciler)
 
@@ -254,7 +264,8 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			_, err := reconciler.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(cloudImpl.Addressses["multi-platform-builder-test"]).To(BeEmpty())
+			_, ok = cloudImpl.Instances[("multi-platform-builder-test")]
+			Expect(ok).Should(Equal(false))
 
 			// Now change the config map
 			trl := pipelinev1.TaskRunList{}
@@ -327,7 +338,8 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			tr := getUserTaskRun(GinkgoT(), client, "test")
 			Expect(tr.Labels[AssignedHost]).To(BeEmpty())
 			Expect(cloudImpl.Running).Should(Equal(0))
-			Expect(cloudImpl.Addressses["multi-platform-builder-test"]).Should(BeEmpty())
+			_, ok := cloudImpl.Instances[("multi-platform-builder-test")]
+			Expect(ok).Should(Equal(false))
 		})
 	})
 
@@ -361,7 +373,8 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			tr := getUserTaskRun(GinkgoT(), client, "test")
 			Expect(tr.Labels[AssignedHost]).To(BeEmpty())
 			Expect(cloudImpl.Running).Should(Equal(0))
-			Expect(cloudImpl.Addressses["multi-platform-builder-test"]).Should(BeEmpty())
+			_, ok := cloudImpl.Instances[("multi-platform-builder-test")]
+			Expect(ok).Should(Equal(false))
 		})
 	})
 
@@ -392,7 +405,8 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			_, err := reconciler.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
 			Expect(err).ShouldNot(HaveOccurred())
 
-			Expect(cloudImpl.Addressses["multi-platform-builder-test"]).Should(BeEmpty())
+			_, ok := cloudImpl.Instances[("multi-platform-builder-test")]
+			Expect(ok).Should(Equal(false))
 			Expect(cloudImpl.Running).Should(Equal(0))
 		})
 	})
@@ -432,7 +446,7 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			_, err := reconciler.Reconcile(context.Background(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
 			Expect(err).ShouldNot(HaveOccurred())
 
-			Expect(len(cloudImpl.Addressses)).Should(Equal(1))
+			Expect(len(cloudImpl.Instances)).Should(Equal(1))
 		})
 	})
 
@@ -836,18 +850,26 @@ func createLocalHostConfig() []runtimeclient.Object {
 	return []runtimeclient.Object{&cm}
 }
 
+type MockInstance struct {
+	cloud.CloudVMInstance
+	taskRun  string
+	statusOK bool
+}
+
 type MockCloud struct {
 	Running           int
 	Terminated        int
-	Addressses        map[cloud.InstanceIdentifier]string
+	Instances         map[cloud.InstanceIdentifier]MockInstance
 	FailGetAddress    bool
 	TimeoutGetAddress bool
+	FailGetState      bool
+	FailCleanUpVMs    bool
 }
 
 func (m *MockCloud) ListInstances(kubeClient runtimeclient.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
 	ret := []cloud.CloudVMInstance{}
-	for k, v := range m.Addressses {
-		ret = append(ret, cloud.CloudVMInstance{InstanceId: k, StartTime: time.Now(), Address: v})
+	for _, v := range m.Instances {
+		ret = append(ret, v.CloudVMInstance)
 	}
 	return ret, nil
 }
@@ -860,18 +882,29 @@ func (m *MockCloud) SshUser() string {
 	return "root"
 }
 
-func (m *MockCloud) LaunchInstance(kubeClient runtimeclient.Client, ctx context.Context, name string, instanceTag string, additionalTags map[string]string) (cloud.InstanceIdentifier, error) {
+func (m *MockCloud) LaunchInstance(kubeClient runtimeclient.Client, ctx context.Context, taskRunID string, instanceTag string, additionalTags map[string]string) (cloud.InstanceIdentifier, error) {
 	m.Running++
+	// Check that taskRunID is the correct format
+	if strings.Count(taskRunID, ":") != 1 {
+		return "", fmt.Errorf("%s was not of the correct format <namespace>:<name>", taskRunID)
+	}
+	name := strings.Split(taskRunID, ":")[1]
+
 	addr := string(name) + ".host.com"
 	identifier := cloud.InstanceIdentifier(name)
-	m.Addressses[identifier] = addr
+	newInstance := MockInstance{
+		CloudVMInstance: cloud.CloudVMInstance{InstanceId: identifier, StartTime: time.Now(), Address: addr},
+		taskRun:         string(name) + " task run",
+		statusOK:        true,
+	}
+	m.Instances[identifier] = newInstance
 	return identifier, nil
 }
 
 func (m *MockCloud) TerminateInstance(kubeClient runtimeclient.Client, ctx context.Context, instance cloud.InstanceIdentifier) error {
 	m.Running--
 	m.Terminated++
-	delete(m.Addressses, instance)
+	delete(m.Instances, instance)
 	return nil
 }
 
@@ -881,17 +914,50 @@ func (m *MockCloud) GetInstanceAddress(kubeClient runtimeclient.Client, ctx cont
 	} else if m.TimeoutGetAddress {
 		return "", nil
 	}
-	addr := m.Addressses[instanceId]
+	addr := m.Instances[instanceId].Address
 	if addr == "" {
 		addr = string(instanceId) + ".host.com"
-		m.Addressses[instanceId] = addr
+		instance := m.Instances[instanceId]
+		instance.Address = addr
+		m.Instances[instanceId] = instance
 	}
 	return addr, nil
 }
 
-// TODO: implement
 func (m *MockCloud) GetState(kubeClient runtimeclient.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (cloud.VMState, error) {
+	if m.FailGetState {
+		return "", fmt.Errorf("failed")
+	}
+
+	instance := m.Instances[instanceId]
+	if !instance.statusOK {
+		return cloud.FailedState, nil
+	}
 	return cloud.OKState, nil
+}
+
+// In this implementation of the function, the MockInstance's taskRun value is compared to to the keys in existingTaskRuns for
+// a speedier return.
+func (m *MockCloud) CleanUpVms(ctx context.Context, kubeClient runtimeclient.Client, existingTaskRuns map[string][]string) error {
+	if m.FailCleanUpVMs {
+		return fmt.Errorf("failed")
+	}
+
+	var instancesToDelete []string
+	for k, v := range m.Instances {
+		_, ok := existingTaskRuns[v.taskRun]
+		if !ok {
+			instancesToDelete = append(instancesToDelete, string(k))
+		}
+	}
+
+	for _, instance := range instancesToDelete {
+		m.Running--
+		m.Terminated++
+		delete(m.Instances, cloud.InstanceIdentifier(instance))
+	}
+
+	return nil
 }
 
 func MockCloudSetup(platform string, data map[string]string, systemnamespace string) cloud.CloudProvider {

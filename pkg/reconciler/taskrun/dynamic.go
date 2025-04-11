@@ -181,7 +181,8 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 
 	message := fmt.Sprintf("%d instances are running for %s, creating a new instance %s", instanceCount, r.instanceTag, tr.Name)
 	r.eventRecorder.Event(tr, "Normal", "Launching", message)
-	instance, err := r.CloudProvider.LaunchInstance(taskRun.client, ctx, tr.Name, r.instanceTag, r.additionalInstanceTags)
+	taskRunID := fmt.Sprintf("%s:%s", tr.Namespace, tr.Name)
+	instance, err := r.CloudProvider.LaunchInstance(taskRun.client, ctx, taskRunID, r.instanceTag, r.additionalInstanceTags)
 
 	if err != nil {
 		launchErr := err

@@ -45,7 +45,7 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 				}
 				provider := CreateEc2CloudConfig(platformName, config, systemNamespace)
 				Expect(provider).ToNot(BeNil())
-				providerConfig := provider.(AwsEc2DynamicConfig)
+				providerConfig := provider.(AWSEc2DynamicConfig)
 				Expect(providerConfig).ToNot(BeNil())
 
 				Expect(providerConfig.Region).To(Equal("test-region"))
@@ -115,7 +115,7 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 
 	Describe("Testing SshUser", func() {
 		It("The simplest damn test", func() {
-			var awsTestInstance AwsEc2DynamicConfig
+			var awsTestInstance AWSEc2DynamicConfig
 			sshUser := awsTestInstance.SshUser()
 
 			Expect(sshUser).Should(Equal("ec2-user"))
