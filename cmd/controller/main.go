@@ -76,11 +76,11 @@ func main() {
 		},
 	}
 
-	controllerlOptions := k8scontroller.Options{
+	controllerOptions := k8scontroller.Options{
 		MaxConcurrentReconciles: concurrentReconciles,
 	}
 
-	mgr, err = controller.NewManager(restConfig, managerOptions, controllerlOptions)
+	mgr, err = controller.NewManager(restConfig, managerOptions, controllerOptions)
 	if err != nil {
 		mainLog.Error(err, "unable to start manager")
 		os.Exit(1)

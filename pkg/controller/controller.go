@@ -31,7 +31,7 @@ var (
 
 const TaskRunLabel = "tekton.dev/taskRun"
 
-func NewManager(cfg *rest.Config, managerOptions ctrl.Options, controllerlOptions controller.Options) (ctrl.Manager, error) {
+func NewManager(cfg *rest.Config, managerOptions ctrl.Options, controllerOptions controller.Options) (ctrl.Manager, error) {
 	// do not check tekton in kcp
 	// we have seen in e2e testing that this path can get invoked prior to the TaskRun CRD getting generated,
 	// and controller-runtime does not retry on missing CRDs.
@@ -96,8 +96,8 @@ func NewManager(cfg *rest.Config, managerOptions ctrl.Options, controllerlOption
 		return nil, err
 	}
 	controllerLog.Info("deployed in namespace", "namespace", operatorNamespace)
-	controllerLog.Info("controller concurrency", "maxConcurrentReconciles", controllerlOptions.MaxConcurrentReconciles)
-	if err := taskrun.SetupNewReconcilerWithManager(mgr, operatorNamespace, controllerlOptions); err != nil {
+	controllerLog.Info("controller concurrency", "maxConcurrentReconciles", controllerOptions.MaxConcurrentReconciles)
+	if err := taskrun.SetupNewReconcilerWithManager(mgr, operatorNamespace, controllerOptions); err != nil {
 		return nil, err
 	}
 
