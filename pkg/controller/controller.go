@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"time"
 
 	"github.com/konflux-ci/multi-platform-controller/pkg/reconciler/taskrun"
@@ -30,7 +31,7 @@ var (
 
 const TaskRunLabel = "tekton.dev/taskRun"
 
-func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
+func NewManager(cfg *rest.Config, managerOptions ctrl.Options, controllerlOptions controller.Options) (ctrl.Manager, error) {
 	// do not check tekton in kcp
 	// we have seen in e2e testing that this path can get invoked prior to the TaskRun CRD getting generated,
 	// and controller-runtime does not retry on missing CRDs.
@@ -47,14 +48,14 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 		controllerLog.Error(err, "timed out waiting for taskrun CRD to be created")
 		return nil, err
 	}
-	options.Scheme = runtime.NewScheme()
+	managerOptions.Scheme = runtime.NewScheme()
 
 	// pretty sure this is there by default but we will be explicit like build-service
-	if err := k8sscheme.AddToScheme(options.Scheme); err != nil {
+	if err := k8sscheme.AddToScheme(managerOptions.Scheme); err != nil {
 		return nil, err
 	}
 
-	if err := pipelinev1.AddToScheme(options.Scheme); err != nil {
+	if err := pipelinev1.AddToScheme(managerOptions.Scheme); err != nil {
 		return nil, err
 	}
 	var mgr ctrl.Manager
@@ -80,7 +81,7 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 		return nil, lerr
 	}
 	podSelector = podSelector.Add(*podLabels)
-	options.Cache = cache.Options{
+	managerOptions.Cache = cache.Options{
 		ByObject: map[client.Object]cache.ByObject{
 			&pipelinev1.TaskRun{}: {},
 			&v1.Secret{}:          {Label: secretSelector},
@@ -89,13 +90,14 @@ func NewManager(cfg *rest.Config, options ctrl.Options) (ctrl.Manager, error) {
 		},
 	}
 	operatorNamespace := os.Getenv("POD_NAMESPACE")
-	mgr, err = ctrl.NewManager(cfg, options)
+	mgr, err = ctrl.NewManager(cfg, managerOptions)
 
 	if err != nil {
 		return nil, err
 	}
 	controllerLog.Info("deployed in namespace", "namespace", operatorNamespace)
-	if err := taskrun.SetupNewReconcilerWithManager(mgr, operatorNamespace); err != nil {
+	controllerLog.Info("controller concurrency", "maxConcurrentReconciles", controllerlOptions.MaxConcurrentReconciles)
+	if err := taskrun.SetupNewReconcilerWithManager(mgr, operatorNamespace, controllerlOptions); err != nil {
 		return nil, err
 	}
 

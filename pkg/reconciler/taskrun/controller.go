@@ -6,10 +6,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 )
 
-func SetupNewReconcilerWithManager(mgr ctrl.Manager, operatorNamespace string) error {
+func SetupNewReconcilerWithManager(mgr ctrl.Manager, operatorNamespace string, options controller.Options) error {
 	r := newReconciler(mgr, operatorNamespace)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1.TaskRun{}).
-		WithOptions(controller.Options{MaxConcurrentReconciles: 10}).
+		WithOptions(options).
 		Complete(r)
 }
