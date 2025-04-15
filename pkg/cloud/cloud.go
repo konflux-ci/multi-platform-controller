@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	InstanceTag   = "multi-platform-instance"
-	TaskRunTagKey = "taskRunID"
-	OKState       = VMState("OK")
-	FailedState   = VMState("FAILED")
+	InstanceTag           = "multi-platform-instance"
+	TaskRunTagKey         = "taskRunID"
+	OKState       VMState = "OK"
+	FailedState   VMState = "FAILED"
 )
 
 type CloudProvider interface {

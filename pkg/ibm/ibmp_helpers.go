@@ -363,7 +363,7 @@ func (pw IBMPowerDynamicConfig) updateVolume(ctx context.Context, service *core.
 // TaskRun. Each instance should have a tag with the associated TaskRun's namespace and name. This is compared
 // to existingTaskRuns, which is a map of namespaces to a list of TaskRuns in that namespace, to determine if
 // this instance's TaskRun still exists.
-func (pw IBMPowerDynamicConfig) doesInstanceHaveTaskRun(instance *models.PVMInstance, log logr.Logger, existingTaskRuns map[string][]string) bool {
+func (pw IBMPowerDynamicConfig) doesInstanceHaveTaskRun(log logr.Logger, instance *models.PVMInstance, existingTaskRuns map[string][]string) bool {
 	// Try to find the instance's TaskRun ID tag
 	instanceTagIndex := slices.IndexFunc(instance.UserTags, func(tag string) bool {
 		return cloud.ValidateTaskRunID(tag) == nil

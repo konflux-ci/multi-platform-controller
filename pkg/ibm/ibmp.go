@@ -286,7 +286,7 @@ func (pw IBMPowerDynamicConfig) CleanUpVms(ctx context.Context, kubeClient clien
 			continue
 		}
 		// Delete the VM instance if the TaskRun namespace or TaskRun does not exist
-		taskRunExists := pw.doesInstanceHaveTaskRun(pvmInstance, log, existingTaskRuns)
+		taskRunExists := pw.doesInstanceHaveTaskRun(log, pvmInstance, existingTaskRuns)
 		if !taskRunExists {
 			err := pw.TerminateInstance(kubeClient, ctx, cloud.InstanceIdentifier(*pvmInstance.PvmInstanceID))
 			if err != nil {
