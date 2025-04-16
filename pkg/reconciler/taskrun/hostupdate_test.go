@@ -75,10 +75,11 @@ func testConfigDataFromTestData(testData map[string]string, configKeySuffix stri
 // HostUpdateTaskRunTest - Ginkgo table testing spec for HostUpdateTaskRunTest. Creates a new ConfigMap for each
 // test case and runs them separately
 var _ = Describe("HostUpdateTaskRunTest", func() {
-	var scheme = runtime.NewScheme()
+	var scheme *runtime.Scheme
 	var hostConfig = &corev1.ConfigMap{}
 
 	BeforeEach(func() {
+		scheme = runtime.NewScheme()
 		utilruntime.Must(corev1.AddToScheme(scheme))
 		utilruntime.Must(v1.AddToScheme(scheme))
 
