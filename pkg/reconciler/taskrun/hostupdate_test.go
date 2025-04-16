@@ -18,8 +18,6 @@
 package taskrun
 
 import (
-	"context"
-
 	"github.com/go-logr/logr"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -98,12 +96,12 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 	})
 
 	DescribeTable("Creating taskruns for updating static hosts in a pool",
-		func(hostConfigData map[string]string, hostSuffix string, shouldFail bool) {
+		func(ctx SpecContext, hostConfigData map[string]string, hostSuffix string, shouldFail bool) {
 
 			hostConfig.Data = testConfigDataFromTestData(hostConfigData, hostSuffix)
 
 			k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(hostConfig).Build()
-			log := logr.FromContextOrDiscard(context.TODO())
+			log := logr.FromContextOrDiscard(ctx)
 			zeroTaskRuns := false
 
 			// tested function call
@@ -115,7 +113,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 			// test everything in TaskRun creation that is not part of the table testing
 			Eventually(func(g Gomega) {
 				// TaskRun successfully created
-				g.Expect(k8sClient.List(context.TODO(), &createdList, client.InNamespace(testNamespace))).To(Succeed())
+				g.Expect(k8sClient.List(ctx, &createdList, client.InNamespace(testNamespace))).To(Succeed())
 
 				// Only one TaskRun was created == hostConfigData was good data
 				zeroTaskRuns = len(createdList.Items) == 0
