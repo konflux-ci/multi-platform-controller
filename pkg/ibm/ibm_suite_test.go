@@ -11,5 +11,5 @@ const systemNamespace = "multi-platform-controller"
 
 func TestIbm(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Ibm Suite")
+	RunSpecs(t, "IBM Suite")
 }

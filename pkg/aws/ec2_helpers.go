@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"slices"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -31,7 +33,7 @@ func pingIPAddress(ipAddress string) error {
 
 // validateIPAddress returns the IP address of the EC2 instance ec after determining that the address
 // can be resolved (if the instance has one).
-func (ec AwsEc2DynamicConfig) validateIPAddress(ctx context.Context, instance *types.Instance) (string, error) {
+func (ec AWSEc2DynamicConfig) validateIPAddress(ctx context.Context, instance *types.Instance) (string, error) {
 	var ip string
 	var err error
 	if instance.PublicDnsName != nil && *instance.PublicDnsName != "" {
@@ -52,7 +54,7 @@ func (ec AwsEc2DynamicConfig) validateIPAddress(ctx context.Context, instance *t
 }
 
 // createClient uses AWS credentials and an EC2 configuration to create and return an EC2 client.
-func (ec AwsEc2DynamicConfig) createClient(kubeClient client.Client, ctx context.Context) (*ec2.Client, error) {
+func (ec AWSEc2DynamicConfig) createClient(kubeClient client.Client, ctx context.Context) (*ec2.Client, error) {
 	secretCredentials := SecretCredentialsProvider{Name: ec.Secret, Namespace: ec.SystemNamespace, Client: kubeClient}
 	cfg, err := config.LoadDefaultConfig(ctx,
 		config.WithCredentialsProvider(secretCredentials),
@@ -63,7 +65,8 @@ func (ec AwsEc2DynamicConfig) createClient(kubeClient client.Client, ctx context
 	return ec2.NewFromConfig(cfg), nil
 }
 
-func (ec AwsEc2DynamicConfig) configureInstance(name string, instanceTag string, additionalInstanceTags map[string]string) *ec2.RunInstancesInput {
+// configureInstance creates and returns an EC2 instance configuration.
+func (ec AWSEc2DynamicConfig) configureInstance(taskRunName string, instanceTag string, additionalInstanceTags map[string]string) *ec2.RunInstancesInput {
 	var subnet *string
 	var securityGroups []string
 	var securityGroupIds []string
@@ -103,7 +106,7 @@ func (ec AwsEc2DynamicConfig) configureInstance(name string, instanceTag string,
 	instanceTags := []types.Tag{
 		{Key: aws.String(MultiPlatformManaged), Value: aws.String("true")},
 		{Key: aws.String(cloud.InstanceTag), Value: aws.String(instanceTag)},
-		{Key: aws.String("Name"), Value: aws.String("multi-platform-builder-" + name)},
+		{Key: aws.String("Name"), Value: aws.String("multi-platform-builder-" + taskRunName)},
 	}
 	for k, v := range additionalInstanceTags {
 		instanceTags = append(instanceTags, types.Tag{Key: aws.String(k), Value: aws.String(v)})
@@ -134,8 +137,54 @@ func (ec AwsEc2DynamicConfig) configureInstance(name string, instanceTag string,
 		}},
 		InstanceInitiatedShutdownBehavior: types.ShutdownBehaviorTerminate,
 		InstanceMarketOptions:             instanceMarketOpts,
-		TagSpecifications:                 []types.TagSpecification{{ResourceType: types.ResourceTypeInstance, Tags: instanceTags}},
+		TagSpecifications: []types.TagSpecification{
+			{ResourceType: types.ResourceTypeInstance, Tags: instanceTags},
+		},
 	}
+}
+
+// findInstancesWithoutTaskRuns iterates over instances retrieved from the ec cloud and returns a list of those that
+// are associated with a non-existing Tekton TaskRun. Each instance should have a tag with the associated TaskRun's
+// namespace and name. This is compared to existingTaskRuns, which is a map of namespaces to a list of TaskRuns in
+// that namespace, to determine if this instance's TaskRun still exists.
+func (ec AWSEc2DynamicConfig) findInstancesWithoutTaskRuns(log logr.Logger, reservations []types.Reservation, existingTaskRuns map[string][]string) []string {
+	var instancesWithoutTaskRuns []string
+
+	// Iterate over all VM instances
+	for _, reservation := range reservations {
+		for _, instance := range reservation.Instances {
+			// Try to get this instance's TaskRun ID
+			// **Assumes the Key & Value of the tag are non-nil
+			tagIndex := slices.IndexFunc(instance.Tags, func(tag types.Tag) bool {
+				return *tag.Key == cloud.TaskRunTagKey
+			})
+			if tagIndex == -1 {
+				msg := "WARN: no taskRun ID tag found; appending to no TaskRun list anyway..."
+				log.Info(msg, "instanceID", *instance.InstanceId)
+				instancesWithoutTaskRuns = append(instancesWithoutTaskRuns, *instance.InstanceId)
+				continue
+			}
+
+			taskRunID := *instance.Tags[tagIndex].Value
+			err := cloud.ValidateTaskRunID(taskRunID)
+			if err != nil {
+				msg := fmt.Sprintf("WARN: invalid TaskRun ID - %s; appending to no TaskRun list anyway...", err.Error())
+				log.Info(msg, *instance.InstanceId)
+				instancesWithoutTaskRuns = append(instancesWithoutTaskRuns, *instance.InstanceId)
+				continue
+			}
+
+			// Try to find this instance's TaskRun
+			taskRunInfo := strings.Split(taskRunID, ":")
+			taskRunNamespace, taskRunName := taskRunInfo[0], taskRunInfo[1]
+			taskRuns, ok := existingTaskRuns[taskRunNamespace]
+			// Add the VM instance to the no TaskRun list if the TaskRun namespace or TaskRun does not exist
+			if !ok || !slices.Contains(taskRuns, taskRunName) {
+				instancesWithoutTaskRuns = append(instancesWithoutTaskRuns, *instance.InstanceId)
+			}
+		}
+	}
+	return instancesWithoutTaskRuns
 }
 
 // A SecretCredentialsProvider is a collection of information needed to generate

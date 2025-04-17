@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -18,10 +19,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// retrieveInstanceIP returns a string representing the IP address of instance instanceId.
-func retrieveInstanceIp(instanceId string, networks []*models.PVMInstanceNetwork) (string, error) {
+// retrieveInstanceIP returns a string representing the IP address of instance instanceID.
+func retrieveInstanceIp(instanceID string, networks []*models.PVMInstanceNetwork) (string, error) {
 	if len(networks) == 0 {
-		return "", fmt.Errorf("no networks found for Power Systems VM %s", instanceId)
+		return "", fmt.Errorf("no networks found for Power Systems VM %s", instanceID)
 	}
 	network := networks[0]
 	if network.ExternalIP != "" {
@@ -29,7 +30,7 @@ func retrieveInstanceIp(instanceId string, networks []*models.PVMInstanceNetwork
 	} else if network.IPAddress != "" {
 		return network.IPAddress, nil
 	} else {
-		return "", fmt.Errorf("no IP address found for Power Systems VM %s", instanceId)
+		return "", fmt.Errorf("no IP address found for Power Systems VM %s", instanceID)
 	}
 }
 
@@ -66,7 +67,6 @@ func (pw IBMPowerDynamicConfig) createAuthenticatedBaseService(ctx context.Conte
 
 // listInstances returns all of the Power Systems VM instances on the pw cloud instance.
 func (pw IBMPowerDynamicConfig) listInstances(ctx context.Context, service *core.BaseService) (models.PVMInstances, error) {
-	log := logr.FromContextOrDiscard(ctx)
 	requestBuilder := core.NewRequestBuilder(core.GET).WithContext(ctx)
 	requestBuilder.EnableGzipCompression = service.GetEnableGzipCompression()
 
@@ -95,7 +95,6 @@ func (pw IBMPowerDynamicConfig) listInstances(ctx context.Context, service *core
 	instances := models.PVMInstances{}
 	_, err = service.Request(request, &instances)
 	if err != nil {
-		log.Error(err, "failed to list all Power Systems VM instances")
 		return models.PVMInstances{},
 			fmt.Errorf("failed to list all Power Systems VM instances on cloud %s: %w", cloudId, err)
 	}
@@ -125,7 +124,7 @@ func (pw IBMPowerDynamicConfig) parseCRN() (string, error) {
 
 // launchInstance returns the instance ID of the Power Systems VM instance created with an HTTP
 // request on the pw cloud instance.
-func (pw IBMPowerDynamicConfig) launchInstance(ctx context.Context, service *core.BaseService, name string) (cloud.InstanceIdentifier, error) {
+func (pw IBMPowerDynamicConfig) launchInstance(ctx context.Context, service *core.BaseService, additionalInfo map[string]string) (cloud.InstanceIdentifier, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	requestBuilder := core.NewRequestBuilder(core.POST)
 	requestBuilder = requestBuilder.WithContext(ctx)
@@ -145,6 +144,15 @@ func (pw IBMPowerDynamicConfig) launchInstance(ctx context.Context, service *cor
 	}
 
 	// Set body content and headers
+	name, ok := additionalInfo["name"]
+	if !ok {
+		return "", fmt.Errorf("failed to find the server instance's name")
+	}
+	taskRunTag, ok := additionalInfo[cloud.TaskRunTagKey]
+	if !ok {
+		return "", fmt.Errorf("failed to find the server instance's full TaskRun ID")
+	}
+
 	network := strings.Split(pw.Network, ",")
 	body := models.PVMInstanceCreate{
 		ServerName:  &name,
@@ -156,6 +164,7 @@ func (pw IBMPowerDynamicConfig) launchInstance(ctx context.Context, service *cor
 		KeyPairName: pw.Key,
 		SysType:     pw.System,
 		UserData:    pw.UserData,
+		UserTags:    []string{taskRunTag},
 	}
 	_, err = requestBuilder.SetBodyContentJSON(&body)
 	if err != nil {
@@ -173,14 +182,13 @@ func (pw IBMPowerDynamicConfig) launchInstance(ctx context.Context, service *cor
 	instances := make([]models.PVMInstance, 1)
 	_, err = service.Request(request, &instances)
 	if err != nil {
-		log.Error(err, "failed to launch a Power Systems VM instance")
 		return "", fmt.Errorf("failed to launch a Power Systems VM instance: %w", err)
 	}
 
-	instanceId := instances[0].PvmInstanceID
-	log.Info("Launched PowerPC instance", "instance", instanceId)
-	pw.resizeInstanceVolume(ctx, service, instanceId)
-	return cloud.InstanceIdentifier(*instanceId), nil
+	instanceID := instances[0].PvmInstanceID
+	log.Info("Launched Power Systems VM instance", "instanceID", instanceID)
+	pw.resizeInstanceVolume(ctx, service, instanceID)
+	return cloud.InstanceIdentifier(*instanceID), nil
 }
 
 // getInstance returns the specified Power Systems VM instance on the pw cloud instance.
@@ -275,7 +283,10 @@ func (pw IBMPowerDynamicConfig) resizeInstanceVolume(ctx context.Context, servic
 			}
 			instance, err := pw.getInstance(localCtx, service, *id)
 			if err != nil {
-				log.Error(err, fmt.Sprintf("failed to get Power Systems VM instance for resize, retrying in %d s", sleepTime))
+				log.Info("WARN: failed to get Power Systems VM instance for resize; retrying...",
+					"err", err,
+					"retry", time.Duration(sleepTime),
+				)
 				continue
 			}
 			// No volumes yet, try again in 10 seconds
@@ -283,39 +294,39 @@ func (pw IBMPowerDynamicConfig) resizeInstanceVolume(ctx context.Context, servic
 				continue
 			}
 
-			log.Info("Current volume", "size", *instance.DiskSize, "instance", *id)
+			log.Info("Current volume", "size", *instance.DiskSize, "instanceID", *id)
 			// Nothing to do since the volume size is the same as the specified size
 			if *instance.DiskSize == pw.Disk {
 				return
 			}
 
 			// This API is quite unstable and randomly throws conflicts or bad requests. Try multiple times.
-			log.Info("Resizing instance volume", "instance", *id, "volumeID", instance.VolumeIDs[0], "size", pw.Disk)
+			log.Info("Resizing instance volume", "instanceID", *id, "volumeID", instance.VolumeIDs[0], "size", pw.Disk)
 			err = pw.updateVolume(localCtx, service, instance.VolumeIDs[0])
 			if err != nil {
 				continue
 			}
-			log.Info("Successfully resized instance volume", "instance", *id, "volumeID", instance.VolumeIDs[0], "size", pw.Disk)
+			log.Info("Successfully resized instance volume", "instanceID", *id, "volumeID", instance.VolumeIDs[0], "size", pw.Disk)
 			return
 		}
 	}()
 }
 
 // updateVolume changes volumeID's size to pw's disk size via HTTP.
-func (pw IBMPowerDynamicConfig) updateVolume(ctx context.Context, service *core.BaseService, volumeId string) error {
+func (pw IBMPowerDynamicConfig) updateVolume(ctx context.Context, service *core.BaseService, volumeID string) error {
 	log := logr.FromContextOrDiscard(ctx)
 	requestBuilder := core.NewRequestBuilder(core.PUT)
 	requestBuilder = requestBuilder.WithContext(ctx)
 	requestBuilder.EnableGzipCompression = service.GetEnableGzipCompression()
 
 	// Parameterize the request
-	cloudId, err := pw.parseCRN()
+	cloudID, err := pw.parseCRN()
 	if err != nil {
 		return fmt.Errorf("failed to retrieve cloud service instance ID: %w", err)
 	}
 	pathParamsMap := map[string]string{
-		"cloud":  cloudId,
-		"volume": volumeId,
+		"cloud":  cloudID,
+		"volume": volumeID,
 	}
 	_, err = requestBuilder.ResolveRequestURL(pw.Url, `/pcloud/v1/cloud-instances/{cloud}/volumes/{volume}`, pathParamsMap)
 	if err != nil {
@@ -342,9 +353,32 @@ func (pw IBMPowerDynamicConfig) updateVolume(ctx context.Context, service *core.
 	var vRef models.VolumeReference
 	_, err = service.Request(request, &vRef)
 	if err != nil {
-		log.Error(err, "failed to update PVM volume")
-		return fmt.Errorf("failed to update volume %s: %w", volumeId, err)
+		return fmt.Errorf("failed to update volume %s: %w", volumeID, err)
 	}
-	log.Info("Volume size updated", "volumeId", vRef.VolumeID, "size", vRef.Size)
+	log.Info("Volume size updated", "volumeID", vRef.VolumeID, "size", vRef.Size)
 	return nil
+}
+
+// doesInstanceHaveTaskRun returns whether or not an instance on the pw cloud is associated with an existing
+// TaskRun. Each instance should have a tag with the associated TaskRun's namespace and name. This is compared
+// to existingTaskRuns, which is a map of namespaces to a list of TaskRuns in that namespace, to determine if
+// this instance's TaskRun still exists.
+func (pw IBMPowerDynamicConfig) doesInstanceHaveTaskRun(log logr.Logger, instance *models.PVMInstance, existingTaskRuns map[string][]string) bool {
+	// Try to find the instance's TaskRun ID tag
+	instanceTagIndex := slices.IndexFunc(instance.UserTags, func(tag string) bool {
+		return cloud.ValidateTaskRunID(tag) == nil
+	})
+	if instanceTagIndex == -1 {
+		msg := "WARN: failed to find a valid TaskRun ID; counting as having no TaskRun anyway..."
+		log.Info(msg, "instanceID", *instance.PvmInstanceID)
+		return false
+	}
+	tag := instance.UserTags[instanceTagIndex]
+
+	// Try to find this instance's TaskRun
+	taskRunInfo := strings.Split(tag, ":")
+	taskRunNamespace, taskRunName := taskRunInfo[0], taskRunInfo[1]
+	taskRuns, ok := existingTaskRuns[taskRunNamespace]
+	// Return true if the associated TaskRun exists in a TaskRun namespace
+	return ok && slices.Contains(taskRuns, taskRunName)
 }
