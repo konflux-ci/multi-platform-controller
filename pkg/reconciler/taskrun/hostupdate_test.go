@@ -87,10 +87,6 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 				Name:      HostConfig,
 				Namespace: testNamespace,
 			},
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "ConfigMap",
-				APIVersion: "v1",
-			},
 			Data: map[string]string{"test data": "will replace this"},
 		}
 	})
