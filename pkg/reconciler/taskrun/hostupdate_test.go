@@ -18,8 +18,6 @@
 package taskrun
 
 import (
-	"context"
-
 	"github.com/go-logr/logr"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -77,10 +75,11 @@ func testConfigDataFromTestData(testData map[string]string, configKeySuffix stri
 // HostUpdateTaskRunTest - Ginkgo table testing spec for HostUpdateTaskRunTest. Creates a new ConfigMap for each
 // test case and runs them separately
 var _ = Describe("HostUpdateTaskRunTest", func() {
-	var scheme = runtime.NewScheme()
+	var scheme *runtime.Scheme
 	var hostConfig = &corev1.ConfigMap{}
 
 	BeforeEach(func() {
+		scheme = runtime.NewScheme()
 		utilruntime.Must(corev1.AddToScheme(scheme))
 		utilruntime.Must(v1.AddToScheme(scheme))
 
@@ -89,21 +88,17 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 				Name:      HostConfig,
 				Namespace: testNamespace,
 			},
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "ConfigMap",
-				APIVersion: "v1",
-			},
 			Data: map[string]string{"test data": "will replace this"},
 		}
 	})
 
 	DescribeTable("Creating taskruns for updating static hosts in a pool",
-		func(hostConfigData map[string]string, hostSuffix string, shouldFail bool) {
+		func(ctx SpecContext, hostConfigData map[string]string, hostSuffix string, shouldFail bool) {
 
 			hostConfig.Data = testConfigDataFromTestData(hostConfigData, hostSuffix)
 
 			k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(hostConfig).Build()
-			log := logr.FromContextOrDiscard(context.TODO())
+			log := logr.FromContextOrDiscard(ctx)
 			zeroTaskRuns := false
 
 			// tested function call
@@ -115,7 +110,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 			// test everything in TaskRun creation that is not part of the table testing
 			Eventually(func(g Gomega) {
 				// TaskRun successfully created
-				g.Expect(k8sClient.List(context.TODO(), &createdList, client.InNamespace(testNamespace))).To(Succeed())
+				g.Expect(k8sClient.List(ctx, &createdList, client.InNamespace(testNamespace))).To(Succeed())
 
 				// Only one TaskRun was created == hostConfigData was good data
 				zeroTaskRuns = len(createdList.Items) == 0
