@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	error_client "github.com/konflux-ci/multi-platform-controller/tests/testing_utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
