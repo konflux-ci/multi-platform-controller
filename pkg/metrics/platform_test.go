@@ -1,7 +1,6 @@
 package mpcmetrics
 
 import (
-	"context"
 	"math/rand"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -18,8 +17,8 @@ var _ = Describe("PlatformMetrics", func() {
 			waitingTaskMetricName = "multi_platform_controller_waiting_tasks"
 			expectedValue         = 1
 		)
-		BeforeEach(func() {
-			Expect(RegisterPlatformMetrics(context.TODO(), platform)).NotTo(HaveOccurred())
+		BeforeEach(func(ctx SpecContext) {
+			Expect(RegisterPlatformMetrics(ctx, platform)).NotTo(HaveOccurred())
 			//resetting counters
 			HandleMetrics(platform, func(m *PlatformMetrics) {
 				m.RunningTasks.Set(0)
@@ -59,8 +58,8 @@ var _ = Describe("PlatformMetrics", func() {
 			hostAllocationFailuresMetricName = "multi_platform_controller_host_allocation_failures"
 			expectedValue                    int
 		)
-		BeforeEach(func() {
-			Expect(RegisterPlatformMetrics(context.TODO(), platform)).NotTo(HaveOccurred())
+		BeforeEach(func(ctx SpecContext) {
+			Expect(RegisterPlatformMetrics(ctx, platform)).NotTo(HaveOccurred())
 		})
 
 		When("When appropriate condition happened", func() {
@@ -108,8 +107,8 @@ var _ = Describe("PlatformMetrics", func() {
 			taskRunMetricName        = "multi_platform_controller_task_run_time"
 			expectedValue            float64
 		)
-		BeforeEach(func() {
-			Expect(RegisterPlatformMetrics(context.TODO(), platform)).NotTo(HaveOccurred())
+		BeforeEach(func(ctx SpecContext) {
+			Expect(RegisterPlatformMetrics(ctx, platform)).NotTo(HaveOccurred())
 		})
 
 		When("When appropriate condition happened", func() {

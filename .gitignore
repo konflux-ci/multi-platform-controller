@@ -42,3 +42,6 @@ nb-configuration.xml
 
 # Kustomize overlays for development, openshift ci
 deploy/**/development/**
+
+# testing outputs
+test-report.json
