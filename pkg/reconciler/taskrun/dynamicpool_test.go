@@ -15,7 +15,6 @@ var _ = Describe("DynamicHostPool test", func() {
 	var (
 		dhp DynamicHostPool
 		r   *ReconcileTaskRun
-		ctx SpecContext
 		s   *runtime.Scheme
 	)
 
@@ -31,7 +30,7 @@ var _ = Describe("DynamicHostPool test", func() {
 	//	2. Host has a TaskRun with the sought-after selectedHost in its Labels
 	// 	3. Extracting the Labels data from the TaskRun while looking for the selectedHost caused an error.
 	Describe("isHostIdle", func() {
-		It("should return true if the host is idle", func() {
+		It("should return true if the host is idle", func(ctx SpecContext) {
 			// Create a mock client with no TaskRun resources
 			client := fake.NewClientBuilder().WithScheme(s).Build()
 			r.client = client
@@ -41,7 +40,7 @@ var _ = Describe("DynamicHostPool test", func() {
 			Expect(idle).To(BeTrue())
 		})
 
-		It("should return false if the host is not idle", func() {
+		It("should return false if the host is not idle", func(ctx SpecContext) {
 			// Create a mock client with a TaskRun resource assigned to the host
 			selectedHost := "not-idle-host"
 
@@ -58,7 +57,7 @@ var _ = Describe("DynamicHostPool test", func() {
 			Expect(idle).To(BeFalse())
 		})
 
-		It("should return false if an error occurs", func() {
+		It("should return false if an error occurs", func(ctx SpecContext) {
 			// Create a NewErrorClient for testing the Error Occurred scenario
 			errToReturn := errors.New("fake error")
 			client := error_client.NewErrorClient(s, errToReturn)
