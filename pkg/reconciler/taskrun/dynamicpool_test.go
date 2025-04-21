@@ -58,9 +58,15 @@ var _ = Describe("DynamicHostPool test", func() {
 		})
 
 		It("should return false if an error occurs", func(ctx SpecContext) {
-			// Create a NewErrorClient for testing the Error Occurred scenario
+			// Create a fake client which will return an error, for testing the Error Occurred scenario
 			errToReturn := errors.New("fake error")
-			client := error_client.NewErrorClient(s, errToReturn)
+			//client := error_client.NewErrorClient(s, errToReturn)
+			client := fake.NewClientBuilder().WithScheme(s).
+				WithInterceptorFuncs(interceptor.Funcs{
+					List: func(context.Context, client.WithWatch, client.ObjectList, ...client.ListOption) error {
+						return errToReturn
+					},
+				}).Build()
 			r.client = client
 
 			// Call the function with a selected host
