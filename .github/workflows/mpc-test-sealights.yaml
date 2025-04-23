@@ -93,6 +93,8 @@ jobs:
         run: make test
       - name: Codecov
         uses: codecov/codecov-action@84508663e988701840491b86de86b666e8a86bed # v4
+        with:
+          files: ./cover.out
       - name: clean all SeaLights secret stuff
         run: |
           echo "[Sealights] Cleaning up after SeaLights run"
