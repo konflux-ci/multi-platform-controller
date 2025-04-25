@@ -26,8 +26,11 @@ import (
 	. "github.com/onsi/gomega"
 	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -96,6 +99,32 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 			},
 			Data: map[string]string{"test data": "will replace this"},
 		}
+	})
+
+	It("should fail when the config doesn't exist", func(ctx SpecContext) {
+		k8sClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Get: func(
+					ctx context.Context,
+					client client.WithWatch,
+					key types.NamespacedName,
+					obj client.Object,
+					opts ...client.GetOption,
+				) error {
+					return errors.NewNotFound(schema.GroupResource{
+						Group:    obj.GetObjectKind().GroupVersionKind().Group,
+						Resource: "configmaps",
+					}, obj.GetName())
+				},
+			}).Build()
+
+		log := logr.FromContextOrDiscard(ctx)
+		UpdateHostPools(testNamespace, k8sClient, &log)
+
+		list := v1.TaskRunList{}
+		Expect(k8sClient.List(ctx, &list)).To(Succeed())
+		Expect(list.Items).To(HaveLen(0))
 	})
 
 	DescribeTable("Creating taskruns for updating static hosts in a pool",
