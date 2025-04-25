@@ -18,6 +18,9 @@
 package taskrun
 
 import (
+	"context"
+	"sync"
+
 	"github.com/go-logr/logr"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -28,6 +31,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
 const testNamespace = "default"
@@ -77,11 +81,13 @@ func testConfigDataFromTestData(testData map[string]string, configKeySuffix stri
 var _ = Describe("HostUpdateTaskRunTest", func() {
 	var scheme *runtime.Scheme
 	var hostConfig = &corev1.ConfigMap{}
+	var waitGroup *sync.WaitGroup
 
 	BeforeEach(func() {
 		scheme = runtime.NewScheme()
 		utilruntime.Must(corev1.AddToScheme(scheme))
 		utilruntime.Must(v1.AddToScheme(scheme))
+		waitGroup = &sync.WaitGroup{}
 
 		hostConfig = &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
@@ -97,12 +103,35 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 
 			hostConfig.Data = testConfigDataFromTestData(hostConfigData, hostSuffix)
 
-			k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(hostConfig).Build()
+			if !shouldFail {
+				waitGroup.Add(1)
+			}
+
+			k8sClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithRuntimeObjects(hostConfig).
+				WithInterceptorFuncs(interceptor.Funcs{
+					Create: func(
+						ctx context.Context,
+						client client.WithWatch,
+						obj client.Object,
+						opts ...client.CreateOption,
+					) error {
+						err := client.Create(ctx, obj, opts...)
+						if !shouldFail {
+							waitGroup.Done()
+						}
+						return err
+					},
+				}).
+				Build()
 			log := logr.FromContextOrDiscard(ctx)
 			zeroTaskRuns := false
 
 			// tested function call
 			UpdateHostPools(testNamespace, k8sClient, &log)
+
+			waitGroup.Wait()
 
 			// get list of all TaskRuns, as we cannot predict the name
 			createdList := v1.TaskRunList{}
