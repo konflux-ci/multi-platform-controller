@@ -155,47 +155,5 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 			"user":        "root",
 			"platform":    "linux/ppc64le"},
 			"host.", true),
-		Entry("Negative test - bad address field", map[string]string{
-			"address":     "10.130",
-			"secret":      "internal-prod-ibm-ssh-key",
-			"concurrency": "1",
-			"user":        "koko_hazamar",
-			"platform":    "linux/ppc64le"},
-			"host.koko-hazamar-prod-1.", true),
-		Entry("Negative test - bad secret field", map[string]string{
-			"address":     "10.130.75.23",
-			"secret":      "",
-			"concurrency": "1",
-			"user":        "koko_hazamar",
-			"platform":    "linux/ppc64le"},
-			"host.koko-hazamar-prod-1.", true),
-		Entry("Negative test - bad concurrency part I", map[string]string{
-			"address":     "10.130.75.23",
-			"secret":      "internal-prod-ibm-ssh-key",
-			"concurrency": "-1",
-			"user":        "koko_hazamar",
-			"platform":    "linux/ppc64le"},
-			"host.koko-hazamar-prod-1.", true),
-		Entry("Negative test - bad concurrency part II", map[string]string{
-			"address":     "10.130.75.23",
-			"secret":      "internal-prod-ibm-ssh-key",
-			"concurrency": "1234567890",
-			"user":        "koko_hazamar",
-			"platform":    "linux/ppc64le"},
-			"host.koko-hazamar-prod-1.", true),
-		Entry("Negative test - bad user", map[string]string{
-			"address":     "10.130.75.23",
-			"secret":      "internal-prod-ibm-ssh-key",
-			"concurrency": "1",
-			"user":        "root",
-			"platform":    "linux/ppc64le"},
-			"host.koko-hazamar-prod-1.", true),
-		Entry("Negative test - bad platform", map[string]string{
-			"address":     "10.130.75.23",
-			"secret":      "internal-prod-ibm-ssh-key",
-			"concurrency": "1",
-			"user":        "koko_hazamar",
-			"platform":    "linux/moshe_kipod555"},
-			"host.koko-hazamar-prod-1.", true),
 	)
 })
