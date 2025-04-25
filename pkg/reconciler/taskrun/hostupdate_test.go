@@ -128,7 +128,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 				// validate each field is exactly as it's expected to be
 				Expect(hostConfigData["address"]).To(Equal(updatedHostData["address"]))
 				Expect(hostConfigData["user"]).To(Equal(updatedHostData["user"]))
-				Expect(updatedHostData["secret"]).To(Equal(updatedHostData["secret"]))
+				Expect(hostConfigData["secret"]).To(Equal(updatedHostData["secret"]))
 				Expect(hostConfigData["concurrency"]).To(Equal(updatedHostData["concurrency"]))
 				Expect(hostConfigData["platform"]).To(Equal(updatedHostData["platform"]))
 			}
