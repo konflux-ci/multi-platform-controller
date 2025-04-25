@@ -134,7 +134,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 					"instanceId", cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]),
 				)
 				requeueTime = time.Second * 10
-			} else if state == "FAILED" { //VM is in a failed state; try to delete the instance and unassign it from the TaskRun
+			} else if state == cloud.FailedState { //VM is in a failed state; try to delete the instance and unassign it from the TaskRun
 				log.Info("VM instance is in a failed state; will attempt to terminate, unassign from task")
 				terr := r.CloudProvider.TerminateInstance(taskRun.client, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
 				if terr != nil {
@@ -181,7 +181,8 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 
 	message := fmt.Sprintf("%d instances are running for %s, creating a new instance %s", instanceCount, r.instanceTag, tr.Name)
 	r.eventRecorder.Event(tr, "Normal", "Launching", message)
-	instance, err := r.CloudProvider.LaunchInstance(taskRun.client, ctx, tr.Name, r.instanceTag, r.additionalInstanceTags)
+	taskRunID := fmt.Sprintf("%s:%s", tr.Namespace, tr.Name)
+	instance, err := r.CloudProvider.LaunchInstance(taskRun.client, ctx, taskRunID, r.instanceTag, r.additionalInstanceTags)
 
 	if err != nil {
 		launchErr := err

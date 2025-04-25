@@ -2,8 +2,10 @@ package ibm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -40,7 +42,7 @@ func CreateIbmZCloudConfig(arch string, config map[string]string, systemNamespac
 
 // LaunchInstance creates a System Z Virtual Server instance and returns its identifier. This function is implemented as
 // part of the CloudProvider interface, which is why some of the arguments are unused for this particular implementation.
-func (iz IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunName string, instanceTag string, _ map[string]string) (cloud.InstanceIdentifier, error) {
+func (iz IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunID string, instanceTag string, _ map[string]string) (cloud.InstanceIdentifier, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	vpcService, err := iz.createAuthenticatedVpcService(ctx, kubeClient)
 	if err != nil {
@@ -51,6 +53,7 @@ func (iz IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context
 	if err != nil {
 		return "", fmt.Errorf("failed to create an instance name: %w", err)
 	}
+
 	// workaround to avoid BadRequest-s, after config validation introduced that might be not an issue anymore
 	if len(instanceName) > maxS390NameLength {
 		log.Info("WARN: generated instance name is too long. Instance tag need to be shortened. Truncating to the max possible length.", "tag", instanceTag)
@@ -58,12 +61,17 @@ func (iz IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context
 	}
 
 	// Gather required information for the VPC instance
+	err = cloud.ValidateTaskRunID(taskRunID)
+	if err != nil {
+		return "", fmt.Errorf("invalid TaskRun ID: %w", err)
+	}
+
 	vpc, err := iz.lookUpVpc(vpcService)
 	if err != nil {
 		return "", err
 	}
 
-	key, err := iz.lookUpSshKey(vpcService)
+	key, err := iz.lookUpSSHKey(vpcService)
 	if err != nil {
 		return "", err
 	}
@@ -92,6 +100,7 @@ func (iz IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context
 					Profile: &vpcv1.VolumeProfileIdentity{
 						Name: ptr("general-purpose"),
 					},
+					UserTags: []string{taskRunID},
 				},
 			},
 			PrimaryNetworkAttachment: &vpcv1.InstanceNetworkAttachmentPrototype{
@@ -169,13 +178,15 @@ func (iz IBMZDynamicConfig) ListInstances(kubeClient client.Client, ctx context.
 	// Ensure all listed instances have a reachable IP address
 	for _, instance := range vpcInstances.Instances {
 		if strings.HasPrefix(*instance.Name, instanceTag) {
-			addr, err := iz.assignIpToInstance(&instance, vpcService)
+			addr, err := iz.assignIPToInstance(&instance, vpcService)
 			if err != nil {
-				log.Error(err, "not listing instance as IP address cannot be assigned yet", "instance", *instance.ID)
+				msg := fmt.Sprintf("WARN: failed to retrieve IP address - %s; not listing instance", err.Error())
+				log.Info(msg, "instanceID", *instance.ID)
 				continue
 			}
-			if err := checkIfIpIsLive(ctx, addr); err != nil {
-				log.Error(err, "not listing instance as IP address cannot be accessed yet", "instance", *instance.ID)
+			if err = checkIfIpIsLive(ctx, addr); err != nil {
+				msg := fmt.Sprintf("WARN: failed to check if IP address is live - %s; not listing instance", err.Error())
+				log.Info(msg, "instanceID", *instance.ID)
 				continue
 			}
 			newVmInstance := cloud.CloudVMInstance{
@@ -203,7 +214,7 @@ func (iz IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx con
 		return "", nil // TODO: clarify comment -> not permanent, this can take a while to appear
 	}
 
-	ip, err := iz.assignIpToInstance(instance, vpcService)
+	ip, err := iz.assignIPToInstance(instance, vpcService)
 	if err != nil {
 		log.Error(err, "failed to look up/assign an IP address", "instanceId", instanceId)
 		return "", fmt.Errorf("failed to look up/assign an IP address for instance %s: %w", instanceId, err)
@@ -251,7 +262,7 @@ func (iz IBMZDynamicConfig) TerminateInstance(kubeClient client.Client, ctx cont
 
 			_, err = vpcService.DeleteInstanceWithContext(localCtx, &vpcv1.DeleteInstanceOptions{ID: instance.ID})
 			if err != nil {
-				log.Error(err, "failed to System Z instance", "instanceID", *instance.ID)
+				log.Error(err, "failed to delete System Z instance", "instanceID", *instance.ID)
 			}
 			if timeout.Before(time.Now()) {
 				return
@@ -265,23 +276,70 @@ func (iz IBMZDynamicConfig) TerminateInstance(kubeClient client.Client, ctx cont
 	return nil
 }
 
-// GetState returns iz's VM state from the IBM VPC service. See https://cloud.ibm.com/apidocs/vpc/latest?code=go#get-instance for
-// valid state strings.
-func (iz IBMZDynamicConfig) GetState(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
+// GetState returns instanceID's VM state from the iz cloud on the IBM VPC service.
+// See https://cloud.ibm.com/apidocs/vpc/latest?code=go#get-instance for valid state strings.
+func (iz IBMZDynamicConfig) GetState(kubeClient client.Client, ctx context.Context, instanceID cloud.InstanceIdentifier) (cloud.VMState, error) {
+	// IBM VPC VM states considered to be OK
+	okStates := []string{
+		"deleting",
+		"pending",
+		"stable",
+		"suspended",
+		"updating",
+		"waiting",
+	}
 	vpcService, err := iz.createAuthenticatedVpcService(ctx, kubeClient)
 	if err != nil {
 		return "", fmt.Errorf("failed to create an authenticated VPC service: %w", err)
 	}
 
-	instance, _, err := vpcService.GetInstance(&vpcv1.GetInstanceOptions{ID: ptr(string(instanceId))})
+	instance, _, err := vpcService.GetInstance(&vpcv1.GetInstanceOptions{ID: ptr(string(instanceID))})
 	if err != nil {
 		return "", nil // TODO: clarify comment -> not permanent, this can take a while to appear
 	}
 
-	return *instance.LifecycleState, nil
+	if slices.Contains(okStates, *instance.LifecycleState) {
+		return cloud.OKState, nil
+	}
+	return cloud.FailedState, nil
 }
 
-func (ibmz IBMZDynamicConfig) SshUser() string {
+// CleanUpVms deletes any VMs in the iz cloud instance that are associated with a non-existing Tekton TaskRun.
+// Each VM instance should have a tag with the associated TaskRun's namespace and name. This is compared to
+// existingTaskRuns, which is a map of namespaces to a list of TaskRuns in that namespace, to determine if this
+// VM's TaskRun still exists.
+func (iz IBMZDynamicConfig) CleanUpVms(ctx context.Context, kubeClient client.Client, existingTaskRuns map[string][]string) error {
+	// Get all VM instances
+	log := logr.FromContextOrDiscard(ctx)
+	log.Info("Attempting to clean up orphaned IBM System Z instances")
+	vpcService, err := iz.createAuthenticatedVpcService(ctx, kubeClient)
+	if err != nil {
+		return fmt.Errorf("failed to create an authenticated VPC service: %w", err)
+	}
+	vpc, err := iz.lookUpVpc(vpcService)
+	if err != nil {
+		return err
+	}
+	vpcInstances, _, err := vpcService.ListInstances(&vpcv1.ListInstancesOptions{ResourceGroupID: vpc.ResourceGroup.ID, VPCName: &iz.Vpc})
+	if err != nil {
+		return fmt.Errorf("failed to list VPC instances in the VPC network %s: %w", *vpc.ID, err)
+	}
+
+	errs := []error{}
+	// Retrieve and delete VM instances whose TaskRun does not exist.
+	vmsWithoutTaskRuns := iz.findInstancesWithoutTaskRuns(log, vpcService, vpcInstances.Instances, existingTaskRuns)
+	for _, vmName := range vmsWithoutTaskRuns {
+		err := iz.TerminateInstance(kubeClient, ctx, cloud.InstanceIdentifier(vmName))
+		if err != nil {
+			log.Error(err, "failed to terminate instance", "instanceID", vmName)
+			errs = append(errs, err)
+		}
+	}
+
+	return errors.Join(errs...)
+}
+
+func (iz IBMZDynamicConfig) SshUser() string {
 	return "root"
 }
 

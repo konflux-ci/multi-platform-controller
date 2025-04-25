@@ -19,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"github.com/konflux-ci/multi-platform-controller/pkg/controller"
+	k8scontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	//+kubebuilder:scaffold:imports
 	"github.com/go-logr/logr"
@@ -34,6 +35,7 @@ func main() {
 	var probeAddr string
 	var abAPIExportName string
 	var secureMetrics bool
+	var concurrentReconciles int
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&secureMetrics, "metrics-secure", true,
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
@@ -43,6 +45,8 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	flag.IntVar(&concurrentReconciles, "concurrent-reconciles", 10, "The concurrency level for reconciling resources.")
+
 	opts := zap.Options{
 		TimeEncoder: zapcore.RFC3339TimeEncoder,
 		ZapOpts:     []zap2.Option{zap2.WithCaller(true)},
@@ -61,7 +65,7 @@ func main() {
 
 	var mgr ctrl.Manager
 	var err error
-	mopts := ctrl.Options{
+	managerOptions := ctrl.Options{
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "5483be8f.redhat.com",
@@ -72,7 +76,11 @@ func main() {
 		},
 	}
 
-	mgr, err = controller.NewManager(restConfig, mopts)
+	controllerOptions := k8scontroller.Options{
+		MaxConcurrentReconciles: concurrentReconciles,
+	}
+
+	mgr, err = controller.NewManager(restConfig, managerOptions, controllerOptions)
 	if err != nil {
 		mainLog.Error(err, "unable to start manager")
 		os.Exit(1)
