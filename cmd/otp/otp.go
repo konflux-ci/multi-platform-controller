@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/rand"
-	"fmt"
 	"github.com/go-logr/logr"
 	"io"
 	"math/big"
@@ -26,10 +25,7 @@ func (s *storekey) ServeHTTP(writer http.ResponseWriter, request *http.Request) 
 		writer.WriteHeader(500)
 		return
 	}
-	// DEBUG!
-	gg := string(body)
-	fmt.Printf("Body is: %s\n", gg)
-	// DEBUG!
+
 	mutex.Lock()
 	defer mutex.Unlock()
 	otp, err := GenerateRandomString(20)
