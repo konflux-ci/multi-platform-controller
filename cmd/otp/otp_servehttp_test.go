@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"crypto"
-	//"fmt"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/stdr"
 	"github.com/pkg/errors"
