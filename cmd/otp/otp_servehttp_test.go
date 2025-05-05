@@ -103,8 +103,8 @@ var _ = Describe("ServeHTTP handlers", Serial, func() {
 			})
 
 			DescribeTable("valid-but-borderline SSH keys - stores the SSH key in OTP map when given a valid key",
-				func(inputFn func() string, label string) {
-					input := inputFn()
+				func(input string, label string) {
+					//input := inputFn()
 					GinkgoWriter.Printf("Running test for: %s\n", label)
 					GinkgoWriter.Printf("Valid key value is: %s\n", input)
 
@@ -116,10 +116,10 @@ var _ = Describe("ServeHTTP handlers", Serial, func() {
 					Expect(logCapture.Contains("stored SSH key in OTP map")).To(BeTrue(), "Log should indicate success of SSH key placement in globalMap")
 				},
 
-				Entry("key with trailing whitespace", func() string { return rsaKey + "\n\t" }, "rsa key with whitespace at the end"),
-				Entry("key with comment", func() string { return rsaKey + " user@example.com" }, "rsa key with comment at the end"),
-				Entry("very long key", func() string { return rsaKey + rsaKey + rsaKey }, "a very long rsa key"),
-				Entry("ed25519 key", func() string { return edKey }, "an ed25519 key"),
+				Entry("key with trailing whitespace", rsaKey+"\n\t", "rsa key with whitespace at the end"),
+				Entry("key with comment", rsaKey+" user@example.com", "rsa key with comment at the end"),
+				Entry("very long key", rsaKey+rsaKey+rsaKey, "a very long rsa key"),
+				Entry("ed25519 key", edKey, "an ed25519 key"),
 			)
 		})
 
