@@ -54,7 +54,7 @@ var _ = Describe("ServeHTTP handlers", Serial, func() {
 
 		Context("with valid SSH key (otp)", func() {
 
-			It("serves a one-time password when given a valid key", func() {
+			It("serves a one-time password", func() {
 				// stores the valid ssh key in globalMap
 				store := NewStoreKey(&logCapture.Logger)
 				storeReq := httptest.NewRequest("POST", "/store", strings.NewReader(rsaKey))
