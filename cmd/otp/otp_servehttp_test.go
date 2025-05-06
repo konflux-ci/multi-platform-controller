@@ -26,6 +26,7 @@ import (
 //  2. storekey.ServeHTTP checks it can store a valid ssh key in globalMap, that it can store borderline-but-valid ssh
 //     keys in globalMap, and that it can validate an ssh key's structure to make sure it's indeed an ssh key and not
 //     some garbled/truncated/invalid content
+//  3. end-to-end test to make sure two keys don't return the same otp and the two otps don't return the same key
 const (
 	rsaKeyType     string = "rsa"
 	ed25519KeyType string = "ed25519"
@@ -62,9 +63,7 @@ var _ = Describe("ServeHTTP handlers", Serial, func() {
 			It("serves a one-time password", func() {
 				By("Initializing a new store with a valid ssh key")
 				store := NewStoreKey(&logCapture.Logger)
-				storeReq := httptest.NewRequest("POST", "/store", strings.NewReader(rsaKey))
-				store.ServeHTTP(rr, storeReq)
-				storedKey := rr.Body.String()
+				storedKey := storeKeyAndGetOTP(store, rsaKey)
 				GinkgoWriter.Printf("Stored key used for OTP: %q\n", storedKey)
 
 				By("Requiring an OTP for that ssh key")
@@ -152,7 +151,47 @@ var _ = Describe("ServeHTTP handlers", Serial, func() {
 			)
 		})
 	})
+
+	Describe("End-to-end otp flow using ServeHTTP", func() {
+		It("returns distinct otps for different keys and maps each back to the correct key", func() {
+			store := NewStoreKey(&logCapture.Logger)
+			testOtp := NewOtp(&logCapture.Logger)
+
+			By("Storing an rsa key and an ed25519 key and getting their otps, Expecting each to be different than " +
+				"the other")
+			rsaOTP := storeKeyAndGetOTP(store, rsaKey)
+			edOTP := storeKeyAndGetOTP(store, edKey)
+			Expect(rsaOTP).NotTo(Equal(edOTP), "Each stored key should result in a distinct OTP")
+
+			By("Verifying the otp created from storing the rsa key returns the rsa key")
+			rr := httptest.NewRecorder()
+			req := httptest.NewRequest("POST", "/otp", strings.NewReader(rsaOTP))
+			testOtp.ServeHTTP(rr, req)
+			Expect(rr.Code).To(Equal(http.StatusOK))
+			Expect(rr.Body.String()).To(Equal(rsaKey), "OTP should return original rsa key")
+
+			By("Verifying the otp created from storing the ed25519 key returns the ed25519 key")
+			rr = httptest.NewRecorder()
+			req = httptest.NewRequest("POST", "/otp", strings.NewReader(edOTP))
+			testOtp.ServeHTTP(rr, req)
+			Expect(rr.Code).To(Equal(http.StatusOK))
+			Expect(rr.Body.String()).To(Equal(edKey), "OTP should return original ed25519 key")
+		})
+	})
 })
+
+// helper method to DRY things up a bit
+func storeKeyAndGetOTP(handler http.Handler, key string) string {
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/store", strings.NewReader(key))
+	handler.ServeHTTP(rr, req)
+
+	Expect(rr.Code).To(Equal(http.StatusOK), "Failed to store SSH key")
+	otp := strings.TrimSpace(rr.Body.String())
+	Expect(otp).NotTo(BeEmpty(), "OTP returned for SSH key was empty")
+
+	return otp
+}
 
 // Generates a real SSH public key string, with option to change the encryption algorithm. Can be broadened to more
 // algorithms such as diffie-hellman, if we ever choose to test it.
