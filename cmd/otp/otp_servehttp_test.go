@@ -26,6 +26,11 @@ import (
 //  2. storekey.ServeHTTP checks it can store a valid ssh key in globalMap, that it can store borderline-but-valid ssh
 //     keys in globalMap, and that it can validate an ssh key's structure to make sure it's indeed an ssh key and not
 //     some garbled/truncated/invalid content
+const (
+	rsaKeyType     string = "rsa"
+	ed25519KeyType string = "ed25519"
+)
+
 var _ = Describe("ServeHTTP handlers", Serial, func() {
 	var (
 		rr         *httptest.ResponseRecorder
@@ -153,7 +158,7 @@ var _ = Describe("ServeHTTP handlers", Serial, func() {
 // algorithms such as diffie-hellman, if we ever choose to test it.
 func generateValidSSHKey(keyType string) (string, error) {
 	switch keyType {
-	case "rsa":
+	case rsaKeyType:
 		key, err := rsa.GenerateKey(rand.Reader, 2048)
 		if err != nil {
 			return "", err
@@ -164,7 +169,7 @@ func generateValidSSHKey(keyType string) (string, error) {
 		}
 		return string(ssh.MarshalAuthorizedKey(pub)), nil
 
-	case "ed25519":
+	case ed25519KeyType:
 		pub, _, err := ed25519.GenerateKey(rand.Reader)
 		if err != nil {
 			return "", err
