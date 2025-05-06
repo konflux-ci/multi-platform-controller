@@ -128,28 +128,6 @@ var _ = Describe("ServeHTTP handlers", Serial, func() {
 				Entry("ed25519 key", func() string { return edKey }, "an ed25519 key"),
 			)
 		})
-
-		// Skipping while KFLUXINFRA-1569 in SSH key validation is being fixed
-		PContext("with invalid ssh key (storekey)", func() {
-			badPrefixKey := "ssh-xyz123 AAAAB3NzaC1yc2EAAAADAQABAAABAQCe72TIPRwW/tDWPbNdJg3a6Rqy1/9kM002NLCx82fAN8GTvUj6VAD4Nl9om5BT7o0tfCcYgpDmTDrl7QPhBGd5ew0VKHO8o++SwhG6QI2mR+867qIdXP1B1ZdxO8eYndIn+ssOZcmbp4XxrI5/xWSNAU2XMckuSeUFZRTDNUVoKYmDMgnZL+BV6eQKO4jJmtuctDku4yb7YjcJYw7L+LOU7fBnsEpzvPJ/P9pGckpVI5nYIdQIUBxmVloa6BiKCGbu4yzPZ2zWISPODyvv6cmKk3s+YGild/TrVC+aRRN4TpiYq5NVT0lkkHpzhShVPukOR4xXoqZQLWYwAPLuUIBn"
-			DescribeTable("returns 500 for invalid SSH keys (storekey)",
-				func(input string, label string) {
-					GinkgoWriter.Printf("Running test for: %s\n", label)
-					GinkgoWriter.Printf("Invalid key value is: `%s`\n", input)
-
-					req := httptest.NewRequest("POST", "/store", strings.NewReader(input))
-
-					testStorekey.ServeHTTP(rr, req)
-					Expect(rr.Code).To(Equal(http.StatusInternalServerError))
-					Expect(logCapture.Contains("failed to read request body")).To(BeTrue(), "Log should indicate a problem with the request's body")
-				},
-
-				Entry("empty string", "", "An empty string"),
-				Entry("non-ssh string", "not-an-SSH-key", "A non-ssh key string"),
-				Entry("bad prefix", badPrefixKey, "An ssh key string with a badly formed prefix"),
-				Entry("missing payload", "ssh-rsa AAAAB3Nz", "An ssh key string with truncated content"),
-			)
-		})
 	})
 
 	Describe("End-to-end otp flow using ServeHTTP", func() {
