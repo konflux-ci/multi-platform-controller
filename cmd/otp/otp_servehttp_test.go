@@ -55,17 +55,19 @@ var _ = Describe("ServeHTTP handlers", Serial, func() {
 		Context("with valid SSH key (otp)", func() {
 
 			It("serves a one-time password", func() {
-				// stores the valid ssh key in globalMap
+				By("Initializing a new store with a valid ssh key")
 				store := NewStoreKey(&logCapture.Logger)
 				storeReq := httptest.NewRequest("POST", "/store", strings.NewReader(rsaKey))
 				store.ServeHTTP(rr, storeReq)
 				storedKey := rr.Body.String()
 				GinkgoWriter.Printf("Stored key used for OTP: %q\n", storedKey)
 
+				By("Requiring an OTP for that ssh key")
 				req = httptest.NewRequest("POST", "/otp", strings.NewReader(storedKey))
 				rr = httptest.NewRecorder()
 				testOtp.ServeHTTP(rr, req)
 
+				By("Verifying that the OTP is returned successfully")
 				Expect(rr.Code).To(Equal(http.StatusOK))
 				Expect(rr.Body.String()).NotTo(BeEmpty())
 				Expect(logCapture.Contains("served one time password")).To(BeTrue(), "Log should indicate success of one time password provision")
