@@ -53,7 +53,7 @@ var _ = Describe("ServeHTTP handlers", Serial, func() {
 	Describe("Testing otp.ServeHTTP", func() {
 		var testOtp *otp
 
-		JustBeforeEach(func() {
+		BeforeEach(func() {
 			testOtp = NewOtp(&logCapture.Logger)
 		})
 
@@ -94,7 +94,7 @@ var _ = Describe("ServeHTTP handlers", Serial, func() {
 	Describe("Testing storekey.ServeHTTP", func() {
 		var testStorekey *storekey
 
-		JustBeforeEach(func() {
+		BeforeEach(func() {
 			testStorekey = NewStoreKey(&logCapture.Logger)
 		})
 
