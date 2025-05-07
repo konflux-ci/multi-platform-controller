@@ -25,6 +25,7 @@ func (s *storekey) ServeHTTP(writer http.ResponseWriter, request *http.Request) 
 		writer.WriteHeader(500)
 		return
 	}
+
 	mutex.Lock()
 	defer mutex.Unlock()
 	otp, err := GenerateRandomString(20)
@@ -71,6 +72,7 @@ func (s *otp) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	res, loaded := globalMap[string(body)]
 	delete(globalMap, string(body))
 	if !loaded {
+		s.logger.Error(err, "no OTP found for provided SSH key", "address", request.RemoteAddr)
 		writer.WriteHeader(400)
 	} else {
 		_, err := writer.Write(res)
