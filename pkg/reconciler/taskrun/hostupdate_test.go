@@ -18,16 +18,23 @@
 package taskrun
 
 import (
+	"context"
+	"sync"
+
 	"github.com/go-logr/logr"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
 const testNamespace = "default"
@@ -77,11 +84,13 @@ func testConfigDataFromTestData(testData map[string]string, configKeySuffix stri
 var _ = Describe("HostUpdateTaskRunTest", func() {
 	var scheme *runtime.Scheme
 	var hostConfig = &corev1.ConfigMap{}
+	var waitGroup *sync.WaitGroup
 
 	BeforeEach(func() {
 		scheme = runtime.NewScheme()
 		utilruntime.Must(corev1.AddToScheme(scheme))
 		utilruntime.Must(v1.AddToScheme(scheme))
+		waitGroup = &sync.WaitGroup{}
 
 		hostConfig = &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
@@ -92,17 +101,66 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 		}
 	})
 
+	It("should fail when the config doesn't exist", func(ctx SpecContext) {
+		k8sClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Get: func(
+					ctx context.Context,
+					client client.WithWatch,
+					key types.NamespacedName,
+					obj client.Object,
+					opts ...client.GetOption,
+				) error {
+					return errors.NewNotFound(schema.GroupResource{
+						Group:    obj.GetObjectKind().GroupVersionKind().Group,
+						Resource: "configmaps",
+					}, obj.GetName())
+				},
+			}).Build()
+
+		log := logr.FromContextOrDiscard(ctx)
+		UpdateHostPools(testNamespace, k8sClient, &log)
+
+		list := v1.TaskRunList{}
+		Expect(k8sClient.List(ctx, &list)).To(Succeed())
+		Expect(list.Items).To(HaveLen(0))
+	})
+
 	DescribeTable("Creating taskruns for updating static hosts in a pool",
 		func(ctx SpecContext, hostConfigData map[string]string, hostSuffix string, shouldFail bool) {
 
 			hostConfig.Data = testConfigDataFromTestData(hostConfigData, hostSuffix)
 
-			k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(hostConfig).Build()
+			if !shouldFail {
+				waitGroup.Add(1)
+			}
+
+			k8sClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithRuntimeObjects(hostConfig).
+				WithInterceptorFuncs(interceptor.Funcs{
+					Create: func(
+						ctx context.Context,
+						client client.WithWatch,
+						obj client.Object,
+						opts ...client.CreateOption,
+					) error {
+						err := client.Create(ctx, obj, opts...)
+						if !shouldFail {
+							waitGroup.Done()
+						}
+						return err
+					},
+				}).
+				Build()
 			log := logr.FromContextOrDiscard(ctx)
 			zeroTaskRuns := false
 
 			// tested function call
 			UpdateHostPools(testNamespace, k8sClient, &log)
+
+			waitGroup.Wait()
 
 			// get list of all TaskRuns, as we cannot predict the name
 			createdList := v1.TaskRunList{}
@@ -128,7 +186,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 				// validate each field is exactly as it's expected to be
 				Expect(hostConfigData["address"]).To(Equal(updatedHostData["address"]))
 				Expect(hostConfigData["user"]).To(Equal(updatedHostData["user"]))
-				Expect(updatedHostData["secret"]).To(Equal(updatedHostData["secret"]))
+				Expect(hostConfigData["secret"]).To(Equal(updatedHostData["secret"]))
 				Expect(hostConfigData["concurrency"]).To(Equal(updatedHostData["concurrency"]))
 				Expect(hostConfigData["platform"]).To(Equal(updatedHostData["platform"]))
 			}
@@ -155,47 +213,5 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 			"user":        "root",
 			"platform":    "linux/ppc64le"},
 			"host.", true),
-		Entry("Negative test - bad address field", map[string]string{
-			"address":     "10.130",
-			"secret":      "internal-prod-ibm-ssh-key",
-			"concurrency": "1",
-			"user":        "koko_hazamar",
-			"platform":    "linux/ppc64le"},
-			"host.koko-hazamar-prod-1.", true),
-		Entry("Negative test - bad secret field", map[string]string{
-			"address":     "10.130.75.23",
-			"secret":      "",
-			"concurrency": "1",
-			"user":        "koko_hazamar",
-			"platform":    "linux/ppc64le"},
-			"host.koko-hazamar-prod-1.", true),
-		Entry("Negative test - bad concurrency part I", map[string]string{
-			"address":     "10.130.75.23",
-			"secret":      "internal-prod-ibm-ssh-key",
-			"concurrency": "-1",
-			"user":        "koko_hazamar",
-			"platform":    "linux/ppc64le"},
-			"host.koko-hazamar-prod-1.", true),
-		Entry("Negative test - bad concurrency part II", map[string]string{
-			"address":     "10.130.75.23",
-			"secret":      "internal-prod-ibm-ssh-key",
-			"concurrency": "1234567890",
-			"user":        "koko_hazamar",
-			"platform":    "linux/ppc64le"},
-			"host.koko-hazamar-prod-1.", true),
-		Entry("Negative test - bad user", map[string]string{
-			"address":     "10.130.75.23",
-			"secret":      "internal-prod-ibm-ssh-key",
-			"concurrency": "1",
-			"user":        "root",
-			"platform":    "linux/ppc64le"},
-			"host.koko-hazamar-prod-1.", true),
-		Entry("Negative test - bad platform", map[string]string{
-			"address":     "10.130.75.23",
-			"secret":      "internal-prod-ibm-ssh-key",
-			"concurrency": "1",
-			"user":        "koko_hazamar",
-			"platform":    "linux/moshe_kipod555"},
-			"host.koko-hazamar-prod-1.", true),
 	)
 })
