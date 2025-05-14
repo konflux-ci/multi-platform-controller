@@ -179,8 +179,12 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 			Entry("Negative test - not an IP address", "Not an IP address", true),
 		)
 	})
-
-	Describe("configureInstance", func() {
+	// A unit test for configureInstance. Bypasses CreateEc2CloudConfig's logic to isolate cases where its logic may be
+	// faulty, hence the helper function newDefaultValidEC2ConfigForInstance which provides a neutral all-good
+	// AWSEc2DynamicConfig with baseline and passing generic configurations.
+	// Breaks the various configuration fields to families of configuration topics, each tested in it own Context. Some
+	// have happy test paths, some have sad ones.
+	Describe("Testing configureInstance", func() {
 		var (
 			ecConfig       AWSEc2DynamicConfig
 			taskRunName    string
@@ -288,6 +292,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 						Expect(input.IamInstanceProfile.Arn).To(BeNil())
 					},
 				),
+				// TODO: scenarios like missing AMI fields need to be tested properly. Not in the scope of this humble unit test
 				Entry("with no IAM profile settings (clearing baseline)",
 					func(conf *AWSEc2DynamicConfig) {
 						conf.InstanceProfileName = ""
