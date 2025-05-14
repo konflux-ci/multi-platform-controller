@@ -134,7 +134,7 @@ func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.T
 		//kick off the clean task
 		//kick off the provisioning task
 		provision := v1.TaskRun{}
-		provision.GenerateName = "cleanup-task"
+		provision.Name = "cleanup-" + tr.Name
 		provision.Namespace = r.operatorNamespace
 		provision.Labels = labelMap
 		provision.Annotations = map[string]string{TaskTargetPlatformAnnotation: hp.targetPlatform}

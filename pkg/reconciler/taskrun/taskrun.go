@@ -816,7 +816,7 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 	}
 
 	provision := tektonapi.TaskRun{}
-	provision.GenerateName = "provision-task"
+	provision.Name = "provision-" + tr.Name
 	provision.Namespace = r.operatorNamespace
 	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name, AssignedHost: tr.Labels[AssignedHost]}
 	provision.Annotations = map[string]string{TaskTargetPlatformAnnotation: platformLabel(platform)}
