@@ -22,7 +22,7 @@ manifests: controller-gen
 
 .PHONY: test
 test: fmt vet ## Run tests.
-	ginkgo --race -p --github-output --json-report=test-report.json -v ././cmd/... ././pkg/... -coverprofile cover.out -covermode atomic
+	ginkgo --race -p --github-output -coverprofile cover.out -covermode atomic --json-report=test-report.json -v ././cmd/... ././pkg/...
 
 .PHONY: build
 build: fmt vet clean manifests
