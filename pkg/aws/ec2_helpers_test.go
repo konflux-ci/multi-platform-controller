@@ -207,13 +207,23 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 				Expect(runInput.InstanceType).To(Equal(types.InstanceType(ecConfig.InstanceType)))
 			})
 
-			It("should set MinCount=1, MaxCount=1, EbsOptimized=true, and ShutdownBehavior=terminate", func() {
-				runInput := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
-				Expect(runInput.MinCount).To(PointTo(Equal(int32(1))))
-				Expect(runInput.MaxCount).To(PointTo(Equal(int32(1))))
-				Expect(runInput.EbsOptimized).To(PointTo(BeTrue()))
-				Expect(runInput.InstanceInitiatedShutdownBehavior).To(Equal(types.ShutdownBehaviorTerminate))
-			})
+			It("should set MinCount, MaxCount, EbsOptimized, ShutdownBehavior with valid and default properties",
+				func() {
+					runInput := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
+					By("Verifying the current specific values")
+					Expect(runInput.MinCount).To(PointTo(Equal(int32(1))))
+					Expect(runInput.MaxCount).To(PointTo(Equal(int32(1))))
+					Expect(runInput.EbsOptimized).To(PointTo(BeTrue()))
+					Expect(runInput.InstanceInitiatedShutdownBehavior).To(Equal(types.ShutdownBehaviorTerminate))
+
+					By("verifying properties of instance counts")
+					Expect(runInput.MinCount).NotTo(BeNil())
+					Expect(runInput.MaxCount).NotTo(BeNil())
+					Expect(*runInput.MinCount).To(BeNumerically(">", 0),
+						"MinCount should be positive")
+					Expect(*runInput.MaxCount).To(BeNumerically(">=", *runInput.MinCount),
+						"MaxCount should be greater than or equal to MinCount")
+				})
 		})
 
 		Context("when configuring networking", func() {
