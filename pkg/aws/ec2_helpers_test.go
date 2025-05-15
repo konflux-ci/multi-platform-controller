@@ -360,16 +360,8 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 					ecConfig.Throughput = throughput
 					runInput := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
 					ebsDevice := runInput.BlockDeviceMappings[0].Ebs
-					if iops == nil {
-						Expect(ebsDevice.Iops).To(BeNil())
-					} else {
-						Expect(ebsDevice.Iops).To(PointTo(Equal(*iops)))
-					}
-					if throughput == nil {
-						Expect(ebsDevice.Throughput).To(BeNil())
-					} else {
-						Expect(ebsDevice.Throughput).To(PointTo(Equal(*throughput)))
-					}
+					Expect(ebsDevice.Iops).To(Equal(iops))
+					Expect(ebsDevice.Throughput).To(Equal(throughput))
 				},
 				Entry("using baseline IOPS and Throughput", newDefaultValidEC2ConfigForInstance().Iops, newDefaultValidEC2ConfigForInstance().Throughput),
 				Entry("with custom IOPS and Throughput", aws.Int32(5000), aws.Int32(300)),
@@ -385,13 +377,13 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 				encodedCommonUserData := base64.StdEncoding.EncodeToString([]byte(commonUserData))
 				ecConfig.UserData = &encodedCommonUserData
 				runInput := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
-				Expect(runInput.UserData).To(PointTo(Equal(encodedCommonUserData)))
+				Expect(runInput.UserData).To(Equal(ecConfig.UserData))
 			})
 
 			It("should be nil if ecConfig.UserData is set to nil (overriding baseline if it had UserData)", func() {
 				ecConfig.UserData = nil
 				runInput := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
-				Expect(runInput.UserData).To(BeNil())
+				Expect(runInput.UserData).To(Equal(ecConfig.UserData))
 			})
 		})
 	})
