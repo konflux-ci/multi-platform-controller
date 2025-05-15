@@ -238,7 +238,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 				},
 				Entry("using baseline SubnetId and SecurityGroupId",
 					func(conf *AWSEc2DynamicConfig) {
-						// ecConfig is as it's created in BeforeEach.
+						// ecConfig is as a valid default EC2 Config
 					},
 					func(input *ec2.RunInstancesInput) {
 						Expect(input.SubnetId).To(PointTo(Equal(ecConfig.SubnetId)))
