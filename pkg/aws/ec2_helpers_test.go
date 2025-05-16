@@ -202,8 +202,8 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 		Context("when configuring basic instance details", func() {
 			It("should correctly set KeyName, AMI, and InstanceType", func() {
 				runInput := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
-				Expect(runInput.KeyName).To(PointTo(Equal(ecConfig.KeyName)))
-				Expect(runInput.ImageId).To(PointTo(Equal(ecConfig.Ami)))
+				Expect(runInput.KeyName).To(Equal(&ecConfig.KeyName))
+				Expect(runInput.ImageId).To(Equal(&ecConfig.Ami))
 				Expect(runInput.InstanceType).To(Equal(types.InstanceType(ecConfig.InstanceType)))
 			})
 
@@ -241,7 +241,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 						// ecConfig is as a valid default EC2 Config
 					},
 					func(input *ec2.RunInstancesInput) {
-						Expect(input.SubnetId).To(PointTo(Equal(ecConfig.SubnetId)))
+						Expect(input.SubnetId).To(Equal(&ecConfig.SubnetId))
 						Expect(input.SecurityGroupIds).To(ContainElement(ecConfig.SecurityGroupId))
 						Expect(input.SecurityGroups).To(BeNil())
 					},
@@ -287,7 +287,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 					},
 					func(input *ec2.RunInstancesInput) {
 						Expect(input.IamInstanceProfile).NotTo(BeNil())
-						Expect(input.IamInstanceProfile.Arn).To(PointTo(Equal(ecConfig.InstanceProfileArn)))
+						Expect(input.IamInstanceProfile.Arn).To(Equal(&ecConfig.InstanceProfileArn))
 						Expect(input.IamInstanceProfile.Name).To(BeNil())
 					},
 				),
@@ -339,7 +339,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 				Expect(runInput.TagSpecifications[0].ResourceType).To(Equal(types.ResourceTypeInstance))
 				tags := runInput.TagSpecifications[0].Tags
 				Expect(tags).To(ContainElement(SatisfyAll(HaveField("Key", PointTo(Equal(MultiPlatformManaged))), HaveField("Value", PointTo(Equal("true"))))))
-				Expect(tags).To(ContainElement(SatisfyAll(HaveField("Key", PointTo(Equal(cloud.InstanceTag))), HaveField("Value", PointTo(Equal(instanceTag))))))
+				Expect(tags).To(ContainElement(SatisfyAll(HaveField("Key", PointTo(Equal(cloud.InstanceTag))), HaveField("Value", Equal(&instanceTag)))))
 				Expect(tags).To(ContainElement(SatisfyAll(HaveField("Key", PointTo(Equal("Name"))), HaveField("Value", PointTo(Equal("multi-platform-builder-"+taskRunName))))))
 			})
 
@@ -360,7 +360,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 				Expect(bdMapping.DeviceName).To(PointTo(Equal("/dev/sda1")))
 				Expect(bdMapping.Ebs).NotTo(BeNil())
 				Expect(bdMapping.Ebs.DeleteOnTermination).To(PointTo(BeTrue()))
-				Expect(bdMapping.Ebs.VolumeSize).To(PointTo(Equal(ecConfig.Disk)))
+				Expect(bdMapping.Ebs.VolumeSize).To(Equal(&ecConfig.Disk))
 				Expect(bdMapping.Ebs.VolumeType).To(Equal(types.VolumeTypeGp3))
 			})
 
@@ -381,7 +381,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 			)
 		})
 
-		Context("when UserData is provided (already base64 encoded)", func() {
+		When("UserData is provided (already base64 encoded)", func() {
 			It("should pass it through to RunInstancesInput using encoded commonUserData", func() {
 				// commonUserData is from aws_test.go (raw script)
 				encodedCommonUserData := base64.StdEncoding.EncodeToString([]byte(commonUserData))
