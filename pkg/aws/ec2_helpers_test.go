@@ -236,7 +236,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 					verify(runInput)
 				},
 				Entry("using baseline SubnetId and SecurityGroupId",
-					newDefaultValidEC2ConfigForInstance(),
+					func() AWSEc2DynamicConfig { return newDefaultValidEC2ConfigForInstance() },
 					func(input *ec2.RunInstancesInput) {
 						Expect(input.SubnetId).To(Equal(&ecConfig.SubnetId))
 						Expect(input.SecurityGroupIds).To(ContainElement(ecConfig.SecurityGroupId))
@@ -282,7 +282,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 					verify(runInput)
 				},
 				Entry("using baseline InstanceProfileArn",
-					newDefaultValidEC2ConfigForInstance(),
+					func() AWSEc2DynamicConfig { return newDefaultValidEC2ConfigForInstance() },
 					func(input *ec2.RunInstancesInput) {
 						Expect(input.IamInstanceProfile).NotTo(BeNil())
 						Expect(input.IamInstanceProfile.Arn).To(Equal(&ecConfig.InstanceProfileArn))
