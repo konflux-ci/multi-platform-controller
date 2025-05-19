@@ -230,16 +230,13 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 			DescribeTable("with various subnet and security group settings",
 				// This DescribeTable takes an ecConfig-mutating function and a function that verifies the new content
 				// of the ecConfig after going through configureInstance
-				func(setupConfig func(conf *AWSEc2DynamicConfig), verify func(input *ec2.RunInstancesInput)) {
-					currentConfig := ecConfig
-					setupConfig(&currentConfig)
+				func(setupConfig func() AWSEc2DynamicConfig, verify func(input *ec2.RunInstancesInput)) {
+					currentConfig := setupConfig()
 					runInput := currentConfig.configureInstance(taskRunName, instanceTag, additionalTags)
 					verify(runInput)
 				},
 				Entry("using baseline SubnetId and SecurityGroupId",
-					func(conf *AWSEc2DynamicConfig) {
-						// ecConfig is as a valid default EC2 Config
-					},
+					newDefaultValidEC2ConfigForInstance(),
 					func(input *ec2.RunInstancesInput) {
 						Expect(input.SubnetId).To(Equal(&ecConfig.SubnetId))
 						Expect(input.SecurityGroupIds).To(ContainElement(ecConfig.SecurityGroupId))
@@ -247,9 +244,11 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 					},
 				),
 				Entry("with only SecurityGroup name (clearing SG ID from baseline)",
-					func(conf *AWSEc2DynamicConfig) {
+					func() AWSEc2DynamicConfig {
+						conf := newDefaultValidEC2ConfigForInstance()
 						conf.SecurityGroup = "sg-name-example"
 						conf.SecurityGroupId = ""
+						return conf
 					},
 					func(input *ec2.RunInstancesInput) {
 						Expect(input.SecurityGroups).To(ContainElement("sg-name-example"))
@@ -257,10 +256,12 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 					},
 				),
 				Entry("with no network settings (clearing baseline)",
-					func(conf *AWSEc2DynamicConfig) {
+					func() AWSEc2DynamicConfig {
+						conf := newDefaultValidEC2ConfigForInstance()
 						conf.SubnetId = ""
 						conf.SecurityGroupId = ""
 						conf.SecurityGroup = ""
+						return conf
 					},
 					func(input *ec2.RunInstancesInput) {
 						Expect(input.SubnetId).To(BeNil())
@@ -275,16 +276,13 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 			DescribeTable("with various IAM profile settings",
 				// This DescribeTable also takes an ecConfig-mutating function and a function that verifies the new
 				//content of the ecConfig after going through configureInstance
-				func(setupConfig func(conf *AWSEc2DynamicConfig), verify func(input *ec2.RunInstancesInput)) {
-					currentConfig := ecConfig
-					setupConfig(&currentConfig)
+				func(setupConfig func() AWSEc2DynamicConfig, verify func(input *ec2.RunInstancesInput)) {
+					currentConfig := setupConfig()
 					runInput := currentConfig.configureInstance(taskRunName, instanceTag, additionalTags)
 					verify(runInput)
 				},
 				Entry("using baseline InstanceProfileArn",
-					func(conf *AWSEc2DynamicConfig) {
-						// ecConfig ia as it's created in BeforeEach.
-					},
+					newDefaultValidEC2ConfigForInstance(),
 					func(input *ec2.RunInstancesInput) {
 						Expect(input.IamInstanceProfile).NotTo(BeNil())
 						Expect(input.IamInstanceProfile.Arn).To(Equal(&ecConfig.InstanceProfileArn))
@@ -292,9 +290,11 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 					},
 				),
 				Entry("with only InstanceProfileName (clearing ARN from baseline)",
-					func(conf *AWSEc2DynamicConfig) {
+					func() AWSEc2DynamicConfig {
+						conf := newDefaultValidEC2ConfigForInstance()
 						conf.InstanceProfileName = "profile-name-example"
 						conf.InstanceProfileArn = ""
+						return conf
 					},
 					func(input *ec2.RunInstancesInput) {
 						Expect(input.IamInstanceProfile).NotTo(BeNil())
@@ -304,9 +304,11 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 				),
 				// TODO: scenarios like missing AMI fields need to be tested properly. Not in the scope of this humble unit test
 				Entry("with no IAM profile settings (clearing baseline)",
-					func(conf *AWSEc2DynamicConfig) {
+					func() AWSEc2DynamicConfig {
+						conf := newDefaultValidEC2ConfigForInstance()
 						conf.InstanceProfileName = ""
 						conf.InstanceProfileArn = ""
+						return conf
 					},
 					func(input *ec2.RunInstancesInput) { Expect(input.IamInstanceProfile).To(BeNil()) },
 				),
