@@ -199,7 +199,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 			ecConfig = newDefaultValidEC2ConfigForInstance()
 		})
 
-		Context("when configuring basic instance details", func() {
+		When("configuring basic instance details", func() {
 			It("should correctly set KeyName, AMI, and InstanceType", func() {
 				runInput := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
 				Expect(runInput.KeyName).To(Equal(&ecConfig.KeyName))
@@ -211,8 +211,8 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 				func() {
 					runInput := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
 					By("Verifying the current specific values")
-					Expect(runInput.MinCount).To(PointTo(Equal(int32(1))))
-					Expect(runInput.MaxCount).To(PointTo(Equal(int32(1))))
+					Expect(runInput.MinCount).To(Equal(aws.Int32(1)))
+					Expect(runInput.MaxCount).To(Equal(aws.Int32(1)))
 					Expect(runInput.EbsOptimized).To(PointTo(BeTrue()))
 					Expect(runInput.InstanceInitiatedShutdownBehavior).To(Equal(types.ShutdownBehaviorTerminate))
 
@@ -226,7 +226,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 				})
 		})
 
-		Context("when configuring networking", func() {
+		When("configuring networking", func() {
 			DescribeTable("with various subnet and security group settings",
 				// This DescribeTable takes an ecConfig-mutating function and a function that verifies the new content
 				// of the ecConfig after going through configureInstance
@@ -271,7 +271,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 			)
 		})
 
-		Context("when configuring IAM instance profile", func() {
+		When("configuring IAM instance profile", func() {
 			DescribeTable("with various IAM profile settings",
 				// This DescribeTable also takes an ecConfig-mutating function and a function that verifies the new
 				//content of the ecConfig after going through configureInstance
@@ -313,7 +313,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 			)
 		})
 
-		Context("when configuring spot instances", func() {
+		When("configuring spot instances", func() {
 			It("should configure InstanceMarketOptions if MaxSpotInstancePrice is set", func() {
 				ecConfig.MaxSpotInstancePrice = "0.075"
 				runInput := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
@@ -332,7 +332,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 			})
 		})
 
-		Context("when configuring tags", func() {
+		When("configuring tags", func() {
 			It("should include default and Name tags correctly with baseline config", func() {
 				runInput := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
 				Expect(runInput.TagSpecifications).To(HaveLen(1))
@@ -352,7 +352,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 			})
 		})
 
-		Context("when configuring EBS block device mappings", func() {
+		When("configuring EBS block device mappings", func() {
 			It("should set EBS properties correctly based on baseline config", func() {
 				runInput := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
 				Expect(runInput.BlockDeviceMappings).To(HaveLen(1))
