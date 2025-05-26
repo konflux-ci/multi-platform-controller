@@ -1,4 +1,4 @@
-// "Assisted-by: TAG"
+// Assisted-by: TAG
 package main
 
 import (
