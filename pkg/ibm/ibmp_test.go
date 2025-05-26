@@ -1,4 +1,4 @@
-//Testing IBMPowerProvider - that provides a IBMPowerDynamicConfig for creating an IBMPowerPC machine for tasks.
+// Testing IBMPowerProvider - that provides a IBMPowerDynamicConfig for creating an IBMPowerPC machine for tasks.
 // The spec checks that:
 //	- Configuration data is passed to IBMPowerDynamicConfig correctly when the values are valid
 //  - Default values are inserted whenever the configuration written to host-config.yaml are problematic in structure or value
@@ -9,6 +9,7 @@
 //	3. A negative test to verify default value completion - empty memory, core number and disk size values
 //	4. A negative test to verify default value completion - non-numeric memory, core number and disk size values
 //	5. A negative test to verify default value completion - Verifying disk size default number of 100 if the configuration aims for less than that
+// Assisted-by: TAG
 
 package ibm
 

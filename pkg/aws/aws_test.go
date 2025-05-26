@@ -1,3 +1,4 @@
+// Assisted-by: TAG
 package aws
 
 import (
