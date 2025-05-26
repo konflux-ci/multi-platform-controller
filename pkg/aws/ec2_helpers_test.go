@@ -184,6 +184,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 	// AWSEc2DynamicConfig with baseline and passing generic configurations.
 	// Breaks the various configuration fields to families of configuration topics, each tested in it own Context. Some
 	// have happy test paths, some have sad ones.
+	// Assisted-by: Gemini
 	Describe("Testing configureInstance", func() {
 		var (
 			ecConfig       AWSEc2DynamicConfig
