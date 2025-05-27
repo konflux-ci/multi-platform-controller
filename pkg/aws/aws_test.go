@@ -1,3 +1,4 @@
+// Assisted-by: TAG
 package aws
 
 import (
@@ -45,7 +46,7 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 				}
 				provider := CreateEc2CloudConfig(platformName, config, systemNamespace)
 				Expect(provider).ToNot(BeNil())
-				providerConfig := provider.(AwsEc2DynamicConfig)
+				providerConfig := provider.(AWSEc2DynamicConfig)
 				Expect(providerConfig).ToNot(BeNil())
 
 				Expect(providerConfig.Region).To(Equal("test-region"))
@@ -91,31 +92,9 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 		)
 	})
 
-	// This test is only here to check AWS connectivity in a very primitive and quick way until KFLUXINFRA-1065
-	// work starts
-	Describe("Testing pingIpAddress", func() {
-		DescribeTable("Testing the ability to ping a remote AWS ec2 instance via SSH",
-			func(testInstanceIP string, shouldFail bool) {
-
-				err := pingIPAddress(testInstanceIP)
-
-				if !shouldFail {
-					Expect(err).Should(BeNil())
-				} else {
-					Expect(err).Should(HaveOccurred())
-				}
-
-			},
-			Entry("Positive test - IP address", "150.239.19.36", false),
-			Entry("Negative test - no such IP address", "192.168.4.231", true),
-			Entry("Negative test - no such DNS name", "not a DNS name, that's for sure", true),
-			Entry("Negative test - not an IP address", "Not an IP address", true),
-		)
-	})
-
 	Describe("Testing SshUser", func() {
 		It("The simplest damn test", func() {
-			var awsTestInstance AwsEc2DynamicConfig
+			var awsTestInstance AWSEc2DynamicConfig
 			sshUser := awsTestInstance.SshUser()
 
 			Expect(sshUser).Should(Equal("ec2-user"))
