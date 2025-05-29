@@ -6,6 +6,10 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+// A unit test for ValidateTaskRunID. For now only tests input that should not return an error from ValidateTaskRunID
+// and input that should return an error code, according to ValidateTaskRunID's current logic.
+// More testing scenarios are available, but they're currently exposing ValidateTaskRunID's bugs so are on hiatus and
+// the bug is tracked on Jira (ticket number inside the test spec's body).
 var _ = Describe("ValidateTaskRunID", func() {
 
 	// Testing everything that should pass, according to ValidateTaskRunID's current code
@@ -14,7 +18,7 @@ var _ = Describe("ValidateTaskRunID", func() {
 			input := "my-namespace:my-taskrun-123"
 			err := ValidateTaskRunID(input)
 			GinkgoWriter.Printf("Input: '%s' -> Expected: No Error, Got: %v\n", input, err)
-			Expect(err).NotTo(HaveOccurred())
+			Expect(err).Should(BeNil())
 		})
 	})
 
@@ -27,7 +31,7 @@ var _ = Describe("ValidateTaskRunID", func() {
 				GinkgoWriter.Printf("Testing structurally invalid scenario: Input: '%s' (Reason: %s)\n",
 					input, descriptionOfInvalidity)
 				err := ValidateTaskRunID(input)
-				Expect(err).To(HaveOccurred())
+				Expect(err).Should(HaveOccurred())
 
 				expectedErrorMessage := fmt.Sprintf(
 					"'%s' does not follow the correct format: '<TaskRun Namespace>:<TaskRun Name>'", input)
