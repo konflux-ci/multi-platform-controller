@@ -22,20 +22,13 @@ var _ = Describe("ValidateTaskRunID", func() {
 		})
 	})
 
-	// When KFLUXINFRA-1697 is fixed, there will be more test scenarios here
-
 	// Testing what ValidateTaskRunID shouldn't pass according to its current code
 	When("the TaskRunID fails the 'single colon' structural requirement", func() {
 		DescribeTable("it should return a formatted error",
 			func(input string, descriptionOfInvalidity string) {
-				GinkgoWriter.Printf("Testing structurally invalid scenario: Input: '%s' (Reason: %s)\n",
-					input, descriptionOfInvalidity)
-				err := ValidateTaskRunID(input)
-				Expect(err).Should(HaveOccurred())
-
-				expectedErrorMessage := fmt.Sprintf(
+				expectedErr := fmt.Errorf(
 					"'%s' does not follow the correct format: '<TaskRun Namespace>:<TaskRun Name>'", input)
-				Expect(err.Error()).To(Equal(expectedErrorMessage))
+				Expect(ValidateTaskRunID(input)).To(MatchError(expectedErr), descriptionOfInvalidity)
 			},
 			Entry("no colons", "nocolonshere", "Zero colons"),
 			Entry("empty string", "", "Empty string, zero colons"),
