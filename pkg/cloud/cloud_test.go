@@ -17,7 +17,6 @@ var _ = Describe("ValidateTaskRunID", func() {
 		It("should return no error", func() {
 			input := "my-namespace:my-taskrun-123"
 			err := ValidateTaskRunID(input)
-			GinkgoWriter.Printf("Input: '%s' -> Expected: No Error, Got: %v\n", input, err)
 			Expect(err).Should(BeNil())
 		})
 	})
