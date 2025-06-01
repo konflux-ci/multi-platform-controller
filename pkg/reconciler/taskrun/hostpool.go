@@ -3,6 +3,7 @@ package taskrun
 import (
 	"context"
 	"fmt"
+	"knative.dev/pkg/kmeta"
 	"strings"
 	"time"
 
@@ -134,7 +135,7 @@ func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.T
 		//kick off the clean task
 		//kick off the provisioning task
 		provision := v1.TaskRun{}
-		provision.Name = "cleanup-" + tr.Name
+		provision.Name = kmeta.ChildName(tr.Name, "cleanup")
 		provision.Namespace = r.operatorNamespace
 		provision.Labels = labelMap
 		provision.Annotations = map[string]string{TaskTargetPlatformAnnotation: hp.targetPlatform}
