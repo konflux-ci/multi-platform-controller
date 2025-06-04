@@ -119,7 +119,7 @@ func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.T
 	log := logr.FromContextOrDiscard(ctx)
 	selected := hp.hosts[selectedHost]
 	if selected != nil {
-		labelMap := map[string]string{TaskTypeLabel: TaskTypeClean, UserTaskName: tr.Name, UserTaskNamespace: tr.Namespace}
+		labelMap := map[string]string{TaskTypeLabel: TaskTypeClean, UserTaskName: tr.Name, UserTaskNamespace: tr.Namespace, TargetPlatformLabel: platformLabel(hp.targetPlatform)}
 		list := v1.TaskRunList{}
 		err := r.client.List(ctx, &list, client.MatchingLabels(labelMap))
 		if err != nil {
@@ -133,19 +133,17 @@ func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.T
 
 		log.Info("starting cleanup task")
 		//kick off the clean task
-		//kick off the provisioning task
-		provision := v1.TaskRun{}
-		provision.Name = kmeta.ChildName(tr.Name, "cleanup")
-		provision.Namespace = r.operatorNamespace
-		provision.Labels = labelMap
-		provision.Annotations = map[string]string{TaskTargetPlatformAnnotation: hp.targetPlatform}
-		provision.Spec.TaskRef = &v1.TaskRef{Name: "clean-shared-host"}
-		provision.Spec.Retries = 3
+		cleanup := v1.TaskRun{}
+		cleanup.Name = kmeta.ChildName(tr.Name, "-cleanup")
+		cleanup.Namespace = r.operatorNamespace
+		cleanup.Labels = labelMap
+		cleanup.Spec.TaskRef = &v1.TaskRef{Name: "clean-shared-host"}
+		cleanup.Spec.Retries = 3
 		compute := map[v12.ResourceName]resource.Quantity{v12.ResourceCPU: resource.MustParse("100m"), v12.ResourceMemory: resource.MustParse("128Mi")}
-		provision.Spec.ComputeResources = &v12.ResourceRequirements{Requests: compute}
-		provision.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: selected.Secret}}}
-		provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
-		provision.Spec.Params = []v1.Param{
+		cleanup.Spec.ComputeResources = &v12.ResourceRequirements{Requests: compute}
+		cleanup.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: selected.Secret}}}
+		cleanup.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
+		cleanup.Spec.Params = []v1.Param{
 			{
 				Name:  "SECRET_NAME",
 				Value: *v1.NewStructuredValues(secretName),
@@ -167,7 +165,7 @@ func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.T
 				Value: *v1.NewStructuredValues(selected.User),
 			},
 		}
-		err = r.client.Create(ctx, &provision)
+		err = r.client.Create(ctx, &cleanup)
 		return err
 	}
 	return nil
