@@ -751,6 +751,7 @@ func createUserTaskRun(ctx context.Context, g GinkgoTInterface, client runtimecl
 	tr := &pipelinev1.TaskRun{}
 	tr.Namespace = userNamespace
 	tr.Name = name
+	tr.Labels = map[string]string{"tekton_dev_memberOf": "tasks"}
 	tr.Spec = pipelinev1.TaskRunSpec{
 		Params: []pipelinev1.Param{{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues(platform)}},
 	}
