@@ -59,15 +59,15 @@ const (
 	UserTaskName      = "build.appstudio.redhat.com/user-task-name"
 	UserTaskNamespace = "build.appstudio.redhat.com/user-task-namespace"
 
+	TargetPlatformLabel     = "build.appstudio.redhat.com/target-platform"
 	WaitingForPlatformLabel = "build.appstudio.redhat.com/waiting-for-platform"
 	PipelineFinalizer       = "appstudio.io/multi-platform-finalizer"
 	HostConfig              = "host-config"
 
-	TaskTypeLabel                = "build.appstudio.redhat.com/task-type"
-	TaskTargetPlatformAnnotation = "build.appstudio.redhat.com/task-platform"
-	TaskTypeProvision            = "provision"
-	TaskTypeUpdate               = "update"
-	TaskTypeClean                = "clean"
+	TaskTypeLabel     = "build.appstudio.redhat.com/task-type"
+	TaskTypeProvision = "provision"
+	TaskTypeUpdate    = "update"
+	TaskTypeClean     = "clean"
 
 	ServiceAccountName = "multi-platform-controller-controller-manager"
 
@@ -239,7 +239,7 @@ func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, tr *tektonapi.Ta
 	if !success {
 		log := logr.FromContextOrDiscard(ctx)
 		log.Info("cleanup task failed", "task", tr.Name)
-		mpcmetrics.HandleMetrics(tr.Annotations[TaskTargetPlatformAnnotation], func(metrics *mpcmetrics.PlatformMetrics) {
+		mpcmetrics.HandleMetrics(tr.Labels[TargetPlatformLabel], func(metrics *mpcmetrics.PlatformMetrics) {
 			metrics.ProvisionFailures.Inc()
 		})
 	}
@@ -278,7 +278,7 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 	userNamespace := tr.Labels[UserTaskNamespace]
 	userTaskName := tr.Labels[UserTaskName]
 	assigned := tr.Labels[AssignedHost]
-	targetPlatform := tr.Annotations[TaskTargetPlatformAnnotation]
+	targetPlatform := tr.Labels[TargetPlatformLabel]
 	log := logr.FromContextOrDiscard(ctx)
 	if !success {
 		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
@@ -449,6 +449,12 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *tektonapi.Tas
 				log.Error(err, "could not create error secret")
 			}
 			return reconcile.Result{}, nil
+		}
+		if tr.Labels[TargetPlatformLabel] == "" {
+			tr.Labels[TargetPlatformLabel] = platformLabel(targetPlatform)
+			if err := r.client.Update(ctx, tr); err != nil {
+				log.Error(err, "could not update task with target platform label")
+			}
 		}
 		res, err := r.handleHostAllocation(ctx, tr, secretName, targetPlatform)
 		if err != nil && !errors.IsConflict(err) {
@@ -817,10 +823,9 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 	}
 
 	provision := tektonapi.TaskRun{}
-	provision.Name = kmeta.ChildName(tr.Name, "provision")
+	provision.Name = kmeta.ChildName(tr.Name, "-provision")
 	provision.Namespace = r.operatorNamespace
-	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name, AssignedHost: tr.Labels[AssignedHost]}
-	provision.Annotations = map[string]string{TaskTargetPlatformAnnotation: platformLabel(platform)}
+	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, TargetPlatformLabel: platformLabel(platform), UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name, AssignedHost: tr.Labels[AssignedHost]}
 	provision.Spec.TaskRef = &tektonapi.TaskRef{Name: "provision-shared-host"}
 	provision.Spec.Workspaces = []tektonapi.WorkspaceBinding{{Name: "ssh", Secret: &kubecore.SecretVolumeSource{SecretName: sshSecret}}}
 	computeRequests := map[kubecore.ResourceName]resource.Quantity{kubecore.ResourceCPU: resource.MustParse("100m"), kubecore.ResourceMemory: resource.MustParse("256Mi")}
