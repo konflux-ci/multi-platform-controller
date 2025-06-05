@@ -22,7 +22,8 @@ var _ = Describe("IBM Power Cloud Helper Functions", func() {
 			func(userTags models.Tags, existingTaskRuns map[string][]string, expectedResult bool) {
 				ibmp := IBMPowerDynamicConfig{}
 				instance.UserTags = userTags
-				Expect(ibmp.doesInstanceHaveTaskRun(logr.Discard(), instance, existingTaskRuns)).Should(Equal(expectedResult))
+				Expect(ibmp.doesInstanceHaveTaskRun(logr.Discard(), instance, existingTaskRuns)).
+					Should(Equal(expectedResult))
 			},
 			Entry("no user tags",
 				models.Tags{},
@@ -67,9 +68,8 @@ var _ = Describe("IBM Power Cloud Helper Functions", func() {
 
 			DescribeTable("it returns the correct IP address",
 				func(instanceID string, networks []*models.PVMInstanceNetwork, expectedIP string) {
-					ip, err := retrieveInstanceIp(instanceID, networks)
-					Expect(err).Should(BeNil())
-					Expect(ip).Should(Equal(expectedIP))
+					Expect(retrieveInstanceIp(instanceID, networks)).
+						Should(Equal(expectedIP))
 				},
 				Entry("when an external IP exists, it is preferred",
 					"vm-with-external-ip",
