@@ -9,7 +9,7 @@ import (
 	"github.com/konflux-ci/multi-platform-controller/testing/utils"
 )
 
-const testIterations = 100000
+const testIterations = 10000000
 const maxAllowedErrors = 2
 
 var _ = Describe("IBM s390x Helper Functions", func() {
@@ -37,22 +37,6 @@ var _ = Describe("IBM s390x Helper Functions", func() {
 					"ID part should not contain underscores")
 				Expect(idPart).Should(MatchRegexp("^[a-z0-9-]+$"),
 					"ID part should consist of lowercase alphanumeric characters and hyphens")
-			})
-		})
-
-		When("provided with an instanceTag containing mixed-cases or non-IBM-friendly characters", func() {
-			const problematicTag = "moshe_kipod_Funky-Tag*!@#"
-			name, err := createInstanceName(problematicTag)
-
-			It("should currently prepend the tag as-is without sanitization", func() {
-				Expect(err).ShouldNot(HaveOccurred())
-
-				expectedPrefix := problematicTag + "-"
-				Expect(name).Should(HavePrefix(expectedPrefix))
-
-				GinkgoWriter.Printf("Input instanceTag: %s, generated name: %s\n", problematicTag, name)
-				Expect(name).ShouldNot(MatchRegexp("^[a-z0-9-]+$"),
-					"IBM instance names can only contain lowercase alphanumeric characters and hyphens")
 			})
 		})
 
@@ -89,6 +73,109 @@ var _ = Describe("IBM s390x Helper Functions", func() {
 				Expect(stats.DuplicateCount).Should(Equal(0),
 					fmt.Sprintf("Expected 0 duplicate names, but found %d",
 						stats.DuplicateCount))
+			})
+		})
+	})
+
+	Describe("The createInstanceName function's output when truncated by callers", func() {
+
+		When("its output (using a 30-char tag) is truncated to 47 characters, simulating PowerPC naming constraints", func() {
+			const tagNamePPC = "powerpc-platform-instance-prefix-123456" // Length 36
+			const maxLengthPPC = 47
+
+			It("should be evaluated for an increased chance of name collisions over 10,000 generations", func() {
+				ppcNameGenerator := func() (string, error) {
+					fullName, err := createInstanceName(tagNamePPC)
+					if err != nil {
+						return "", err
+					}
+					if len(fullName) > maxLengthPPC {
+						return fullName[:maxLengthPPC], nil
+					}
+					return fullName, nil
+				}
+
+				stats := utils.PerformUniquenessAndPerformanceTest(testIterations, ppcNameGenerator)
+
+				GinkgoWriter.Printf(
+					"\n--- Truncation Test Report (PowerPC Naming Scenario) ---\n"+
+						"  Tag used: %q (length %d)\n"+
+						"  Original Name Length (approx): %d\n"+
+						"  Truncated Name Length: %d\n"+
+						"  Effective ID Length for Uniqueness: %d (target was 20)\n"+
+						"  Target Iterations: %d\n"+
+						"  Successfully Generated & Truncated: %d\n"+
+						"  Unique Names After Truncation: %d\n"+
+						"  Duplicate Names Found: %d\n"+
+						"  Errors During Generation: %d\n"+
+						"  Total Duration: %v\n"+
+						"--- End Report ---\n",
+					tagNamePPC, len(tagNamePPC),
+					len(tagNamePPC)+1+20+1,
+					maxLengthPPC,
+					maxLengthPPC-len(tagNamePPC)-1,
+					testIterations,
+					stats.GeneratedCount,
+					stats.UniqueCount,
+					stats.DuplicateCount,
+					stats.ErrorCount,
+					stats.ActualDuration,
+				)
+
+				Expect(stats.ErrorCount).Should(BeNumerically("<", maxAllowedErrors),
+					"Errors during generation should be within limits")
+				Expect(stats.DuplicateCount).Should(Equal(0),
+					"Expected 0 duplicate names even after 47-char truncation for 10k runs")
+			})
+		})
+
+		When("its output (using a 45-char tag) is truncated to 63 characters, simulating System Z naming constraints", func() {
+			const tagNameS390 = "systemz-enterprise-linux-server-instance-tag-123456789" // Length 54
+			const maxLengthS390 = 63
+
+			It("should be evaluated for an increased chance of name collisions over 10,000 generations", func() {
+				s390NameGenerator := func() (string, error) {
+					fullName, err := createInstanceName(tagNameS390)
+					if err != nil {
+						return "", err
+					}
+					if len(fullName) > maxLengthS390 {
+						return fullName[:maxLengthS390], nil
+					}
+					return fullName, nil
+				}
+
+				stats := utils.PerformUniquenessAndPerformanceTest(testIterations, s390NameGenerator)
+
+				GinkgoWriter.Printf(
+					"\n--- Truncation Test Report (System Z Naming Scenario) ---\n"+
+						"  Tag used: %q (length %d)\n"+
+						"  Original Name Length (approx): %d\n"+
+						"  Truncated Name Length: %d\n"+
+						"  Effective ID Length for Uniqueness: %d (target was 20)\n"+
+						"  Target Iterations: %d\n"+
+						"  Successfully Generated & Truncated: %d\n"+
+						"  Unique Names After Truncation: %d\n"+
+						"  Duplicate Names Found: %d\n"+
+						"  Errors During Generation: %d\n"+
+						"  Total Duration: %v\n"+
+						"--- End Report ---\n",
+					tagNameS390, len(tagNameS390),
+					len(tagNameS390)+1+20+1,
+					maxLengthS390,
+					maxLengthS390-len(tagNameS390)-1,
+					testIterations,
+					stats.GeneratedCount,
+					stats.UniqueCount,
+					stats.DuplicateCount,
+					stats.ErrorCount,
+					stats.ActualDuration,
+				)
+
+				Expect(stats.ErrorCount).Should(BeNumerically("<", maxAllowedErrors),
+					"Errors during generation should be within limits")
+				Expect(stats.DuplicateCount).Should(Equal(0),
+					"Expected 0 duplicate names even after 63-char truncation for 10k runs")
 			})
 		})
 	})

@@ -5,18 +5,9 @@ import (
 	"time"
 )
 
-// UniquenessTestStats holds the results from the PerformUniquenessAndPerformanceTest.
-type UniquenessTestStats struct {
-	GeneratedCount int           // Number of items successfully generated (TotalAttempts - ErrorCount).
-	UniqueCount    int           // Number of unique items among successfully generated ones.
-	DuplicateCount int           // Number of duplicate items found among successfully generated ones.
-	ErrorCount     int           // Number of errors encountered during generation.
-	ActualDuration time.Duration // Total time taken for the test.
-}
-
-// PerformUniquenessAndPerformanceTest runs a generator function multiple times,
-// checks for uniqueness using the sort-and-scan method, counts errors,
-// and measures performance.
+// PerformUniquenessAndPerformanceTest - a utility for functions that produce a string with randomly-generated part for
+// uniqueness - runs a generator function multiple times, checks for uniqueness using the sort-and-scan method, counts
+// errors, and measures performance (maybe useful for the future).
 func PerformUniquenessAndPerformanceTest(
 	iterations int,
 	generatorFunc func() (string, error),
@@ -57,4 +48,13 @@ func PerformUniquenessAndPerformanceTest(
 		ErrorCount:     errorCount,
 		ActualDuration: actualDuration,
 	}
+}
+
+// UniquenessTestStats holds the results from the PerformUniquenessAndPerformanceTest.
+type UniquenessTestStats struct {
+	GeneratedCount int           // Number of items successfully generated (TotalAttempts - ErrorCount).
+	UniqueCount    int           // Number of unique items among successfully generated ones.
+	DuplicateCount int           // Number of duplicate items found among successfully generated ones.
+	ErrorCount     int           // Number of errors encountered during generation.
+	ActualDuration time.Duration // Total time taken for the test.
 }
