@@ -19,24 +19,24 @@ var _ = Describe("IBM Power Cloud Helper Functions", func() {
 			}
 		})
 		DescribeTable("Determine if a VM instance is linked to a non-existing TaskRun",
-			func(log logr.Logger, userTags models.Tags, existingTaskRuns map[string][]string, expectedResult bool) {
+			func(userTags models.Tags, existingTaskRuns map[string][]string, expectedResult bool) {
 				ibmp := IBMPowerDynamicConfig{}
 				instance.UserTags = userTags
-				Expect(ibmp.doesInstanceHaveTaskRun(log, instance, existingTaskRuns)).Should(Equal(expectedResult))
+				Expect(ibmp.doesInstanceHaveTaskRun(logr.Discard(), instance, existingTaskRuns)).Should(Equal(expectedResult))
 			},
-			Entry("no user tags", logr.Discard(),
+			Entry("no user tags",
 				models.Tags{},
 				map[string][]string{}, false),
-			Entry("no existing TaskRuns", logr.Discard(),
+			Entry("no existing TaskRuns",
 				models.Tags{"test-namespace:test-task"},
 				map[string][]string{}, false),
-			Entry("no valid TaskRun ID", logr.Discard(),
+			Entry("no valid TaskRun ID",
 				models.Tags{"a", "b", "c"},
 				map[string][]string{}, false),
-			Entry("non-existing TaskRun ID", logr.Discard(),
+			Entry("non-existing TaskRun ID",
 				models.Tags{"test-namespace:test-task"},
 				map[string][]string{"namespace": {"task"}}, false),
-			Entry("existing TaskRun ID", logr.Discard(),
+			Entry("existing TaskRun ID",
 				models.Tags{"test-namespace:test-task"},
 				map[string][]string{"test-namespace": {"test-task"}},
 				true,
