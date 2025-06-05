@@ -3,12 +3,14 @@ package main
 
 import (
 	"fmt"
-	"sort"
-	"time"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/konflux-ci/multi-platform-controller/testing/utils"
 )
+
+const testRounds = 100000
+const maxAllowedErrorsForRandomString = 0
 
 var _ = Describe("OTP unit tests", func() {
 
@@ -19,30 +21,35 @@ var _ = Describe("OTP unit tests", func() {
 	Describe("Testing GenerateRandomString", func() {
 
 		It("GenerateRandomString should generate random strings without errors", func() {
-			var testRounds = 100000
 
-			var ideticalStrings = 0
-			var errorCount = 0
-			startTime := time.Now()
-			randomStrings := make([]string, 0, testRounds)
-			for i := 0; i < testRounds; i++ {
-				randStr, err := GenerateRandomString(20)
-				if err != nil {
-					errorCount++
-				} else {
-					randomStrings = append(randomStrings, randStr)
-				}
+			generator := func() (string, error) {
+				return GenerateRandomString(20)
 			}
-			sort.Strings(randomStrings)
-			for i := 1; i < len(randomStrings); i++ {
-				if randomStrings[i] == randomStrings[i-1] {
-					ideticalStrings++
-				}
-			}
-			runTime := time.Since(startTime)
-			fmt.Printf("Generated %d random strings in %s\n", testRounds, runTime)
-			Expect(ideticalStrings).To(Equal(0))
-			Expect(errorCount).To(Equal(0))
+
+			stats := utils.PerformUniquenessAndPerformanceTest(testRounds, generator)
+
+			GinkgoWriter.Printf(
+				"Performance Report for GenerateRandomString:\n"+
+					"  Target Iterations: %d\n"+
+					"  Successfully Generated: %d\n"+
+					"  Unique Strings: %d\n"+
+					"  Duplicate Strings Found: %d\n"+
+					"  Errors Encountered: %d\n"+
+					"  Total Duration: %v\n",
+				testRounds,
+				stats.GeneratedCount,
+				stats.UniqueCount,
+				stats.DuplicateCount,
+				stats.ErrorCount,
+				stats.ActualDuration,
+			)
+
+			Expect(stats.ErrorCount).Should(Equal(0),
+				fmt.Sprintf("GenerateRandomString: Expected no more than %d errors, but got %d",
+					maxAllowedErrorsForRandomString, stats.ErrorCount))
+			Expect(stats.DuplicateCount).Should(Equal(0),
+				fmt.Sprintf("GenerateRandomString: Expected 0 duplicate strings, but found %d",
+					stats.DuplicateCount))
 		})
 	})
 
