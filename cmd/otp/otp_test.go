@@ -44,7 +44,7 @@ var _ = Describe("OTP unit tests", func() {
 				stats.ActualDuration,
 			)
 
-			Expect(stats.ErrorCount).Should(Equal(0),
+			Expect(stats.ErrorCount).Should(Equal(maxAllowedErrorsForRandomString),
 				fmt.Sprintf("GenerateRandomString: Expected no more than %d errors, but got %d",
 					maxAllowedErrorsForRandomString, stats.ErrorCount))
 			Expect(stats.DuplicateCount).Should(Equal(0),
