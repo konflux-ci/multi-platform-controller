@@ -29,9 +29,10 @@ var _ = Describe("IBM s390x Helper Functions", func() {
 	Describe("The createInstanceName function", func() {
 		When("generating a single instance name with a given tag", func() {
 			const instanceTag = "test-tag"
-			name, err := createInstanceName(instanceTag)
 
 			It("should return a name in the correct format without any errors", func() {
+				name, err := createInstanceName(instanceTag)
+
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(name).Should(HavePrefix(instanceTag + "-"))
 				Expect(name).Should(HaveSuffix("x"))
@@ -40,13 +41,6 @@ var _ = Describe("IBM s390x Helper Functions", func() {
 				parts := strings.SplitN(name, "-", 2) // Split on the first hyphen
 				Expect(parts).Should(HaveLen(2), "Name should contain the tag and the ID part separated by a hyphen")
 				idPart := parts[1][:20]
-
-				Expect(idPart).Should(HaveLen(20),
-					"ID part itself should be 20 characters long")
-				Expect(idPart).Should(Equal(strings.ToLower(idPart)),
-					"ID part should be in lowercase")
-				Expect(idPart).ShouldNot(ContainSubstring("_"),
-					"ID part should not contain underscores")
 				Expect(idPart).Should(MatchRegexp("^[a-z0-9-]+$"),
 					"ID part should consist of lowercase alphanumeric characters and hyphens")
 			})
