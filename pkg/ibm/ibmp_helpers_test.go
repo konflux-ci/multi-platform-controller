@@ -127,7 +127,7 @@ var _ = Describe("IBM Power Cloud Helper Functions", func() {
 	// 1. Verifying a service instance is extracted properly from a valid CRN
 	// 2. Verifying all the data validation rules are triggered by input it's designed to fail. Also validates proper
 	//    error messages are returned.
-	// 3. Verifies edge cases of extremely flawed CRN do not
+	// 3. Verifies edge cases of extremely flawed CRN are caught and are properly handled.
 	Describe("parseCRN helper function tests", func() {
 		var (
 			powerConfig IBMPowerDynamicConfig
