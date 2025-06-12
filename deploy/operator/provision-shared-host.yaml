@@ -57,13 +57,13 @@ spec:
         
         cat >script.sh <<EOF
         # resize the root partition & filesystem if needed (ppc64le only)
-        if  [ "\$(uname -m)" == "ppc64le" ]; then
-          echo "Resizing root partition"
-          DRIVE="\$(sudo fdisk -l 2>/dev/null |awk '/^Disk \/dev\/mapper/ {print substr(\$2,0,length(\$2)-1)}')"
-          echo yes | sudo parted \$DRIVE ---pretend-input-tty resizepart 3 100%
-          sudo partprobe \$DRIVE
-          sudo xfs_growfs /
-        fi
+        # if  [ "\$(uname -m)" == "ppc64le" ]; then
+        #   echo "Resizing root partition"
+        #   DRIVE="\$(sudo fdisk -l 2>/dev/null |awk '/^Disk \/dev\/mapper/ {print substr(\$2,0,length(\$2)-1)}')"
+        #   echo yes | sudo parted \$DRIVE ---pretend-input-tty resizepart 3 100%
+        #   sudo partprobe \$DRIVE
+        #   sudo xfs_growfs /
+        # fi
 
         sudo dnf install podman -y
         rm -f $USERNAME $USERNAME.pub
