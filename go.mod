@@ -11,7 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.27.0
 	github.com/aws/aws-sdk-go-v2/config v1.27.16
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.160.0
-	github.com/go-logr/logr v1.4.2
+	github.com/go-logr/logr v1.4.3
 	github.com/go-logr/stdr v1.2.2
 	github.com/google/uuid v1.6.0
 	github.com/onsi/ginkgo/v2 v2.23.3
