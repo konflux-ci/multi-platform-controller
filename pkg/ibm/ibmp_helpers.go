@@ -19,6 +19,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const (
+	serviceNameIndex     = 4
+	locationIndex        = 5
+	serviceInstanceIndex = 7
+)
+
 // retrieveInstanceIP returns a string representing the IP address of instance instanceID.
 func retrieveInstanceIp(instanceID string, networks []*models.PVMInstanceNetwork) (string, error) {
 	if len(networks) == 0 {
@@ -116,12 +122,6 @@ func (pw IBMPowerDynamicConfig) parseCRN() (string, error) {
 	if len(crnSegments) != 10 {
 		return "", fmt.Errorf("invalid CRN format: expected 10 segments, but got %d", len(crnSegments))
 	}
-
-	const (
-		serviceNameIndex     = 4
-		locationIndex        = 5
-		serviceInstanceIndex = 7
-	)
 
 	// Verify this is definitely a ppc - see:
 	// [IBM Cloud global catalog service](https://globalcatalog.cloud.ibm.com/search?noLocations=true&q=power-iaas)
