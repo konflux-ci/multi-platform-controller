@@ -120,4 +120,73 @@ var _ = Describe("IBM Power Cloud Helper Functions", func() {
 			)
 		})
 	})
+
+	// A unit test for parseCRN. Tests the logic of fetching the service instance string from a IBMPowerDynamicConfig as
+	// well as the logic of all the data validation on CRN in IBMPowerDynamicConfig .
+	// Does this by three basic methods:
+	// 1. Verifying a service instance is extracted properly from a valid CRN
+	// 2. Verifying all the data validation rules are triggered by input it's designed to fail. Also validates proper
+	//    error messages are returned.
+	// 3. Verifies edge cases of extremely flawed CRN are caught and are properly handled.
+	Describe("parseCRN helper function tests", func() {
+		var (
+			powerConfig IBMPowerDynamicConfig
+			validCRN    = "crn:v1:bluemix:public:power-iaas:dal10:a/123456789:service-guid-1234::"
+		)
+
+		When("given a valid and well-formed CRN", func() {
+			It("should correctly extract the service instance ID without error", func() {
+				powerConfig = IBMPowerDynamicConfig{CRN: validCRN}
+				serviceInstance, err := powerConfig.parseCRN()
+
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(serviceInstance).Should(Equal("service-guid-1234"))
+			})
+		})
+
+		When("given a malformed or invalid CRN", func() {
+			DescribeTable("it should return a descriptive error",
+				func(crn string, expectedErrorSubstring string) {
+					powerConfig = IBMPowerDynamicConfig{CRN: crn}
+					_, err := powerConfig.parseCRN()
+
+					Expect(err).Should(HaveOccurred())
+					Expect(err.Error()).Should(ContainSubstring(expectedErrorSubstring))
+				},
+				Entry("when the CRN is missing the 'crn:' prefix",
+					"moshe-kipod:v1:bluemix:public:power-iaas:dal10:a/123:service-guid::",
+					"must start with 'crn:'"),
+				Entry("when the CRN has too few segments",
+					"crn:v1:bluemix:public:power-iaas:dal10:a/123:service-guid:",
+					"expected 10 segments, but got 9"),
+				Entry("when the CRN has too many segments",
+					"crn:v1:bluemix:public:power-iaas:dal10:a/123:service-guid:::moshe-kipod",
+					"expected 10 segments, but got 11"),
+				Entry("when the service name is not 'power-iaas'",
+					"crn:v1:bluemix:public:moshe-kipod-service:dal10:a/123:service-guid::",
+					"invalid CRN service name"),
+				Entry("when the resource is global",
+					"crn:v1:bluemix:public:power-iaas:global:a/123:service-guid::",
+					"this resource is global"),
+				Entry("when the service instance is null",
+					"crn:v1:bluemix:public:power-iaas:dal10:a/123:::",
+					"the service instance is null"),
+			)
+		})
+
+		When("given an edge-case CRN", func() {
+			DescribeTable("it should fail gracefully",
+				func(crn string, expectedErrorSubstring string) {
+					powerConfig = IBMPowerDynamicConfig{CRN: crn}
+					_, err := powerConfig.parseCRN()
+
+					Expect(err).Should(HaveOccurred())
+					Expect(err.Error()).Should(ContainSubstring(expectedErrorSubstring))
+				},
+				Entry("when the CRN is an empty string", "", "must start with 'crn:'"),
+				Entry("when the CRN is just the prefix", "crn:", "expected 10 segments, but got 2"),
+				Entry("when the CRN is just colons", ":::::::::", "must start with 'crn:'"),
+			)
+		})
+	})
 })

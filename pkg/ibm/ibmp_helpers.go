@@ -19,6 +19,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const (
+	serviceNameIndex     = 4
+	locationIndex        = 5
+	serviceInstanceIndex = 7
+)
+
 // retrieveInstanceIP returns a string representing the IP address of instance instanceID.
 func retrieveInstanceIp(instanceID string, networks []*models.PVMInstanceNetwork) (string, error) {
 	if len(networks) == 0 {
@@ -105,18 +111,30 @@ func (pw IBMPowerDynamicConfig) listInstances(ctx context.Context, service *core
 // See the [IBM CRN docs](https://cloud.ibm.com/docs/account?topic=account-crn#service-instance-crn)
 // for more information on CRN formatting.
 func (pw IBMPowerDynamicConfig) parseCRN() (string, error) {
-	locationIndex := 5
-	serviceInstanceIndex := 7
+	if !strings.HasPrefix(pw.CRN, "crn:") {
+		return "", fmt.Errorf("invalid CRN: must start with 'crn:'")
+	}
+
 	crnSegments := strings.Split(pw.CRN, ":")
 
+	// To prevent index-out-of-bounds panic if this string gets truncated, we need to verify the correct length - 10.
+	//Like the commandments.
+	if len(crnSegments) != 10 {
+		return "", fmt.Errorf("invalid CRN format: expected 10 segments, but got %d", len(crnSegments))
+	}
+
+	// Verify this is definitely a ppc - see:
+	// [IBM Cloud global catalog service](https://globalcatalog.cloud.ibm.com/search?noLocations=true&q=power-iaas)
+	if crnSegments[serviceNameIndex] != "power-iaas" {
+		return "", fmt.Errorf("invalid CRN service name: expected 'power-iaas', but got '%s'", crnSegments[serviceNameIndex])
+	}
+
 	if crnSegments[locationIndex] == "global" {
-		errMsg := "this resource is global and has no service instance"
-		return "", errors.New(errMsg)
+		return "", errors.New("this resource is global and has no service instance")
 	}
 	serviceInstance := crnSegments[serviceInstanceIndex]
 	if serviceInstance == "" {
-		errMsg := "the service instance is null"
-		return "", errors.New(errMsg)
+		return "", errors.New("the service instance is null")
 	}
 
 	return serviceInstance, nil
