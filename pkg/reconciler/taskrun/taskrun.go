@@ -3,12 +3,12 @@ package taskrun
 import (
 	"context"
 	"fmt"
-	"knative.dev/pkg/kmeta"
-	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
+
+	"knative.dev/pkg/kmeta"
 
 	mpcmetrics "github.com/konflux-ci/multi-platform-controller/pkg/metrics"
 
@@ -124,114 +124,94 @@ func (r *ReconcileTaskRun) Reconcile(ctx context.Context, request reconcile.Requ
 	defer cancel()
 	log := ctrl.Log.WithName("taskrun").WithValues("request", request.NamespacedName)
 
-	pr := tektonapi.TaskRun{}
-	prerr := r.client.Get(ctx, request.NamespacedName, &pr)
-	if prerr != nil {
-		if !errors.IsNotFound(prerr) {
-			log.Error(prerr, "Reconcile key %s as TaskRun unexpected error", request.NamespacedName.String())
-			return ctrl.Result{}, prerr
-		} else {
+	tr := tektonapi.TaskRun{}
+	if err := r.client.Get(ctx, request.NamespacedName, &tr); err != nil {
+		if errors.IsNotFound(err) {
+			// gone, no error
 			return ctrl.Result{}, nil
+		} else {
+			return ctrl.Result{}, fmt.Errorf("failed to get a TaskRun: %w", err)
 		}
 	}
-	if pr.Annotations != nil {
-		if pr.Annotations[CloudInstanceId] != "" {
-			log = log.WithValues(CloudInstanceId, pr.Annotations[CloudInstanceId])
+
+	if tr.Annotations != nil {
+		if tr.Annotations[CloudInstanceId] != "" {
+			log = log.WithValues(CloudInstanceId, tr.Annotations[CloudInstanceId])
 		}
-		if pr.Annotations[AssignedHost] != "" {
-			log = log.WithValues(AssignedHost, pr.Annotations[AssignedHost])
+		if tr.Annotations[AssignedHost] != "" {
+			log = log.WithValues(AssignedHost, tr.Annotations[AssignedHost])
 		}
 	}
 	ctx = logr.NewContext(ctx, log)
 
-	return r.handleTaskRunReceived(ctx, &pr)
+	return r.handleTaskRunReceived(ctx, &tr)
 }
 
 func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, tr *tektonapi.TaskRun) (reconcile.Result, error) {
-	log := logr.FromContextOrDiscard(ctx)
-	if tr.Labels != nil {
-		taskType := tr.Labels[TaskTypeLabel]
-		if taskType == TaskTypeClean {
-			log.Info("Reconciling cleanup task")
-			return r.handleCleanTask(ctx, tr)
-		}
-		if taskType == TaskTypeProvision {
-			log.Info("Reconciling provision task")
-			return r.handleProvisionTask(ctx, tr)
-		}
-		if taskType == TaskTypeUpdate {
-			// We don't care about these
-			return reconcile.Result{}, nil
-		}
-	}
-	if tr.Spec.Params == nil {
-		return reconcile.Result{}, nil
-	}
+	log := logr.FromContextOrDiscard(ctx).WithValues("taskrun", tr.Name, "namespace", tr.Namespace)
 
-	//identify tasks by the PLATFORM param and multi-platform-ssh- secret
-	if tr.Status.TaskSpec == nil || tr.Status.TaskSpec.Volumes == nil {
-		return reconcile.Result{}, nil
-	}
-	found := false
-	for _, i := range tr.Status.TaskSpec.Volumes {
-		if i.Secret != nil {
-			if strings.HasPrefix(i.Secret.SecretName, SecretPrefix) {
-				found = true
+	// Handle internal task types first
+	if tr.Labels != nil {
+		if taskType := tr.Labels[TaskTypeLabel]; taskType != "" {
+			switch taskType {
+			case TaskTypeClean:
+				log.Info("Reconciling cleanup task")
+				return r.handleCleanTask(ctx, tr)
+			case TaskTypeProvision:
+				log.Info("Reconciling provision task")
+				return r.handleProvisionTask(ctx, tr)
+			case TaskTypeUpdate:
+				log.V(1).Info("Ignoring update task")
+				return reconcile.Result{}, nil
+			default:
+				log.V(1).Info("Unknown task type, ignoring", "taskType", taskType)
+				return reconcile.Result{}, nil
 			}
 		}
 	}
-	if !found {
-		//this is not something we need to be concerned with
+
+	// Early validation for user tasks - consolidated checks
+	if tr.Spec.Params == nil || tr.Status.TaskSpec == nil || tr.Status.TaskSpec.Volumes == nil {
+		log.V(1).Info("Skipping TaskRun - missing required structure")
 		return reconcile.Result{}, nil
 	}
-	found = false
-	for _, i := range tr.Spec.Params {
-		if i.Name == PlatformParam {
-			found = true
+
+	// Check for multi-platform secret
+	hasMultiPlatformSecret := false
+	for _, volume := range tr.Status.TaskSpec.Volumes {
+		if volume.Secret != nil && strings.HasPrefix(volume.Secret.SecretName, SecretPrefix) {
+			hasMultiPlatformSecret = true
+			break
 		}
 	}
-	if !found {
-		//this is not something we need to be concerned with
+	if !hasMultiPlatformSecret {
+		log.V(1).Info("Skipping TaskRun - no multi-platform secret found")
 		return reconcile.Result{}, nil
 	}
-	log.Info("Reconciling user task")
 
-	if tr.Status.TaskSpec == nil || tr.Status.TaskSpec.Volumes == nil {
+	// Check for platform parameter
+	hasPlatformParam := false
+	for _, param := range tr.Spec.Params {
+		if param.Name == PlatformParam {
+			hasPlatformParam = true
+			break
+		}
+	}
+	if !hasPlatformParam {
+		log.V(1).Info("Skipping TaskRun - no platform parameter found")
 		return reconcile.Result{}, nil
 	}
+
+	log.Info("Reconciling user task")
 	return r.handleUserTask(ctx, tr)
 }
 
-// called when a task has finished, we look for waiting tasks
-// and then potentially requeue one of them
-func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, platform string) (reconcile.Result, error) {
-
-	//try and requeue a waiting task if one exists
-	taskList := tektonapi.TaskRunList{}
-
-	err := r.client.List(ctx, &taskList, client.MatchingLabels{WaitingForPlatformLabel: platformLabel(platform)})
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-	var oldest *tektonapi.TaskRun
-	var oldestTs time.Time
-	for i := range taskList.Items {
-		tr := taskList.Items[i]
-		if oldest == nil || oldestTs.After(tr.CreationTimestamp.Time) {
-			oldestTs = tr.CreationTimestamp.Time
-			oldest = &tr
-		}
-	}
-	if oldest != nil {
-		//remove the waiting label, which will trigger a requeue
-		delete(oldest.Labels, WaitingForPlatformLabel)
-		return reconcile.Result{}, r.client.Update(ctx, oldest)
-	}
-	return reconcile.Result{}, nil
-
-}
-
 func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, tr *tektonapi.TaskRun) (reconcile.Result, error) {
+
+	if !tr.DeletionTimestamp.IsZero() {
+		return ctrl.Result{}, nil
+	}
+
 	if tr.Status.CompletionTime == nil {
 		return reconcile.Result{}, nil
 	}
@@ -239,9 +219,11 @@ func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, tr *tektonapi.Ta
 	if !success {
 		log := logr.FromContextOrDiscard(ctx)
 		log.Info("cleanup task failed", "task", tr.Name)
-		mpcmetrics.HandleMetrics(tr.Labels[TargetPlatformLabel], func(metrics *mpcmetrics.PlatformMetrics) {
-			metrics.ProvisionFailures.Inc()
-		})
+		if tr.Labels != nil && tr.Labels[TargetPlatformLabel] != "" {
+			mpcmetrics.HandleMetrics(tr.Labels[TargetPlatformLabel], func(metrics *mpcmetrics.PlatformMetrics) {
+				metrics.CleanupFailures.Inc()
+			})
+		}
 	}
 	//leave the failed TR for an hour to view logs
 	if success || tr.Status.CompletionTime.Add(time.Hour).Before(time.Now()) {
@@ -251,6 +233,11 @@ func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, tr *tektonapi.Ta
 }
 
 func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonapi.TaskRun) (reconcile.Result, error) {
+	log := logr.FromContextOrDiscard(ctx)
+
+	if !tr.DeletionTimestamp.IsZero() {
+		return ctrl.Result{}, nil
+	}
 
 	if tr.Status.CompletionTime == nil {
 		return reconcile.Result{}, nil
@@ -260,12 +247,12 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 	}
 	success := tr.Status.GetCondition(apis.ConditionSucceeded).IsTrue()
 	if tr.Annotations[ProvisionTaskProcessed] == "true" {
-		//leave the failed TR for an hour so we can view logs
-		//TODO: tekton results integration
-		if success || tr.Status.CompletionTime.Add(time.Hour).Before(time.Now()) {
+		retentionTime := time.Hour
+		if success || tr.Status.CompletionTime.Add(retentionTime).Before(time.Now()) {
 			return reconcile.Result{}, r.client.Delete(ctx, tr)
 		}
-		return reconcile.Result{RequeueAfter: time.Hour}, nil
+		log.Info("Keeping failed provision task for log inspection")
+		return reconcile.Result{RequeueAfter: retentionTime}, nil
 	}
 	tr.Annotations[ProvisionTaskProcessed] = "true"
 	secretName := ""
@@ -279,16 +266,21 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 	userTaskName := tr.Labels[UserTaskName]
 	assigned := tr.Labels[AssignedHost]
 	targetPlatform := tr.Labels[TargetPlatformLabel]
-	log := logr.FromContextOrDiscard(ctx)
+	log = log.WithValues(
+		"success", success,
+		"userTask", fmt.Sprintf("%s/%s", userNamespace, userTaskName),
+		"assignedHost", assigned,
+		"platform", targetPlatform,
+	)
+
 	if !success {
 		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
 			metrics.ProvisionFailures.Inc()
 		})
 		mpcmetrics.CountAvailabilityError(targetPlatform)
-		message := fmt.Sprintf("provision task for host %s for user task %s/%sfailed", assigned, userNamespace, userTaskName)
+		message := fmt.Sprintf("provision task for host %s for user task %s/%s failed", assigned, userNamespace, userTaskName)
 		r.eventRecorder.Event(tr, "Error", "ProvisioningFailed", message)
-		err := errors2.New(message)
-		log.Error(err, message)
+		log.Error(fmt.Errorf("provision failed"), message)
 		if assigned != "" {
 			userTr := tektonapi.TaskRun{}
 			err := r.client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: userTaskName}, &userTr)
@@ -427,47 +419,48 @@ func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, tr *tektonapi.
 }
 
 func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *tektonapi.TaskRun) (reconcile.Result, error) {
-
 	log := logr.FromContextOrDiscard(ctx)
 	secretName := SecretPrefix + tr.Name
-	if tr.Labels[AssignedHost] != "" {
+	if tr.Labels != nil && tr.Labels[AssignedHost] != "" {
 		return r.handleHostAssigned(ctx, tr, secretName)
-	} else {
-		//if the PR is done we ignore it
-		if tr.Status.CompletionTime != nil || tr.GetDeletionTimestamp() != nil {
-			if controllerutil.ContainsFinalizer(tr, PipelineFinalizer) {
-				return r.handleHostAssigned(ctx, tr, secretName)
-
-			}
-			return reconcile.Result{}, nil
-		}
-
-		targetPlatform, err := extractPlatform(tr)
-		if err != nil {
-			err := r.createErrorSecret(ctx, tr, "[UNKNOWN]", secretName, err.Error())
-			if err != nil {
-				log.Error(err, "could not create error secret")
-			}
-			return reconcile.Result{}, nil
-		}
-		if tr.Labels[TargetPlatformLabel] == "" {
-			tr.Labels[TargetPlatformLabel] = platformLabel(targetPlatform)
-			if err := r.client.Update(ctx, tr); err != nil {
-				log.Error(err, "could not update task with target platform label")
-			}
-		}
-		res, err := r.handleHostAllocation(ctx, tr, secretName, targetPlatform)
-		if err != nil && !errors.IsConflict(err) {
-			mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
-				metrics.HostAllocationFailures.Inc()
-			})
-			err := r.createErrorSecret(ctx, tr, targetPlatform, secretName, "Error allocating host: "+err.Error())
-			if err != nil {
-				log.Error(err, "could not create error secret")
-			}
-		}
-		return res, err
 	}
+	//if the TR is done we ignore it
+	if tr.Status.CompletionTime != nil || tr.GetDeletionTimestamp() != nil {
+		if controllerutil.ContainsFinalizer(tr, PipelineFinalizer) {
+			return r.handleHostAssigned(ctx, tr, secretName)
+		}
+		return reconcile.Result{}, nil
+	}
+
+	targetPlatform, err := extractPlatform(tr)
+	if err != nil {
+		err := r.createErrorSecret(ctx, tr, "[UNKNOWN]", secretName, err.Error())
+		if err != nil {
+			log.Error(err, "could not create error secret")
+		}
+		return reconcile.Result{}, nil
+	}
+
+	if tr.Labels == nil {
+		tr.Labels = map[string]string{}
+	}
+
+	// Set platform label in memory - it will be persisted during allocation
+	if tr.Labels[TargetPlatformLabel] == "" {
+		tr.Labels[TargetPlatformLabel] = platformLabel(targetPlatform)
+	}
+
+	res, err := r.handleHostAllocation(ctx, tr, secretName, targetPlatform)
+	if err != nil && !errors.IsConflict(err) {
+		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
+			metrics.HostAllocationFailures.Inc()
+		})
+		err := r.createErrorSecret(ctx, tr, targetPlatform, secretName, "Error allocating host: "+err.Error())
+		if err != nil {
+			log.Error(err, "could not create error secret")
+		}
+	}
+	return res, err
 }
 
 func extractPlatform(tr *tektonapi.TaskRun) (string, error) {
@@ -480,17 +473,8 @@ func extractPlatform(tr *tektonapi.TaskRun) (string, error) {
 }
 
 func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektonapi.TaskRun, secretName string, targetPlatform string) (reconcile.Result, error) {
-	log := logr.FromContextOrDiscard(ctx)
-	log.Info("attempting to allocate host", "platform", targetPlatform)
-	if tr.Labels == nil {
-		tr.Labels = map[string]string{}
-	}
-	if r.apiReader != nil {
-		err := r.apiReader.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-	}
+	log := logr.FromContextOrDiscard(ctx).WithValues("platform", targetPlatform, "secretName", secretName)
+	log.Info("attempting to allocate host")
 	//check the secret does not already exist
 	secret := kubecore.Secret{}
 	err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: secretName}, &secret)
@@ -499,112 +483,231 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektona
 			return reconcile.Result{}, err
 		}
 	} else {
-		//secret already exists (probably error secret)
+		log.Info("error secret already exists, skipping allocation")
 		return reconcile.Result{}, nil
 	}
 
-	//lets allocate a host, get the map with host info
+	//let's allocate a host, get the map with host info
 	hosts, err := r.readConfiguration(ctx, targetPlatform, tr.Namespace)
 	if err != nil {
 		log.Error(err, "failed to read host config")
 		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
 			metrics.HostAllocationFailures.Inc()
 		})
-		return reconcile.Result{}, r.createErrorSecret(ctx, tr, targetPlatform, secretName, "failed to read host config "+err.Error())
+		mpcmetrics.CountAvailabilityError(targetPlatform)
+		return reconcile.Result{}, r.createErrorSecret(ctx, tr, targetPlatform, secretName, fmt.Sprintf("failed to read host config: %v", err))
 	}
 	if tr.Annotations == nil {
 		tr.Annotations = map[string]string{}
 	}
+
+	// Track waiting state and allocation timing
 	wasWaiting := tr.Labels[WaitingForPlatformLabel] != ""
 	startTime := time.Now().Unix()
+
+	// Parse existing allocation start time if available
+	if alternateStartStr := tr.Annotations[AllocationStartTimeAnnotation]; alternateStartStr != "" {
+		if alternateStart, parseErr := strconv.ParseInt(alternateStartStr, 10, 64); parseErr == nil {
+			startTime = alternateStart
+		} else {
+			log.Error(parseErr, "failed to parse allocation start time", "value", alternateStartStr)
+		}
+	}
+
 	ret, err := hosts.Allocate(r, ctx, tr, secretName)
 	isWaiting := tr.Labels[WaitingForPlatformLabel] != ""
 
 	if err != nil {
+		log.Error(err, "host allocation failed")
 		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
 			metrics.HostAllocationFailures.Inc()
 		})
-	} else {
-		if tr.Labels[AssignedHost] != "" {
-			alternateStart := tr.Annotations[AllocationStartTimeAnnotation]
-			if alternateStart != "" {
-				startTime, err = strconv.ParseInt(alternateStart, 10, 64)
-			}
-			mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
-				metrics.AllocationTime.Observe(float64(time.Now().Unix() - startTime))
-				metrics.RunningTasks.Inc()
-			})
-		}
-		if wasWaiting {
-			mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
-				metrics.WaitTime.Observe(float64(time.Now().Unix() - tr.CreationTimestamp.Unix()))
-			})
-		}
-		if isWaiting && !wasWaiting {
-			mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
-				metrics.WaitingTasks.Inc()
-			})
-		} else if !isWaiting && wasWaiting {
-			mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
-				metrics.WaitingTasks.Dec()
-			})
-		}
+		return ret, err
 	}
+
+	log.Info("host allocation completed", "isWaiting", isWaiting, "assignedHost", tr.Labels[AssignedHost])
+
+	// Host successfully assigned
+	if assignedHost := tr.Labels[AssignedHost]; assignedHost != "" {
+		log.Info("host assigned successfully", "host", assignedHost)
+		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
+			metrics.AllocationTime.Observe(float64(time.Now().Unix() - startTime))
+			metrics.RunningTasks.Inc()
+		})
+	}
+
+	// Handle waiting state transitions with clear logging
+	if wasWaiting && !isWaiting {
+		log.Info("task no longer waiting - host allocated")
+		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
+			metrics.WaitTime.Observe(float64(time.Now().Unix() - tr.CreationTimestamp.Unix()))
+			metrics.WaitingTasks.Dec()
+		})
+	} else if !wasWaiting && isWaiting {
+		log.Info("task now waiting for host")
+		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
+			metrics.WaitingTasks.Inc()
+		})
+	} else if wasWaiting && isWaiting {
+		log.V(1).Info("task still waiting for host")
+	}
+
 	return ret, err
 }
 
 func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi.TaskRun, secretName string) (reconcile.Result, error) {
-	log := logr.FromContextOrDiscard(ctx)
-	//already exists
-	if tr.Status.CompletionTime != nil || tr.GetDeletionTimestamp() != nil {
-		selectedHost := tr.Labels[AssignedHost]
-		log.Info(fmt.Sprintf("unassigning host %s from task", selectedHost))
+	log := logr.FromContextOrDiscard(ctx).WithValues("secretName", secretName)
 
-		platform, err := extractPlatform(tr)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-		config, err := r.readConfiguration(ctx, platform, tr.Namespace)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-		if config == nil {
-			log.Error(fmt.Errorf("could not find config for platform %s", platform), "could not find config")
-			return reconcile.Result{}, nil
-		}
-		mpcmetrics.HandleMetrics(platform, func(metrics *mpcmetrics.PlatformMetrics) {
-			metrics.TaskRunTime.Observe(float64(time.Now().Unix() - tr.CreationTimestamp.Unix()))
-			metrics.RunningTasks.Dec()
-		})
-		err = config.Deallocate(r, ctx, tr, secretName, selectedHost)
-		if err != nil {
-			log.Error(err, "Failed to deallocate host "+selectedHost)
-		}
-		controllerutil.RemoveFinalizer(tr, PipelineFinalizer)
-		delete(tr.Labels, AssignedHost)
-		err = r.client.Update(ctx, tr)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
+	// Safe access to assigned host
+	assignedHost := tr.Labels[AssignedHost]
+	log = log.WithValues("assignedHost", assignedHost)
 
-		secret := kubecore.Secret{}
-		//delete the secret
-		err = r.client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: secretName}, &secret)
-		if err == nil {
-			log.Info("deleting secret from task")
-			//PR is done, clean up the secret
-			err := r.client.Delete(ctx, &secret)
-			if err != nil {
-				log.Error(err, "unable to delete secret")
-			}
-		} else if !errors.IsNotFound(err) {
-			log.Error(err, "error deleting secret", "secret", secretName)
-			return reconcile.Result{}, err
-		} else {
-			log.Info("could not find secret", "secret", secretName)
-		}
-		return r.handleWaitingTasks(ctx, platform)
+	// Check if TaskRun is completed or being deleted
+	isCompleted := tr.Status.CompletionTime != nil
+	isBeingDeleted := tr.GetDeletionTimestamp() != nil
+
+	if !isCompleted && !isBeingDeleted {
+		log.V(1).Info("TaskRun not completed, nothing to do")
+		return reconcile.Result{}, nil
 	}
+
+	log.Info("handling completed/deleted TaskRun", "completed", isCompleted, "beingDeleted", isBeingDeleted)
+
+	// Validate we have a host to deallocate
+	if assignedHost == "" {
+		log.Info("no assigned host found, skipping deallocation")
+		return reconcile.Result{}, nil
+	}
+
+	log.Info("deallocating host", "host", assignedHost)
+
+	// Extract platform with error handling
+	platform, err := extractPlatform(tr)
+	if err != nil {
+		log.Error(err, "failed to extract platform for deallocation")
+		return reconcile.Result{}, fmt.Errorf("failed to extract platform: %w", err)
+	}
+	log = log.WithValues("platform", platform)
+
+	// Get platform configuration
+	config, err := r.readConfiguration(ctx, platform, tr.Namespace)
+	if err != nil {
+		log.Error(err, "failed to read platform configuration")
+		return reconcile.Result{}, fmt.Errorf("failed to read configuration: %w", err)
+	}
+	if config == nil {
+		log.Error(fmt.Errorf("no configuration found"), "no config for platform", "platform", platform)
+		return reconcile.Result{}, nil
+	}
+
+	// Update metrics for task completion
+	log.Info("updating completion metrics")
+	taskRunDuration := time.Now().Unix() - tr.CreationTimestamp.Unix()
+	mpcmetrics.HandleMetrics(platform, func(metrics *mpcmetrics.PlatformMetrics) {
+		metrics.TaskRunTime.Observe(float64(taskRunDuration))
+		metrics.RunningTasks.Dec()
+	})
+
+	// Attempt host deallocation
+	log.Info("calling host deallocation")
+	err = config.Deallocate(r, ctx, tr, secretName, assignedHost)
+	if err != nil {
+		log.Error(err, "failed to deallocate host", "host", assignedHost)
+		// Continue with cleanup even if deallocation fails
+	} else {
+		log.Info("host deallocated successfully")
+	}
+
+	// Clean up TaskRun labels and finalizers
+	controllerutil.RemoveFinalizer(tr, PipelineFinalizer)
+	if tr.Labels != nil {
+		delete(tr.Labels, AssignedHost)
+	}
+
+	// Update TaskRun with cleanup changes
+	err = r.client.Update(ctx, tr)
+	if err != nil {
+		log.Error(err, "failed to update TaskRun after cleanup")
+		return reconcile.Result{}, fmt.Errorf("failed to update TaskRun: %w", err)
+	}
+	log.Info("TaskRun updated successfully")
+
+	// Handle secret cleanup
+	log.Info("cleaning up secret")
+	secret := kubecore.Secret{}
+	err = r.client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: secretName}, &secret)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			log.Info("secret not found, already cleaned up")
+		} else {
+			log.Error(err, "error checking secret existence")
+			return reconcile.Result{}, fmt.Errorf("error checking secret: %w", err)
+		}
+	} else {
+		log.Info("deleting secret")
+		err := r.client.Delete(ctx, &secret)
+		if err != nil {
+			log.Error(err, "failed to delete secret")
+			// Don't return error - secret cleanup is not critical
+		} else {
+			log.Info("secret deleted successfully")
+		}
+	}
+
+	// Handle waiting tasks - try to allocate next waiting task
+	log.Info("checking for waiting tasks to requeue")
+	result, err := r.handleWaitingTasks(ctx, platform)
+	if err != nil {
+		log.Error(err, "failed to handle waiting tasks")
+		// Don't fail the reconciliation for this
+		return reconcile.Result{}, nil
+	}
+
+	log.Info("host deallocation completed successfully")
+	return result, nil
+}
+
+// called when a task has finished, we look for waiting tasks
+// and then potentially requeue one of them
+func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, platform string) (reconcile.Result, error) {
+	log := logr.FromContextOrDiscard(ctx).WithValues("platform", platform)
+	log.Info("checking for waiting tasks to requeue")
+
+	//try and requeue a waiting task if one exists
+	taskList := tektonapi.TaskRunList{}
+
+	err := r.client.List(ctx, &taskList, client.MatchingLabels{WaitingForPlatformLabel: platformLabel(platform)})
+	if err != nil {
+		log.Error(err, "failed to list waiting tasks")
+		return reconcile.Result{}, fmt.Errorf("failed to list waiting tasks: %w", err)
+	}
+
+	if len(taskList.Items) == 0 {
+		return reconcile.Result{}, nil
+	}
+
+	var oldest *tektonapi.TaskRun
+	var oldestTs time.Time
+	for i := range taskList.Items {
+		tr := taskList.Items[i]
+		if oldest == nil || oldestTs.After(tr.CreationTimestamp.Time) {
+			oldestTs = tr.CreationTimestamp.Time
+			oldest = &tr
+		}
+	}
+	if oldest == nil {
+		return reconcile.Result{}, nil
+	}
+	//remove the waiting label, which will trigger a requeue
+	delete(oldest.Labels, WaitingForPlatformLabel)
+
+	// Update the task
+	err = r.client.Update(ctx, oldest)
+	if err != nil {
+		return reconcile.Result{}, fmt.Errorf("failed to update waiting task %s/%s: %w", oldest.Namespace, oldest.Name, err)
+	}
+
+	log.Info("requeued waiting task", "name", oldest.Name)
 	return reconcile.Result{}, nil
 }
 
@@ -623,25 +726,6 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 		r.platformConfig = map[string]PlatformConfig{}
 	}
 
-	namespaces := cm.Data[AllowedNamespaces]
-	if namespaces != "" {
-		parts := strings.Split(namespaces, ",")
-		ok := false
-		for _, i := range parts {
-			matchString, err := regexp.MatchString(i, targetNamespace)
-			if err != nil {
-				log.Error(err, "invalid allowed-namespace regex")
-				continue
-			}
-			if matchString {
-				ok = true
-				break
-			}
-		}
-		if !ok {
-			return nil, fmt.Errorf("namespace %s does not match any namespace defined in allowed namespaces, ask an administrator to enable multi platform builds for your namespace", targetNamespace)
-		}
-	}
 	existing := r.platformConfig[targetPlatform]
 	if existing != nil {
 		return existing, nil
@@ -655,106 +739,117 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 		additionalInstanceTags = make(map[string]string, len(additionalTagsArray))
 		for _, tag := range additionalTagsArray {
 			parts := strings.Split(tag, "=")
-			additionalInstanceTags[parts[0]] = parts[1]
+			if len(parts) >= 2 {
+				additionalInstanceTags[parts[0]] = parts[1]
+			} else {
+				log.Error(fmt.Errorf("invalid tag format"), "tag must be key=value", "tag", tag)
+			}
 		}
 	}
 
-	local := strings.Split(cm.Data[LocalPlatforms], ",")
-	if slices.Contains(local, targetPlatform) {
-		return Local{}, nil
+	localPlatforms := cm.Data[LocalPlatforms]
+	if localPlatforms != "" {
+		local := strings.Split(localPlatforms, ",")
+		if slices.Contains(local, targetPlatform) {
+			return Local{}, nil
+		}
 	}
 
 	dynamic := cm.Data[DynamicPlatforms]
-	for _, platform := range strings.Split(dynamic, ",") {
-		platformConfigName := strings.ReplaceAll(platform, "/", "-")
-		if platform == targetPlatform {
+	if dynamic != "" {
+		for _, platform := range strings.Split(dynamic, ",") {
+			platformConfigName := strings.ReplaceAll(platform, "/", "-")
+			if platform == targetPlatform {
 
-			typeName := cm.Data["dynamic."+platformConfigName+".type"]
-			allocfunc := r.cloudProviders[typeName]
-			if allocfunc == nil {
-				return nil, errors2.New("unknown dynamic provisioning type " + typeName)
-			}
-			maxInstances, err := strconv.Atoi(cm.Data["dynamic."+platformConfigName+".max-instances"])
-			if err != nil {
-				return nil, err
-			}
-			instanceTag := cm.Data["dynamic."+platformConfigName+".instance-tag"]
-			if instanceTag == "" {
-				instanceTag = cm.Data[DefaultInstanceTag]
-			}
-			timeoutSeconds := cm.Data["dynamic."+platformConfigName+".allocation-timeout"]
-			timeout := int64(600) //default to 10 minutes
-			if timeoutSeconds != "" {
-				timeoutInt, err := strconv.Atoi(timeoutSeconds)
-				if err != nil {
-					log.Error(err, "unable to parse allocation timeout")
-				} else {
-					timeout = int64(timeoutInt)
+				typeName := cm.Data["dynamic."+platformConfigName+".type"]
+				allocfunc := r.cloudProviders[typeName]
+				if allocfunc == nil {
+					return nil, errors2.New("unknown dynamic provisioning type " + typeName)
 				}
+				maxInstances, err := strconv.Atoi(cm.Data["dynamic."+platformConfigName+".max-instances"])
+				if err != nil {
+					return nil, err
+				}
+				instanceTag := cm.Data["dynamic."+platformConfigName+".instance-tag"]
+				if instanceTag == "" {
+					instanceTag = cm.Data[DefaultInstanceTag]
+				}
+				timeoutSeconds := cm.Data["dynamic."+platformConfigName+".allocation-timeout"]
+				timeout := int64(600) //default to 10 minutes
+				if timeoutSeconds != "" {
+					timeoutInt, err := strconv.Atoi(timeoutSeconds)
+					if err != nil {
+						log.Error(err, "unable to parse allocation timeout")
+					} else {
+						timeout = int64(timeoutInt)
+					}
+				}
+				ret := DynamicResolver{
+					CloudProvider:          allocfunc(platformConfigName, cm.Data, r.operatorNamespace),
+					sshSecret:              cm.Data["dynamic."+platformConfigName+".ssh-secret"],
+					platform:               platform,
+					maxInstances:           maxInstances,
+					instanceTag:            instanceTag,
+					timeout:                timeout,
+					sudoCommands:           cm.Data["dynamic."+platformConfigName+".sudo-commands"],
+					additionalInstanceTags: additionalInstanceTags,
+					eventRecorder:          r.eventRecorder,
+				}
+				r.platformConfig[targetPlatform] = ret
+				err = mpcmetrics.RegisterPlatformMetrics(ctx, targetPlatform)
+				if err != nil {
+					return nil, err
+				}
+				return ret, nil
 			}
-			ret := DynamicResolver{
-				CloudProvider:          allocfunc(platformConfigName, cm.Data, r.operatorNamespace),
-				sshSecret:              cm.Data["dynamic."+platformConfigName+".ssh-secret"],
-				platform:               platform,
-				maxInstances:           maxInstances,
-				instanceTag:            instanceTag,
-				timeout:                timeout,
-				sudoCommands:           cm.Data["dynamic."+platformConfigName+".sudo-commands"],
-				additionalInstanceTags: additionalInstanceTags,
-				eventRecorder:          r.eventRecorder,
-			}
-			r.platformConfig[targetPlatform] = ret
-			err = mpcmetrics.RegisterPlatformMetrics(ctx, targetPlatform)
-			if err != nil {
-				return nil, err
-			}
-			return ret, nil
 		}
 	}
 
 	dynamicPool := cm.Data[DynamicPoolPlatforms]
-	for _, platform := range strings.Split(dynamicPool, ",") {
-		platformConfigName := strings.ReplaceAll(platform, "/", "-")
-		if platform == targetPlatform {
+	if dynamicPool != "" {
+		for _, platform := range strings.Split(dynamicPool, ",") {
+			platformConfigName := strings.ReplaceAll(platform, "/", "-")
+			if platform == targetPlatform {
 
-			typeName := cm.Data["dynamic."+platformConfigName+".type"]
-			allocfunc := r.cloudProviders[typeName]
-			if allocfunc == nil {
-				return nil, errors2.New("unknown dynamic provisioning type " + typeName)
-			}
-			maxInstances, err := strconv.Atoi(cm.Data["dynamic."+platformConfigName+".max-instances"])
-			if err != nil {
-				return nil, err
-			}
-			concurrency, err := strconv.Atoi(cm.Data["dynamic."+platformConfigName+".concurrency"])
-			if err != nil {
-				return nil, err
-			}
-			maxAge, err := strconv.Atoi(cm.Data["dynamic."+platformConfigName+".max-age"]) // Minutes
-			if err != nil {
-				return nil, err
-			}
+				typeName := cm.Data["dynamic."+platformConfigName+".type"]
+				allocfunc := r.cloudProviders[typeName]
+				if allocfunc == nil {
+					return nil, errors2.New("unknown dynamic provisioning type " + typeName)
+				}
+				maxInstances, err := strconv.Atoi(cm.Data["dynamic."+platformConfigName+".max-instances"])
+				if err != nil {
+					return nil, err
+				}
+				concurrency, err := strconv.Atoi(cm.Data["dynamic."+platformConfigName+".concurrency"])
+				if err != nil {
+					return nil, err
+				}
+				maxAge, err := strconv.Atoi(cm.Data["dynamic."+platformConfigName+".max-age"]) // Minutes
+				if err != nil {
+					return nil, err
+				}
 
-			instanceTag := cm.Data["dynamic."+platformConfigName+".instance-tag"]
-			if instanceTag == "" {
-				instanceTag = cm.Data["instance-tag"]
+				instanceTag := cm.Data["dynamic."+platformConfigName+".instance-tag"]
+				if instanceTag == "" {
+					instanceTag = cm.Data["instance-tag"]
+				}
+				ret := DynamicHostPool{
+					cloudProvider:          allocfunc(platformConfigName, cm.Data, r.operatorNamespace),
+					sshSecret:              cm.Data["dynamic."+platformConfigName+".ssh-secret"],
+					platform:               platform,
+					maxInstances:           maxInstances,
+					maxAge:                 time.Minute * time.Duration(maxAge),
+					concurrency:            concurrency,
+					instanceTag:            instanceTag,
+					additionalInstanceTags: additionalInstanceTags,
+				}
+				r.platformConfig[targetPlatform] = ret
+				err = mpcmetrics.RegisterPlatformMetrics(ctx, targetPlatform)
+				if err != nil {
+					return nil, err
+				}
+				return ret, nil
 			}
-			ret := DynamicHostPool{
-				cloudProvider:          allocfunc(platformConfigName, cm.Data, r.operatorNamespace),
-				sshSecret:              cm.Data["dynamic."+platformConfigName+".ssh-secret"],
-				platform:               platform,
-				maxInstances:           maxInstances,
-				maxAge:                 time.Minute * time.Duration(maxAge),
-				concurrency:            concurrency,
-				instanceTag:            instanceTag,
-				additionalInstanceTags: additionalInstanceTags,
-			}
-			r.platformConfig[targetPlatform] = ret
-			err = mpcmetrics.RegisterPlatformMetrics(ctx, targetPlatform)
-			if err != nil {
-				return nil, err
-			}
-			return ret, nil
 		}
 	}
 
@@ -814,6 +909,7 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 	//note that we can't use owner refs here because this task runs in a different namespace
 
 	//first verify the secret exists, so we don't hang if it is missing
+	log := logr.FromContextOrDiscard(ctx)
 	secret := kubecore.Secret{}
 	err := r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: sshSecret}, &secret)
 	if err != nil {
@@ -861,6 +957,10 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 	}
 
 	err = r.client.Create(ctx, &provision)
+	if errors.IsAlreadyExists(err) {
+		log.Info("provision task already exists, continuing")
+		return nil // Not an error
+	}
 	return err
 }
 

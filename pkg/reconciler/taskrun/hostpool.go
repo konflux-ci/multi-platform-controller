@@ -3,9 +3,10 @@ package taskrun
 import (
 	"context"
 	"fmt"
-	"knative.dev/pkg/kmeta"
 	"strings"
 	"time"
+
+	"knative.dev/pkg/kmeta"
 
 	"github.com/go-logr/logr"
 	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
@@ -85,7 +86,11 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 		//TODO: is the requeue actually a good idea?
 		//TODO: timeout
 		tr.Labels[WaitingForPlatformLabel] = platformLabel(hp.targetPlatform)
-		return reconcile.Result{RequeueAfter: time.Minute}, r.client.Update(ctx, tr)
+		err = r.client.Update(ctx, tr)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		return reconcile.Result{RequeueAfter: time.Minute}, nil
 	}
 
 	log.Info("allocated host", "host", selected.Name)
@@ -102,15 +107,16 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 
 	if err != nil {
 		//ugh, try and unassign
+		log.Error(err, "failed to launch provisioning task, unassigning host")
 		delete(tr.Labels, AssignedHost)
+		controllerutil.RemoveFinalizer(tr, PipelineFinalizer)
 		updateErr := r.client.Update(ctx, tr)
 		if updateErr != nil {
 			log.Error(updateErr, "Could not unassign task after provisioning failure")
 			return reconcile.Result{}, err
-		} else {
-			log.Error(err, "Failed to provision host from pool")
-			return reconcile.Result{}, err
 		}
+		return reconcile.Result{}, fmt.Errorf("failed to provision host: %v", err)
+
 	}
 	return reconcile.Result{}, nil
 }
