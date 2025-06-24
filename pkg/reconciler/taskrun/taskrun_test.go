@@ -40,327 +40,327 @@ func setupClientAndReconciler(objs []runtimeclient.Object) (runtimeclient.Client
 
 var _ = Describe("TaskRun Reconciler Tests", func() {
 
-	//Describe("Test Config Map Parsing", func() {
-	//	var reconciler *ReconcileTaskRun
-	//
-	//	BeforeEach(func() {
-	//		_, reconciler = setupClientAndReconciler(createHostConfig())
-	//	})
-	//
-	//	It("should parse the ConfigMap correctly", func(ctx SpecContext) {
-	//		configIface, err := reconciler.readConfiguration(ctx, "linux/arm64", userNamespace)
-	//		config := configIface.(HostPool)
-	//		Expect(err).ToNot(HaveOccurred())
-	//		Expect(len(config.hosts)).To(Equal(2))
-	//		Expect(config.hosts["host1"].Platform).Should(Equal("linux/arm64"))
-	//	})
-	//})
-	//
-	//Describe("Test Config Map Parsing For Local", func() {
-	//	var reconciler *ReconcileTaskRun
-	//
-	//	BeforeEach(func() {
-	//		_, reconciler = setupClientAndReconciler(createLocalHostConfig())
-	//	})
-	//
-	//	It("should parse the ConfigMap for local correctly", func(ctx SpecContext) {
-	//		configIface, err := reconciler.readConfiguration(ctx, "linux/arm64", userNamespace)
-	//		Expect(configIface).To(BeAssignableToTypeOf(Local{}))
-	//		Expect(err).ToNot(HaveOccurred())
-	//	})
-	//})
-	//
-	//Describe("Test Config Map Parsing For Dynamic", func() {
-	//	var reconciler *ReconcileTaskRun
-	//
-	//	BeforeEach(func() {
-	//		_, reconciler = setupClientAndReconciler(createDynamicHostConfig())
-	//	})
-	//
-	//	It("should parse the ConfigMap for dynamic correctly", func(ctx SpecContext) {
-	//		configIface, err := reconciler.readConfiguration(ctx, "linux/arm64", userNamespace)
-	//		config := configIface.(DynamicResolver)
-	//		Expect(err).ToNot(HaveOccurred())
-	//		Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("foo", "bar"))
-	//		Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("key", "value"))
-	//	})
-	//})
-	//
-	//Describe("Test Config Map Parsing For Dynamic Pool", func() {
-	//	var reconciler *ReconcileTaskRun
-	//
-	//	BeforeEach(func() {
-	//		_, reconciler = setupClientAndReconciler(createDynamicPoolHostConfig())
-	//	})
-	//
-	//	It("should parse the ConfigMap for dynamic pool correctly", func(ctx SpecContext) {
-	//		configIface, err := reconciler.readConfiguration(ctx, "linux/arm64", userNamespace)
-	//		config := configIface.(DynamicHostPool)
-	//		Expect(err).ToNot(HaveOccurred())
-	//		Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("foo", "bar"))
-	//		Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("key", "value"))
-	//	})
-	//})
-	//
-	//Describe("Test Allocate Host", func() {
-	//	var client runtimeclient.Client
-	//	var reconciler *ReconcileTaskRun
-	//
-	//	BeforeEach(func() {
-	//		client, reconciler = setupClientAndReconciler(createHostConfig())
-	//	})
-	//
-	//	It("should allocate a host correctly", func(ctx SpecContext) {
-	//		tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test")
-	//		provision := getProvisionTaskRun(ctx, GinkgoT(), client, tr)
-	//		params := map[string]string{}
-	//		for _, i := range provision.Spec.Params {
-	//			params[i.Name] = i.Value.StringVal
-	//		}
-	//		Expect(params["SECRET_NAME"]).To(Equal("multi-platform-ssh-test"))
-	//		Expect(params["TASKRUN_NAME"]).To(Equal("test"))
-	//		Expect(params["NAMESPACE"]).To(Equal(userNamespace))
-	//		Expect(params["USER"]).To(Equal("ec2-user"))
-	//		Expect(params["HOST"]).Should(BeElementOf("ec2-34-227-115-211.compute-1.amazonaws.com", "ec2-54-165-44-192.compute-1.amazonaws.com"))
-	//	})
-	//})
-	//
-	//Describe("Test Allocate Cloud Host", func() {
-	//	var client runtimeclient.Client
-	//	var reconciler *ReconcileTaskRun
-	//
-	//	BeforeEach(func() {
-	//		client, reconciler = setupClientAndReconciler(createDynamicHostConfig())
-	//	})
-	//
-	//	It("should allocate a cloud host correctly", func(ctx SpecContext) {
-	//		tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test")
-	//		provision := getProvisionTaskRun(ctx, GinkgoT(), client, tr)
-	//		params := map[string]string{}
-	//		for _, i := range provision.Spec.Params {
-	//			params[i.Name] = i.Value.StringVal
-	//		}
-	//		Expect(params["SECRET_NAME"]).To(Equal("multi-platform-ssh-test"))
-	//		Expect(params["TASKRUN_NAME"]).To(Equal("test"))
-	//		Expect(params["NAMESPACE"]).To(Equal(userNamespace))
-	//		Expect(params["USER"]).To(Equal("root"))
-	//		Expect(params["HOST"]).Should(Equal("test.host.com"))
-	//
-	//		_, ok := cloudImpl.Instances[("test")]
-	//		Expect(ok).Should(Equal(true))
-	//		Expect(cloudImpl.Instances[("test")].Address).Should(Equal("test.host.com"))
-	//		Expect(cloudImpl.Instances[("test")].taskRun).Should(Equal("test task run"))
-	//
-	//		runSuccessfulProvision(ctx, provision, GinkgoT(), client, tr, reconciler)
-	//
-	//		Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)).ShouldNot(HaveOccurred())
-	//		tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
-	//		tr.Status.SetCondition(&apis.Condition{
-	//			Type:               apis.ConditionSucceeded,
-	//			Status:             "True",
-	//			LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now().Add(time.Hour * -2)}},
-	//		})
-	//		Expect(client.Update(ctx, tr)).ShouldNot(HaveOccurred())
-	//
-	//		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
-	//		Expect(err).ShouldNot(HaveOccurred())
-	//
-	//		_, ok = cloudImpl.Instances[("multi-platform-builder-test")]
-	//		Expect(ok).Should(Equal(false))
-	//	})
-	//})
-	//
-	//Describe("Test Allocate Local Host", func() {
-	//	var client runtimeclient.Client
-	//	var reconciler *ReconcileTaskRun
-	//
-	//	BeforeEach(func() {
-	//		client, reconciler = setupClientAndReconciler(createLocalHostConfig())
-	//	})
-	//
-	//	It("should allocate a local host correctly", func(ctx SpecContext) {
-	//		tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test")
-	//		ExpectNoProvisionTaskRun(ctx, GinkgoT(), client, tr)
-	//		secret := getSecret(ctx, client, tr)
-	//		Expect(secret.Data["error"]).To(BeEmpty())
-	//		Expect(secret.Data["host"]).To(Equal([]byte("localhost")))
-	//
-	//		// Set user task as complete - should probably factor this out from all
-	//		// tests to a nice function at some point
-	//		Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)).Should(Succeed())
-	//		tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
-	//		tr.Status.SetCondition(&apis.Condition{
-	//			Type:               apis.ConditionSucceeded,
-	//			Status:             "True",
-	//			LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now().Add(time.Hour * -2)}},
-	//		})
-	//		Expect(client.Update(ctx, tr)).Should(Succeed())
-	//
-	//		// Run reconciler once more to trigger cleanup
-	//		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
-	//		Expect(err).ShouldNot(HaveOccurred())
-	//
-	//		assertNoSecret(ctx, GinkgoT(), client, tr)
-	//	})
-	//})
-	//
-	//Describe("Test Change Host Config", func() {
-	//	var client runtimeclient.Client
-	//	var reconciler *ReconcileTaskRun
-	//
-	//	BeforeEach(func() {
-	//		client, reconciler = setupClientAndReconciler(createDynamicHostConfig())
-	//
-	//	})
-	//
-	//	It("should update the host configuration correctly", func(ctx SpecContext) {
-	//		tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test")
-	//		provision := getProvisionTaskRun(ctx, GinkgoT(), client, tr)
-	//		params := map[string]string{}
-	//		for _, i := range provision.Spec.Params {
-	//			params[i.Name] = i.Value.StringVal
-	//
-	//		}
-	//
-	//		Expect(params["SECRET_NAME"]).To(Equal("multi-platform-ssh-test"))
-	//		Expect(params["TASKRUN_NAME"]).To(Equal("test"))
-	//		Expect(params["NAMESPACE"]).To(Equal(userNamespace))
-	//		Expect(params["USER"]).To(Equal("root"))
-	//		Expect(params["HOST"]).To(Equal("test.host.com"))
-	//
-	//		_, ok := cloudImpl.Instances[("test")]
-	//		Expect(ok).Should(Equal(true))
-	//		Expect(cloudImpl.Instances[("test")].Address).Should(Equal("test.host.com"))
-	//		Expect(cloudImpl.Instances[("test")].taskRun).Should(Equal("test task run"))
-	//
-	//		runSuccessfulProvision(ctx, provision, GinkgoT(), client, tr, reconciler)
-	//
-	//		Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)).To(Succeed())
-	//		tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
-	//		tr.Status.SetCondition(&apis.Condition{
-	//			Type:               apis.ConditionSucceeded,
-	//			Status:             "True",
-	//			LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now().Add(time.Hour * -2)}},
-	//		})
-	//		Expect(client.Update(ctx, tr)).To(Succeed())
-	//
-	//		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
-	//		Expect(err).ToNot(HaveOccurred())
-	//
-	//		_, ok = cloudImpl.Instances[("multi-platform-builder-test")]
-	//		Expect(ok).Should(Equal(false))
-	//
-	//		// Now change the config map
-	//		trl := pipelinev1.TaskRunList{}
-	//		Expect(client.List(ctx, &trl)).To(Succeed())
-	//		for _, t := range trl.Items {
-	//			Expect(client.Delete(ctx, &t)).To(Succeed())
-	//
-	//		}
-	//
-	//		vm := createHostConfigMap()
-	//
-	//		cm := v1.ConfigMap{}
-	//		Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: HostConfig}, &cm)).To(Succeed())
-	//		cm.Data = vm.Data
-	//		Expect(client.Update(ctx, &cm)).To(Succeed())
-	//
-	//		tr = runUserPipeline(ctx, GinkgoT(), client, reconciler, "test")
-	//		provision = getProvisionTaskRun(ctx, GinkgoT(), client, tr)
-	//		params = map[string]string{}
-	//		for _, i := range provision.Spec.Params {
-	//			params[i.Name] = i.Value.StringVal
-	//
-	//		}
-	//
-	//		Expect(params["SECRET_NAME"]).To(Equal("multi-platform-ssh-test"))
-	//		Expect(params["TASKRUN_NAME"]).To(Equal("test"))
-	//		Expect(params["NAMESPACE"]).To(Equal(userNamespace))
-	//		Expect(params["USER"]).To(Equal("ec2-user"))
-	//		Expect(params["HOST"]).To(BeElementOf("ec2-34-227-115-211.compute-1.amazonaws.com", "ec2-54-165-44-192.compute-1.amazonaws.com"))
-	//
-	//		runSuccessfulProvision(ctx, provision, GinkgoT(), client, tr, reconciler)
-	//
-	//		Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)).To(Succeed())
-	//		tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
-	//		tr.Status.SetCondition(&apis.Condition{
-	//			Type:               apis.ConditionSucceeded,
-	//			Status:             "True",
-	//			LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now().Add(time.Hour * -2)}},
-	//		})
-	//		Expect(client.Update(ctx, tr)).To(Succeed())
-	//
-	//		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
-	//		Expect(err).ToNot(HaveOccurred())
-	//
-	//	})
-	//
-	//})
-	//
-	//Describe("Test Allocate Cloud Host Instance Failure", func() {
-	//	var client runtimeclient.Client
-	//	var reconciler *ReconcileTaskRun
-	//
-	//	BeforeEach(func() {
-	//		client, reconciler = setupClientAndReconciler(createDynamicHostConfig())
-	//		cloudImpl.FailGetAddress = true
-	//	})
-	//
-	//	AfterEach(func() {
-	//		cloudImpl.FailGetAddress = false
-	//	})
-	//
-	//	It("should handle instance failure correctly", func(ctx SpecContext) {
-	//		createUserTaskRun(ctx, GinkgoT(), client, "test", "linux/arm64")
-	//		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
-	//		Expect(err).ToNot(HaveOccurred())
-	//		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
-	//		Expect(err).To(HaveOccurred())
-	//		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
-	//		Expect(err).ToNot(HaveOccurred())
-	//		tr := getUserTaskRun(ctx, GinkgoT(), client, "test")
-	//		Expect(tr.Labels[AssignedHost]).To(BeEmpty())
-	//		Expect(cloudImpl.Running).Should(Equal(0))
-	//		_, ok := cloudImpl.Instances[("multi-platform-builder-test")]
-	//		Expect(ok).Should(Equal(false))
-	//	})
-	//})
-	//
-	//Describe("Test Allocate Cloud Host Instance Timeout", func() {
-	//	var client runtimeclient.Client
-	//	var reconciler *ReconcileTaskRun
-	//
-	//	BeforeEach(func() {
-	//		client, reconciler = setupClientAndReconciler(createDynamicHostConfig())
-	//		cloudImpl.TimeoutGetAddress = true
-	//	})
-	//
-	//	AfterEach(func() {
-	//		cloudImpl.TimeoutGetAddress = false
-	//	})
-	//
-	//	It("should handle instance timeout correctly", func(ctx SpecContext) {
-	//		createUserTaskRun(ctx, GinkgoT(), client, "test", "linux/arm64")
-	//		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
-	//		Expect(err).ToNot(HaveOccurred())
-	//		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
-	//		Expect(err).ToNot(HaveOccurred())
-	//		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
-	//		Expect(err).ToNot(HaveOccurred())
-	//		time.Sleep(time.Second)
-	//		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
-	//		Expect(err).ToNot(HaveOccurred())
-	//		time.Sleep(time.Second * 2)
-	//		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
-	//		Expect(err).To(HaveOccurred())
-	//		tr := getUserTaskRun(ctx, GinkgoT(), client, "test")
-	//		Expect(tr.Labels[AssignedHost]).To(BeEmpty())
-	//		Expect(cloudImpl.Running).Should(Equal(0))
-	//		_, ok := cloudImpl.Instances[("multi-platform-builder-test")]
-	//		Expect(ok).Should(Equal(false))
-	//	})
-	//})
-	//
+	Describe("Test Config Map Parsing", func() {
+		var reconciler *ReconcileTaskRun
+
+		BeforeEach(func() {
+			_, reconciler = setupClientAndReconciler(createHostConfig())
+		})
+
+		It("should parse the ConfigMap correctly", func(ctx SpecContext) {
+			configIface, err := reconciler.readConfiguration(ctx, "linux/arm64", userNamespace)
+			config := configIface.(HostPool)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(len(config.hosts)).To(Equal(2))
+			Expect(config.hosts["host1"].Platform).Should(Equal("linux/arm64"))
+		})
+	})
+
+	Describe("Test Config Map Parsing For Local", func() {
+		var reconciler *ReconcileTaskRun
+
+		BeforeEach(func() {
+			_, reconciler = setupClientAndReconciler(createLocalHostConfig())
+		})
+
+		It("should parse the ConfigMap for local correctly", func(ctx SpecContext) {
+			configIface, err := reconciler.readConfiguration(ctx, "linux/arm64", userNamespace)
+			Expect(configIface).To(BeAssignableToTypeOf(Local{}))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Describe("Test Config Map Parsing For Dynamic", func() {
+		var reconciler *ReconcileTaskRun
+
+		BeforeEach(func() {
+			_, reconciler = setupClientAndReconciler(createDynamicHostConfig())
+		})
+
+		It("should parse the ConfigMap for dynamic correctly", func(ctx SpecContext) {
+			configIface, err := reconciler.readConfiguration(ctx, "linux/arm64", userNamespace)
+			config := configIface.(DynamicResolver)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("foo", "bar"))
+			Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("key", "value"))
+		})
+	})
+
+	Describe("Test Config Map Parsing For Dynamic Pool", func() {
+		var reconciler *ReconcileTaskRun
+
+		BeforeEach(func() {
+			_, reconciler = setupClientAndReconciler(createDynamicPoolHostConfig())
+		})
+
+		It("should parse the ConfigMap for dynamic pool correctly", func(ctx SpecContext) {
+			configIface, err := reconciler.readConfiguration(ctx, "linux/arm64", userNamespace)
+			config := configIface.(DynamicHostPool)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("foo", "bar"))
+			Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("key", "value"))
+		})
+	})
+
+	Describe("Test Allocate Host", func() {
+		var client runtimeclient.Client
+		var reconciler *ReconcileTaskRun
+
+		BeforeEach(func() {
+			client, reconciler = setupClientAndReconciler(createHostConfig())
+		})
+
+		It("should allocate a host correctly", func(ctx SpecContext) {
+			tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test")
+			provision := getProvisionTaskRun(ctx, GinkgoT(), client, tr)
+			params := map[string]string{}
+			for _, i := range provision.Spec.Params {
+				params[i.Name] = i.Value.StringVal
+			}
+			Expect(params["SECRET_NAME"]).To(Equal("multi-platform-ssh-test"))
+			Expect(params["TASKRUN_NAME"]).To(Equal("test"))
+			Expect(params["NAMESPACE"]).To(Equal(userNamespace))
+			Expect(params["USER"]).To(Equal("ec2-user"))
+			Expect(params["HOST"]).Should(BeElementOf("ec2-34-227-115-211.compute-1.amazonaws.com", "ec2-54-165-44-192.compute-1.amazonaws.com"))
+		})
+	})
+
+	Describe("Test Allocate Cloud Host", func() {
+		var client runtimeclient.Client
+		var reconciler *ReconcileTaskRun
+
+		BeforeEach(func() {
+			client, reconciler = setupClientAndReconciler(createDynamicHostConfig())
+		})
+
+		It("should allocate a cloud host correctly", func(ctx SpecContext) {
+			tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test")
+			provision := getProvisionTaskRun(ctx, GinkgoT(), client, tr)
+			params := map[string]string{}
+			for _, i := range provision.Spec.Params {
+				params[i.Name] = i.Value.StringVal
+			}
+			Expect(params["SECRET_NAME"]).To(Equal("multi-platform-ssh-test"))
+			Expect(params["TASKRUN_NAME"]).To(Equal("test"))
+			Expect(params["NAMESPACE"]).To(Equal(userNamespace))
+			Expect(params["USER"]).To(Equal("root"))
+			Expect(params["HOST"]).Should(Equal("test.host.com"))
+
+			_, ok := cloudImpl.Instances[("test")]
+			Expect(ok).Should(Equal(true))
+			Expect(cloudImpl.Instances[("test")].Address).Should(Equal("test.host.com"))
+			Expect(cloudImpl.Instances[("test")].taskRun).Should(Equal("test task run"))
+
+			runSuccessfulProvision(ctx, provision, GinkgoT(), client, tr, reconciler)
+
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)).ShouldNot(HaveOccurred())
+			tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			tr.Status.SetCondition(&apis.Condition{
+				Type:               apis.ConditionSucceeded,
+				Status:             "True",
+				LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now().Add(time.Hour * -2)}},
+			})
+			Expect(client.Update(ctx, tr)).ShouldNot(HaveOccurred())
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			_, ok = cloudImpl.Instances[("multi-platform-builder-test")]
+			Expect(ok).Should(Equal(false))
+		})
+	})
+
+	Describe("Test Allocate Local Host", func() {
+		var client runtimeclient.Client
+		var reconciler *ReconcileTaskRun
+
+		BeforeEach(func() {
+			client, reconciler = setupClientAndReconciler(createLocalHostConfig())
+		})
+
+		It("should allocate a local host correctly", func(ctx SpecContext) {
+			tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test")
+			ExpectNoProvisionTaskRun(ctx, GinkgoT(), client, tr)
+			secret := getSecret(ctx, client, tr)
+			Expect(secret.Data["error"]).To(BeEmpty())
+			Expect(secret.Data["host"]).To(Equal([]byte("localhost")))
+
+			// Set user task as complete - should probably factor this out from all
+			// tests to a nice function at some point
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)).Should(Succeed())
+			tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			tr.Status.SetCondition(&apis.Condition{
+				Type:               apis.ConditionSucceeded,
+				Status:             "True",
+				LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now().Add(time.Hour * -2)}},
+			})
+			Expect(client.Update(ctx, tr)).Should(Succeed())
+
+			// Run reconciler once more to trigger cleanup
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			assertNoSecret(ctx, GinkgoT(), client, tr)
+		})
+	})
+
+	Describe("Test Change Host Config", func() {
+		var client runtimeclient.Client
+		var reconciler *ReconcileTaskRun
+
+		BeforeEach(func() {
+			client, reconciler = setupClientAndReconciler(createDynamicHostConfig())
+
+		})
+
+		It("should update the host configuration correctly", func(ctx SpecContext) {
+			tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test")
+			provision := getProvisionTaskRun(ctx, GinkgoT(), client, tr)
+			params := map[string]string{}
+			for _, i := range provision.Spec.Params {
+				params[i.Name] = i.Value.StringVal
+
+			}
+
+			Expect(params["SECRET_NAME"]).To(Equal("multi-platform-ssh-test"))
+			Expect(params["TASKRUN_NAME"]).To(Equal("test"))
+			Expect(params["NAMESPACE"]).To(Equal(userNamespace))
+			Expect(params["USER"]).To(Equal("root"))
+			Expect(params["HOST"]).To(Equal("test.host.com"))
+
+			_, ok := cloudImpl.Instances[("test")]
+			Expect(ok).Should(Equal(true))
+			Expect(cloudImpl.Instances[("test")].Address).Should(Equal("test.host.com"))
+			Expect(cloudImpl.Instances[("test")].taskRun).Should(Equal("test task run"))
+
+			runSuccessfulProvision(ctx, provision, GinkgoT(), client, tr, reconciler)
+
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)).To(Succeed())
+			tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			tr.Status.SetCondition(&apis.Condition{
+				Type:               apis.ConditionSucceeded,
+				Status:             "True",
+				LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now().Add(time.Hour * -2)}},
+			})
+			Expect(client.Update(ctx, tr)).To(Succeed())
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
+			Expect(err).ToNot(HaveOccurred())
+
+			_, ok = cloudImpl.Instances[("multi-platform-builder-test")]
+			Expect(ok).Should(Equal(false))
+
+			// Now change the config map
+			trl := pipelinev1.TaskRunList{}
+			Expect(client.List(ctx, &trl)).To(Succeed())
+			for _, t := range trl.Items {
+				Expect(client.Delete(ctx, &t)).To(Succeed())
+
+			}
+
+			vm := createHostConfigMap()
+
+			cm := v1.ConfigMap{}
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: HostConfig}, &cm)).To(Succeed())
+			cm.Data = vm.Data
+			Expect(client.Update(ctx, &cm)).To(Succeed())
+
+			tr = runUserPipeline(ctx, GinkgoT(), client, reconciler, "test")
+			provision = getProvisionTaskRun(ctx, GinkgoT(), client, tr)
+			params = map[string]string{}
+			for _, i := range provision.Spec.Params {
+				params[i.Name] = i.Value.StringVal
+
+			}
+
+			Expect(params["SECRET_NAME"]).To(Equal("multi-platform-ssh-test"))
+			Expect(params["TASKRUN_NAME"]).To(Equal("test"))
+			Expect(params["NAMESPACE"]).To(Equal(userNamespace))
+			Expect(params["USER"]).To(Equal("ec2-user"))
+			Expect(params["HOST"]).To(BeElementOf("ec2-34-227-115-211.compute-1.amazonaws.com", "ec2-54-165-44-192.compute-1.amazonaws.com"))
+
+			runSuccessfulProvision(ctx, provision, GinkgoT(), client, tr, reconciler)
+
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)).To(Succeed())
+			tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			tr.Status.SetCondition(&apis.Condition{
+				Type:               apis.ConditionSucceeded,
+				Status:             "True",
+				LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now().Add(time.Hour * -2)}},
+			})
+			Expect(client.Update(ctx, tr)).To(Succeed())
+
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
+			Expect(err).ToNot(HaveOccurred())
+
+		})
+
+	})
+
+	Describe("Test Allocate Cloud Host Instance Failure", func() {
+		var client runtimeclient.Client
+		var reconciler *ReconcileTaskRun
+
+		BeforeEach(func() {
+			client, reconciler = setupClientAndReconciler(createDynamicHostConfig())
+			cloudImpl.FailGetAddress = true
+		})
+
+		AfterEach(func() {
+			cloudImpl.FailGetAddress = false
+		})
+
+		It("should handle instance failure correctly", func(ctx SpecContext) {
+			createUserTaskRun(ctx, GinkgoT(), client, "test", "linux/arm64")
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
+			Expect(err).ToNot(HaveOccurred())
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
+			Expect(err).To(HaveOccurred())
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
+			Expect(err).ToNot(HaveOccurred())
+			tr := getUserTaskRun(ctx, GinkgoT(), client, "test")
+			Expect(tr.Labels[AssignedHost]).To(BeEmpty())
+			Expect(cloudImpl.Running).Should(Equal(0))
+			_, ok := cloudImpl.Instances[("multi-platform-builder-test")]
+			Expect(ok).Should(Equal(false))
+		})
+	})
+
+	Describe("Test Allocate Cloud Host Instance Timeout", func() {
+		var client runtimeclient.Client
+		var reconciler *ReconcileTaskRun
+
+		BeforeEach(func() {
+			client, reconciler = setupClientAndReconciler(createDynamicHostConfig())
+			cloudImpl.TimeoutGetAddress = true
+		})
+
+		AfterEach(func() {
+			cloudImpl.TimeoutGetAddress = false
+		})
+
+		It("should handle instance timeout correctly", func(ctx SpecContext) {
+			createUserTaskRun(ctx, GinkgoT(), client, "test", "linux/arm64")
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
+			Expect(err).ToNot(HaveOccurred())
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
+			Expect(err).ToNot(HaveOccurred())
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
+			Expect(err).ToNot(HaveOccurred())
+			time.Sleep(time.Second)
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
+			Expect(err).ToNot(HaveOccurred())
+			time.Sleep(time.Second * 2)
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
+			Expect(err).To(HaveOccurred())
+			tr := getUserTaskRun(ctx, GinkgoT(), client, "test")
+			Expect(tr.Labels[AssignedHost]).To(BeEmpty())
+			Expect(cloudImpl.Running).Should(Equal(0))
+			_, ok := cloudImpl.Instances[("multi-platform-builder-test")]
+			Expect(ok).Should(Equal(false))
+		})
+	})
+
 	Describe("Test Allocate Cloud Host Provision Failure In Middle", func() {
 		var client runtimeclient.Client
 		var reconciler *ReconcileTaskRun
@@ -393,248 +393,248 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			Expect(cloudImpl.Running).Should(Equal(0))
 		})
 	})
-	//
-	//Describe("Test Allocate Cloud Host With Dynamic Pool", func() {
-	//	var client runtimeclient.Client
-	//	var reconciler *ReconcileTaskRun
-	//
-	//	BeforeEach(func() {
-	//		client, reconciler = setupClientAndReconciler(createDynamicPoolHostConfig())
-	//	})
-	//
-	//	It("should allocate a cloud host with dynamic pool correctly", func(ctx SpecContext) {
-	//		tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test")
-	//		provision := getProvisionTaskRun(ctx, GinkgoT(), client, tr)
-	//		params := map[string]string{}
-	//		for _, i := range provision.Spec.Params {
-	//			params[i.Name] = i.Value.StringVal
-	//		}
-	//		Expect(params["SECRET_NAME"]).To(Equal("multi-platform-ssh-test"))
-	//		Expect(params["TASKRUN_NAME"]).To(Equal("test"))
-	//		Expect(params["NAMESPACE"]).To(Equal(userNamespace))
-	//		Expect(params["USER"]).To(Equal("root"))
-	//		Expect(params["HOST"]).Should(ContainSubstring(".host.com"))
-	//
-	//		runSuccessfulProvision(ctx, provision, GinkgoT(), client, tr, reconciler)
-	//
-	//		Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)).ShouldNot(HaveOccurred())
-	//		tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
-	//		tr.Status.SetCondition(&apis.Condition{
-	//			Type:               apis.ConditionSucceeded,
-	//			Status:             "True",
-	//			LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now().Add(time.Hour * -2)}},
-	//		})
-	//		Expect(client.Update(ctx, tr)).ShouldNot(HaveOccurred())
-	//
-	//		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
-	//		Expect(err).ShouldNot(HaveOccurred())
-	//
-	//		Expect(len(cloudImpl.Instances)).Should(Equal(1))
-	//	})
-	//})
-	//
-	//Describe("Test Provision Failure", func() {
-	//	var client runtimeclient.Client
-	//	var reconciler *ReconcileTaskRun
-	//
-	//	BeforeEach(func(ctx SpecContext) {
-	//		client, reconciler = setupClientAndReconciler(createHostConfig())
-	//		tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test")
-	//		provision := getProvisionTaskRun(ctx, GinkgoT(), client, tr)
-	//
-	//		provision.Status.CompletionTime = &metav1.Time{Time: time.Now()}
-	//		provision.Status.SetCondition(&apis.Condition{
-	//			Type:               apis.ConditionSucceeded,
-	//			Status:             "False",
-	//			LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now()}},
-	//		})
-	//		Expect(client.Update(ctx, provision)).ShouldNot(HaveOccurred())
-	//
-	//		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: provision.Namespace, Name: provision.Name}})
-	//		Expect(err).ShouldNot(HaveOccurred())
-	//
-	//		tr = getUserTaskRun(ctx, GinkgoT(), client, "test")
-	//		Expect(tr.Annotations[FailedHosts]).Should(BeElementOf("host1", "host2"))
-	//		Expect(tr.Labels[AssignedHost]).To(Equal(""))
-	//		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
-	//		Expect(err).ShouldNot(HaveOccurred())
-	//
-	//		provision = getProvisionTaskRun(ctx, GinkgoT(), client, tr)
-	//
-	//		provision.Status.CompletionTime = &metav1.Time{Time: time.Now()}
-	//		provision.Status.SetCondition(&apis.Condition{
-	//			Type:               apis.ConditionSucceeded,
-	//			Status:             "False",
-	//			LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now()}},
-	//		})
-	//		Expect(client.Update(ctx, provision)).ShouldNot(HaveOccurred())
-	//		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: provision.Namespace, Name: provision.Name}})
-	//		Expect(err).ShouldNot(HaveOccurred())
-	//
-	//		tr = getUserTaskRun(ctx, GinkgoT(), client, "test")
-	//		Expect(tr.Annotations[FailedHosts]).Should(ContainSubstring("host2"))
-	//		Expect(tr.Annotations[FailedHosts]).Should(ContainSubstring("host1"))
-	//		Expect(tr.Labels[AssignedHost]).Should(Equal(""))
-	//		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
-	//		Expect(err).Should(HaveOccurred())
-	//
-	//		secret := getSecret(ctx, client, tr)
-	//		Expect(secret.Data["error"]).ToNot(BeEmpty())
-	//	})
-	//})
-	//
-	//Describe("Test Provision Success But No Secret", func() {
-	//	var client runtimeclient.Client
-	//	var reconciler *ReconcileTaskRun
-	//
-	//	BeforeEach(func(ctx SpecContext) {
-	//		client, reconciler = setupClientAndReconciler(createHostConfig())
-	//		tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test")
-	//		provision := getProvisionTaskRun(ctx, GinkgoT(), client, tr)
-	//
-	//		provision.Status.CompletionTime = &metav1.Time{Time: time.Now()}
-	//		provision.Status.SetCondition(&apis.Condition{
-	//			Type:               apis.ConditionSucceeded,
-	//			Status:             "True",
-	//			LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now()}},
-	//		})
-	//		Expect(client.Update(ctx, provision)).ShouldNot(HaveOccurred())
-	//
-	//		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: provision.Namespace, Name: provision.Name}})
-	//		Expect(err).ShouldNot(HaveOccurred())
-	//		secret := getSecret(ctx, client, tr)
-	//		Expect(secret.Data["error"]).ToNot(BeEmpty())
-	//	})
-	//})
-	//
-	//Describe("Test Provision Success", func() {
-	//	var client runtimeclient.Client
-	//	var reconciler *ReconcileTaskRun
-	//
-	//	BeforeEach(func(ctx SpecContext) {
-	//		client, reconciler = setupClientAndReconciler(createHostConfig())
-	//		tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test")
-	//		provision := getProvisionTaskRun(ctx, GinkgoT(), client, tr)
-	//
-	//		runSuccessfulProvision(ctx, provision, GinkgoT(), client, tr, reconciler)
-	//
-	//		tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
-	//		tr.Status.SetCondition(&apis.Condition{
-	//			Type:               apis.ConditionSucceeded,
-	//			Status:             "True",
-	//			LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now()}},
-	//		})
-	//		Expect(client.Update(ctx, tr)).ShouldNot(HaveOccurred())
-	//		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
-	//		Expect(err).ShouldNot(HaveOccurred())
-	//		assertNoSecret(ctx, GinkgoT(), client, tr)
-	//
-	//		list := pipelinev1.TaskRunList{}
-	//		err = client.List(ctx, &list)
-	//		Expect(err).ToNot(HaveOccurred())
-	//
-	//		for idx, i := range list.Items {
-	//			if i.Labels[TaskTypeLabel] != "" {
-	//				if i.Status.CompletionTime == nil {
-	//					endTime := time.Now().Add(time.Hour * -2)
-	//					list.Items[idx].Status.CompletionTime = &metav1.Time{Time: endTime}
-	//					list.Items[idx].Status.SetCondition(&apis.Condition{
-	//						Type:               apis.ConditionSucceeded,
-	//						Status:             "True",
-	//						LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: endTime}},
-	//					})
-	//					Expect(client.Update(ctx, &list.Items[idx])).ShouldNot(HaveOccurred())
-	//				}
-	//
-	//				_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: i.Namespace, Name: i.Name}})
-	//				Expect(err).ShouldNot(HaveOccurred())
-	//			}
-	//		}
-	//
-	//		taskExists := false
-	//		err = client.List(ctx, &list)
-	//		Expect(err).ToNot(HaveOccurred())
-	//		for _, i := range list.Items {
-	//			if i.Labels[TaskTypeLabel] != "" {
-	//				taskExists = true
-	//			}
-	//		}
-	//		Expect(taskExists).To(BeFalse())
-	//	})
-	//})
-	//
-	//Describe("Test Wait For Concurrency", func() {
-	//	var client runtimeclient.Client
-	//	var reconciler *ReconcileTaskRun
-	//
-	//	BeforeEach(func(ctx SpecContext) {
-	//		client, reconciler = setupClientAndReconciler(createHostConfig())
-	//		runs := []*pipelinev1.TaskRun{}
-	//		for i := 0; i < 8; i++ {
-	//			tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, fmt.Sprintf("test-%d", i))
-	//			provision := getProvisionTaskRun(ctx, GinkgoT(), client, tr)
-	//			runSuccessfulProvision(ctx, provision, GinkgoT(), client, tr, reconciler)
-	//			runs = append(runs, tr)
-	//		}
-	//		name := fmt.Sprintf("test-%d", 9)
-	//		createUserTaskRun(ctx, GinkgoT(), client, name, "linux/arm64")
-	//		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
-	//		Expect(err).ToNot(HaveOccurred())
-	//		tr := getUserTaskRun(ctx, GinkgoT(), client, name)
-	//		Expect(tr.Labels[WaitingForPlatformLabel]).To(Equal("linux-arm64"))
-	//
-	//		running := runs[0]
-	//		running.Status.CompletionTime = &metav1.Time{Time: time.Now()}
-	//		running.Status.SetCondition(&apis.Condition{
-	//			Type:               apis.ConditionSucceeded,
-	//			Status:             "True",
-	//			LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now()}},
-	//		})
-	//		Expect(client.Update(ctx, running)).ShouldNot(HaveOccurred())
-	//		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: running.Namespace, Name: running.Name}})
-	//		Expect(err).ShouldNot(HaveOccurred())
-	//		assertNoSecret(ctx, GinkgoT(), client, running)
-	//
-	//		tr = getUserTaskRun(ctx, GinkgoT(), client, name)
-	//		Expect(tr.Labels[WaitingForPlatformLabel]).To(BeEmpty())
-	//		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
-	//		Expect(err).ToNot(HaveOccurred())
-	//		tr = getUserTaskRun(ctx, GinkgoT(), client, name)
-	//		Expect(getProvisionTaskRun(ctx, GinkgoT(), client, tr)).ToNot(BeNil())
-	//	})
-	//})
-	//
-	//Describe("Test No Host Config", func() {
-	//	var client runtimeclient.Client
-	//	var reconciler *ReconcileTaskRun
-	//
-	//	BeforeEach(func(ctx SpecContext) {
-	//		client, reconciler = setupClientAndReconciler([]runtimeclient.Object{})
-	//		createUserTaskRun(ctx, GinkgoT(), client, "test", "linux/arm64")
-	//		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
-	//		Expect(err).ToNot(HaveOccurred())
-	//		tr := getUserTaskRun(ctx, GinkgoT(), client, "test")
-	//
-	//		secret := getSecret(ctx, client, tr)
-	//		Expect(secret.Data["error"]).ToNot(BeEmpty())
-	//	})
-	//})
-	//
-	//Describe("Test No Host With Out Platform", func() {
-	//	var client runtimeclient.Client
-	//	var reconciler *ReconcileTaskRun
-	//
-	//	BeforeEach(func(ctx SpecContext) {
-	//		client, reconciler = setupClientAndReconciler(createHostConfig())
-	//		createUserTaskRun(ctx, GinkgoT(), client, "test", "powerpc")
-	//		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
-	//		Expect(err).To(HaveOccurred())
-	//		tr := getUserTaskRun(ctx, GinkgoT(), client, "test")
-	//
-	//		secret := getSecret(ctx, client, tr)
-	//		Expect(secret.Data["error"]).ToNot(BeEmpty())
-	//	})
-	//})
+
+	Describe("Test Allocate Cloud Host With Dynamic Pool", func() {
+		var client runtimeclient.Client
+		var reconciler *ReconcileTaskRun
+
+		BeforeEach(func() {
+			client, reconciler = setupClientAndReconciler(createDynamicPoolHostConfig())
+		})
+
+		It("should allocate a cloud host with dynamic pool correctly", func(ctx SpecContext) {
+			tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test")
+			provision := getProvisionTaskRun(ctx, GinkgoT(), client, tr)
+			params := map[string]string{}
+			for _, i := range provision.Spec.Params {
+				params[i.Name] = i.Value.StringVal
+			}
+			Expect(params["SECRET_NAME"]).To(Equal("multi-platform-ssh-test"))
+			Expect(params["TASKRUN_NAME"]).To(Equal("test"))
+			Expect(params["NAMESPACE"]).To(Equal(userNamespace))
+			Expect(params["USER"]).To(Equal("root"))
+			Expect(params["HOST"]).Should(ContainSubstring(".host.com"))
+
+			runSuccessfulProvision(ctx, provision, GinkgoT(), client, tr, reconciler)
+
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)).ShouldNot(HaveOccurred())
+			tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			tr.Status.SetCondition(&apis.Condition{
+				Type:               apis.ConditionSucceeded,
+				Status:             "True",
+				LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now().Add(time.Hour * -2)}},
+			})
+			Expect(client.Update(ctx, tr)).ShouldNot(HaveOccurred())
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			Expect(len(cloudImpl.Instances)).Should(Equal(1))
+		})
+	})
+
+	Describe("Test Provision Failure", func() {
+		var client runtimeclient.Client
+		var reconciler *ReconcileTaskRun
+
+		BeforeEach(func(ctx SpecContext) {
+			client, reconciler = setupClientAndReconciler(createHostConfig())
+			tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test")
+			provision := getProvisionTaskRun(ctx, GinkgoT(), client, tr)
+
+			provision.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			provision.Status.SetCondition(&apis.Condition{
+				Type:               apis.ConditionSucceeded,
+				Status:             "False",
+				LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now()}},
+			})
+			Expect(client.Update(ctx, provision)).ShouldNot(HaveOccurred())
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: provision.Namespace, Name: provision.Name}})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			tr = getUserTaskRun(ctx, GinkgoT(), client, "test")
+			Expect(tr.Annotations[FailedHosts]).Should(BeElementOf("host1", "host2"))
+			Expect(tr.Labels[AssignedHost]).To(Equal(""))
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			provision = getProvisionTaskRun(ctx, GinkgoT(), client, tr)
+
+			provision.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			provision.Status.SetCondition(&apis.Condition{
+				Type:               apis.ConditionSucceeded,
+				Status:             "False",
+				LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now()}},
+			})
+			Expect(client.Update(ctx, provision)).ShouldNot(HaveOccurred())
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: provision.Namespace, Name: provision.Name}})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			tr = getUserTaskRun(ctx, GinkgoT(), client, "test")
+			Expect(tr.Annotations[FailedHosts]).Should(ContainSubstring("host2"))
+			Expect(tr.Annotations[FailedHosts]).Should(ContainSubstring("host1"))
+			Expect(tr.Labels[AssignedHost]).Should(Equal(""))
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
+			Expect(err).Should(HaveOccurred())
+
+			secret := getSecret(ctx, client, tr)
+			Expect(secret.Data["error"]).ToNot(BeEmpty())
+		})
+	})
+
+	Describe("Test Provision Success But No Secret", func() {
+		var client runtimeclient.Client
+		var reconciler *ReconcileTaskRun
+
+		BeforeEach(func(ctx SpecContext) {
+			client, reconciler = setupClientAndReconciler(createHostConfig())
+			tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test")
+			provision := getProvisionTaskRun(ctx, GinkgoT(), client, tr)
+
+			provision.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			provision.Status.SetCondition(&apis.Condition{
+				Type:               apis.ConditionSucceeded,
+				Status:             "True",
+				LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now()}},
+			})
+			Expect(client.Update(ctx, provision)).ShouldNot(HaveOccurred())
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: provision.Namespace, Name: provision.Name}})
+			Expect(err).ShouldNot(HaveOccurred())
+			secret := getSecret(ctx, client, tr)
+			Expect(secret.Data["error"]).ToNot(BeEmpty())
+		})
+	})
+
+	Describe("Test Provision Success", func() {
+		var client runtimeclient.Client
+		var reconciler *ReconcileTaskRun
+
+		BeforeEach(func(ctx SpecContext) {
+			client, reconciler = setupClientAndReconciler(createHostConfig())
+			tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test")
+			provision := getProvisionTaskRun(ctx, GinkgoT(), client, tr)
+
+			runSuccessfulProvision(ctx, provision, GinkgoT(), client, tr, reconciler)
+
+			tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			tr.Status.SetCondition(&apis.Condition{
+				Type:               apis.ConditionSucceeded,
+				Status:             "True",
+				LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now()}},
+			})
+			Expect(client.Update(ctx, tr)).ShouldNot(HaveOccurred())
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
+			Expect(err).ShouldNot(HaveOccurred())
+			assertNoSecret(ctx, GinkgoT(), client, tr)
+
+			list := pipelinev1.TaskRunList{}
+			err = client.List(ctx, &list)
+			Expect(err).ToNot(HaveOccurred())
+
+			for idx, i := range list.Items {
+				if i.Labels[TaskTypeLabel] != "" {
+					if i.Status.CompletionTime == nil {
+						endTime := time.Now().Add(time.Hour * -2)
+						list.Items[idx].Status.CompletionTime = &metav1.Time{Time: endTime}
+						list.Items[idx].Status.SetCondition(&apis.Condition{
+							Type:               apis.ConditionSucceeded,
+							Status:             "True",
+							LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: endTime}},
+						})
+						Expect(client.Update(ctx, &list.Items[idx])).ShouldNot(HaveOccurred())
+					}
+
+					_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: i.Namespace, Name: i.Name}})
+					Expect(err).ShouldNot(HaveOccurred())
+				}
+			}
+
+			taskExists := false
+			err = client.List(ctx, &list)
+			Expect(err).ToNot(HaveOccurred())
+			for _, i := range list.Items {
+				if i.Labels[TaskTypeLabel] != "" {
+					taskExists = true
+				}
+			}
+			Expect(taskExists).To(BeFalse())
+		})
+	})
+
+	Describe("Test Wait For Concurrency", func() {
+		var client runtimeclient.Client
+		var reconciler *ReconcileTaskRun
+
+		BeforeEach(func(ctx SpecContext) {
+			client, reconciler = setupClientAndReconciler(createHostConfig())
+			runs := []*pipelinev1.TaskRun{}
+			for i := 0; i < 8; i++ {
+				tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, fmt.Sprintf("test-%d", i))
+				provision := getProvisionTaskRun(ctx, GinkgoT(), client, tr)
+				runSuccessfulProvision(ctx, provision, GinkgoT(), client, tr, reconciler)
+				runs = append(runs, tr)
+			}
+			name := fmt.Sprintf("test-%d", 9)
+			createUserTaskRun(ctx, GinkgoT(), client, name, "linux/arm64")
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
+			Expect(err).ToNot(HaveOccurred())
+			tr := getUserTaskRun(ctx, GinkgoT(), client, name)
+			Expect(tr.Labels[WaitingForPlatformLabel]).To(Equal("linux-arm64"))
+
+			running := runs[0]
+			running.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			running.Status.SetCondition(&apis.Condition{
+				Type:               apis.ConditionSucceeded,
+				Status:             "True",
+				LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now()}},
+			})
+			Expect(client.Update(ctx, running)).ShouldNot(HaveOccurred())
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: running.Namespace, Name: running.Name}})
+			Expect(err).ShouldNot(HaveOccurred())
+			assertNoSecret(ctx, GinkgoT(), client, running)
+
+			tr = getUserTaskRun(ctx, GinkgoT(), client, name)
+			Expect(tr.Labels[WaitingForPlatformLabel]).To(BeEmpty())
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
+			Expect(err).ToNot(HaveOccurred())
+			tr = getUserTaskRun(ctx, GinkgoT(), client, name)
+			Expect(getProvisionTaskRun(ctx, GinkgoT(), client, tr)).ToNot(BeNil())
+		})
+	})
+
+	Describe("Test No Host Config", func() {
+		var client runtimeclient.Client
+		var reconciler *ReconcileTaskRun
+
+		BeforeEach(func(ctx SpecContext) {
+			client, reconciler = setupClientAndReconciler([]runtimeclient.Object{})
+			createUserTaskRun(ctx, GinkgoT(), client, "test", "linux/arm64")
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
+			Expect(err).ToNot(HaveOccurred())
+			tr := getUserTaskRun(ctx, GinkgoT(), client, "test")
+
+			secret := getSecret(ctx, client, tr)
+			Expect(secret.Data["error"]).ToNot(BeEmpty())
+		})
+	})
+
+	Describe("Test No Host With Out Platform", func() {
+		var client runtimeclient.Client
+		var reconciler *ReconcileTaskRun
+
+		BeforeEach(func(ctx SpecContext) {
+			client, reconciler = setupClientAndReconciler(createHostConfig())
+			createUserTaskRun(ctx, GinkgoT(), client, "test", "powerpc")
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test"}})
+			Expect(err).To(HaveOccurred())
+			tr := getUserTaskRun(ctx, GinkgoT(), client, "test")
+
+			secret := getSecret(ctx, client, tr)
+			Expect(secret.Data["error"]).ToNot(BeEmpty())
+		})
+	})
 })
 
 func runSuccessfulProvision(ctx context.Context, provision *pipelinev1.TaskRun, g GinkgoTInterface, client runtimeclient.Client, tr *pipelinev1.TaskRun, reconciler *ReconcileTaskRun) {
