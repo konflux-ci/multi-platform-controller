@@ -573,14 +573,6 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 
 	log.Info("handling completed/deleted TaskRun", "completed", isCompleted, "beingDeleted", isBeingDeleted)
 
-	// Validate we have a host to deallocate
-	if assignedHost == "" {
-		log.Info("no assigned host found, skipping deallocation")
-		return reconcile.Result{}, nil
-	}
-
-	log.Info("deallocating host", "host", assignedHost)
-
 	// Extract platform with error handling
 	platform, err := extractPlatform(tr)
 	if err != nil {
