@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
+	"sync"
 	"time"
 )
 
@@ -14,6 +15,7 @@ const (
 
 var (
 	probes                      = map[string]*AvailabilityProbe{}
+	probesMutex                 = &sync.RWMutex{} // Read-Write mutex for probes
 	controllerAvailabilityGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: MetricsSubsystem,
@@ -46,6 +48,9 @@ func RegisterCommonMetrics(ctx context.Context, registerer prometheus.Registerer
 }
 
 func checkProbes(ctx context.Context) {
+	probesMutex.RLock() // Guard against a race condition when approaching probes for non-exclusive access
+	defer probesMutex.RUnlock()
+
 	log := logr.FromContextOrDiscard(ctx)
 	for platform, probe := range probes {
 		checkLabel := prometheus.Labels{"check": platform}
@@ -61,6 +66,9 @@ func checkProbes(ctx context.Context) {
 }
 
 func CountAvailabilitySuccess(platform string) {
+	probesMutex.Lock() // Use a full lock for exclusive write access to guard against race conditions
+	defer probesMutex.Unlock()
+
 	if probes[platform] == nil {
 		watcher := NewBackendProbe()
 		probes[platform] = &watcher
@@ -69,6 +77,9 @@ func CountAvailabilitySuccess(platform string) {
 }
 
 func CountAvailabilityError(platform string) {
+	probesMutex.Lock() // Same exclusive lock as in CountAvailabilitySuccess
+	defer probesMutex.Unlock()
+
 	if probes[platform] == nil {
 		watcher := NewBackendProbe()
 		probes[platform] = &watcher
