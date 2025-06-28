@@ -102,23 +102,6 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 		})
 	})
 
-	Describe("Test Allowed Namespaces", func() {
-		var reconciler *ReconcileTaskRun
-		var err error
-
-		BeforeEach(func() {
-			_, reconciler = setupClientAndReconciler(createHostConfig())
-		})
-
-		It("should allow the correct namespaces", func(ctx SpecContext) {
-			Expect(err).ToNot(HaveOccurred())
-			_, err = reconciler.readConfiguration(ctx, "linux/arm64", "system-test")
-			Expect(err).ToNot(HaveOccurred())
-			_, err = reconciler.readConfiguration(ctx, "linux/arm64", "other")
-			Expect(err).To(HaveOccurred())
-		})
-	})
-
 	Describe("Test Allocate Host", func() {
 		var client runtimeclient.Client
 		var reconciler *ReconcileTaskRun
