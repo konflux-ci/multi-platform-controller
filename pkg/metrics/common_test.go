@@ -23,8 +23,10 @@ var _ = Describe("Common functions unit tests", func() {
 				probes = make(map[string]*AvailabilityProbe)
 			})
 
-			It("should not have a data race", func() {
-				ctx, cancel := context.WithCancel(context.Background())
+			It("should not have a data race", func(tctx context.Context) {
+				ctx, cancel := context.WithCancel(tctx)
+				// This cancel() is a safety net to ensures that if the test ever panics or returns early for any
+				// possible reason, the context is always guaranteed to be cleaned up and prevent goroutine leaks.
 				defer cancel()
 
 				var wg sync.WaitGroup
@@ -45,7 +47,8 @@ var _ = Describe("Common functions unit tests", func() {
 					}
 				}()
 
-				// Persistent writer
+				// Persistent writers - these writers continuously attempt to add new entries to probes, which is the
+				// "write" part of the race condition created in the test.
 				for i := 0; i < writerCount; i++ {
 					wg.Add(1)
 					go func() {
@@ -63,10 +66,15 @@ var _ = Describe("Common functions unit tests", func() {
 						}
 					}()
 				}
-
+				// Allow the concurrent goroutine writers to run for a set duration, creating the necessary window for
+				// a data race to occur between themselves.
 				time.Sleep(200 * time.Millisecond)
 
+				// Explicitly signals all goroutine writers to stop their work. This is critical for a graceful shutdown
+				// before we wait for them so that the wg.Wait() call can complete.
 				cancel()
+				// A synchronization point. It blocks until all goroutines have received the cancellation signal and
+				// called wg.Done().
 				wg.Wait()
 			})
 		})
