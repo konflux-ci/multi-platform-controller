@@ -23,8 +23,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-const systemNamespace = "multi-platform-controller"
-const userNamespace = "default"
+const (
+	systemNamespace = "multi-platform-controller"
+	userNamespace   = "default"
+)
 
 var cloudImpl MockCloud = MockCloud{Instances: map[cloud.InstanceIdentifier]MockInstance{}}
 
@@ -39,7 +41,6 @@ func setupClientAndReconciler(objs []runtimeclient.Object) (runtimeclient.Client
 }
 
 var _ = Describe("TaskRun Reconciler Tests", func() {
-
 	Describe("Test Config Map Parsing", func() {
 		var reconciler *ReconcileTaskRun
 
@@ -105,7 +106,7 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 	Describe("Test extractPlatform function", func() {
 		// Success cases first
 		It("should extract platform from TaskRun parameters successfully", func() {
-			// Test case 1: TaskRun with PLATFORM parameter
+			// Test case 1: TaskRun with PlatformParam parameter
 			tr := &pipelinev1.TaskRun{
 				Spec: pipelinev1.TaskRunSpec{
 					Params: []pipelinev1.Param{
@@ -118,7 +119,7 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 		})
 
 		It("should extract platform from TaskRun with multiple parameters", func() {
-			// Test case 2: TaskRun with multiple parameters including PLATFORM
+			// Test case 2: TaskRun with multiple parameters including PlatformParam
 			tr := &pipelinev1.TaskRun{
 				Spec: pipelinev1.TaskRunSpec{
 					Params: []pipelinev1.Param{
@@ -132,8 +133,8 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			Expect(extractPlatform(tr)).To(Equal("linux/arm64"))
 		})
 
-		It("should return empty string when PLATFORM parameter has empty value", func() {
-			// Test case 3: TaskRun with PLATFORM parameter but empty value
+		It("should return empty string when PlatformParam parameter has empty value", func() {
+			// Test case 3: TaskRun with PlatformParam parameter but empty value
 			tr := &pipelinev1.TaskRun{
 				Spec: pipelinev1.TaskRunSpec{
 					Params: []pipelinev1.Param{
@@ -185,8 +186,8 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			Expect(extractPlatform(tr)).To(Equal("linux/s390x")) // Should match only the uppercase PlatformParam
 		})
 
-		It("should return first occurrence when multiple PLATFORM parameters exist", func() {
-			// Test case 6: TaskRun with multiple PLATFORM parameters (edge case)
+		It("should return first occurrence when multiple PlatformParam parameters exist", func() {
+			// Test case 6: TaskRun with multiple PlatformParam parameters (edge case)
 			tr := &pipelinev1.TaskRun{
 				Spec: pipelinev1.TaskRunSpec{
 					Params: []pipelinev1.Param{
@@ -203,8 +204,8 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 		})
 
 		// Error cases second
-		It("should return error when PLATFORM parameter is missing", func() {
-			// Test case 7: TaskRun without PLATFORM parameter
+		It("should return error when PlatformParam parameter is missing", func() {
+			// Test case 7: TaskRun without PlatformParam parameter
 			tr := &pipelinev1.TaskRun{
 				Spec: pipelinev1.TaskRunSpec{
 					Params: []pipelinev1.Param{
@@ -214,9 +215,7 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 				},
 			}
 
-			platform, err := extractPlatform(tr)
-			Expect(err).To(MatchError("failed to determine platform"))
-			Expect(platform).To(Equal(""))
+			Expect(extractPlatform(tr)).Error().To(MatchError("failed to determine platform"))
 		})
 
 		It("should return error when TaskRun has no parameters", func() {
@@ -227,9 +226,7 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 				},
 			}
 
-			platform, err := extractPlatform(tr)
-			Expect(err).To(MatchError("failed to determine platform"))
-			Expect(platform).To(Equal(""))
+			Expect(extractPlatform(tr)).Error().To(MatchError("failed to determine platform"))
 		})
 
 		It("should return error when TaskRun has nil parameters", func() {
@@ -240,9 +237,7 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 				},
 			}
 
-			platform, err := extractPlatform(tr)
-			Expect(err).To(MatchError("failed to determine platform"))
-			Expect(platform).To(Equal(""))
+			Expect(extractPlatform(tr)).Error().To(MatchError("failed to determine platform"))
 		})
 	})
 
@@ -354,7 +349,6 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 
 		BeforeEach(func() {
 			client, reconciler = setupClientAndReconciler(createDynamicHostConfig())
-
 		})
 
 		It("should update the host configuration correctly", func(ctx SpecContext) {
@@ -363,7 +357,6 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			params := map[string]string{}
 			for _, i := range provision.Spec.Params {
 				params[i.Name] = i.Value.StringVal
-
 			}
 
 			Expect(params["SECRET_NAME"]).To(Equal("multi-platform-ssh-test"))
@@ -399,7 +392,6 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			Expect(client.List(ctx, &trl)).To(Succeed())
 			for _, t := range trl.Items {
 				Expect(client.Delete(ctx, &t)).To(Succeed())
-
 			}
 
 			vm := createHostConfigMap()
@@ -414,7 +406,6 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			params = map[string]string{}
 			for _, i := range provision.Spec.Params {
 				params[i.Name] = i.Value.StringVal
-
 			}
 
 			Expect(params["SECRET_NAME"]).To(Equal("multi-platform-ssh-test"))
@@ -436,9 +427,7 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
 			Expect(err).ToNot(HaveOccurred())
-
 		})
-
 	})
 
 	Describe("Test Allocate Cloud Host Instance Failure", func() {
