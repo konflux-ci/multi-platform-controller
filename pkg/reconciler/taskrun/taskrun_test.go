@@ -147,7 +147,6 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 		})
 
 		It("should return error when TaskRun has nil parameters", func() {
-			// Test case 9: TaskRun with nil parameters
 			tr := &pipelinev1.TaskRun{
 				Spec: pipelinev1.TaskRunSpec{
 					Params: nil,
@@ -158,7 +157,6 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 		})
 
 		It("should return error when TaskRun has no parameters", func() {
-			// Test case 8: TaskRun with empty parameters
 			tr := &pipelinev1.TaskRun{
 				Spec: pipelinev1.TaskRunSpec{
 					Params: []pipelinev1.Param{},
