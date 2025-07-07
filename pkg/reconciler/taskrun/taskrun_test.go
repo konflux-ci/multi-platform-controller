@@ -166,7 +166,7 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 				},
 			}
 
-			Expect(extractPlatform(tr)).Error().To(MatchError("failed to determine platform"))
+			Expect(extractPlatform(tr)).Error().To(MatchError(errFailedToDeterminePlatform))
 		})
 
 		It("should return error when TaskRun has no parameters", func() {
@@ -177,7 +177,7 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 				},
 			}
 
-			Expect(extractPlatform(tr)).Error().To(MatchError("failed to determine platform"))
+			Expect(extractPlatform(tr)).Error().To(MatchError(errFailedToDeterminePlatform))
 		})
 
 		It("should return error when PlatformParam parameter is missing", func() {
@@ -190,7 +190,7 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 				},
 			}
 
-			Expect(extractPlatform(tr)).Error().To(MatchError("failed to determine platform"))
+			Expect(extractPlatform(tr)).Error().To(MatchError(errFailedToDeterminePlatform))
 		})
 	})
 
