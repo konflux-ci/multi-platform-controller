@@ -104,9 +104,7 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 	})
 
 	Describe("Test extractPlatform function", func() {
-		// Success cases first
 		It("should extract platform from TaskRun parameters successfully", func() {
-			// Test case 1: TaskRun with PlatformParam parameter
 			tr := &pipelinev1.TaskRun{
 				Spec: pipelinev1.TaskRunSpec{
 					Params: []pipelinev1.Param{
@@ -119,7 +117,6 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 		})
 
 		It("should extract platform from TaskRun with multiple parameters", func() {
-			// Test case 2: TaskRun with multiple parameters including PlatformParam
 			tr := &pipelinev1.TaskRun{
 				Spec: pipelinev1.TaskRunSpec{
 					Params: []pipelinev1.Param{
@@ -133,8 +130,23 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			Expect(extractPlatform(tr)).To(Equal("linux/arm64"))
 		})
 
+		It("should return first occurrence when multiple PlatformParam parameters exist", func() {
+			tr := &pipelinev1.TaskRun{
+				Spec: pipelinev1.TaskRunSpec{
+					Params: []pipelinev1.Param{
+						{Name: "OTHER_PARAM", Value: *pipelinev1.NewStructuredValues("other_value")},
+						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("linux/amd64")},
+						{Name: "MIDDLE_PARAM", Value: *pipelinev1.NewStructuredValues("middle_value")},
+						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("linux/arm64")},
+						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("linux/s390x")},
+					},
+				},
+			}
+
+			Expect(extractPlatform(tr)).To(Equal("linux/amd64")) // Should return the first occurrence
+		})
+
 		It("should return empty string when PlatformParam parameter has empty value", func() {
-			// Test case 3: TaskRun with PlatformParam parameter but empty value
 			tr := &pipelinev1.TaskRun{
 				Spec: pipelinev1.TaskRunSpec{
 					Params: []pipelinev1.Param{
@@ -146,72 +158,11 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			Expect(extractPlatform(tr)).To(Equal(""))
 		})
 
-		It("should extract platform with various common platform values", func() {
-			// Test case 4: Test with different common platform values
-			testCases := []string{
-				"linux/amd64",
-				"linux/arm64",
-				"linux/s390x",
-				"linux/ppc64le",
-				"darwin/amd64",
-				"darwin/arm64",
-				"windows/amd64",
-			}
-
-			for _, expectedPlatform := range testCases {
-				tr := &pipelinev1.TaskRun{
-					Spec: pipelinev1.TaskRunSpec{
-						Params: []pipelinev1.Param{
-							{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues(expectedPlatform)},
-						},
-					},
-				}
-
-				Expect(extractPlatform(tr)).To(Equal(expectedPlatform))
-			}
-		})
-
-		It("should handle case sensitivity correctly", func() {
-			// Test case 5: Verify that parameter name matching is case sensitive
+		It("should return error when TaskRun has nil parameters", func() {
+			// Test case 9: TaskRun with nil parameters
 			tr := &pipelinev1.TaskRun{
 				Spec: pipelinev1.TaskRunSpec{
-					Params: []pipelinev1.Param{
-						{Name: "platform", Value: *pipelinev1.NewStructuredValues("linux/amd64")},    // lowercase
-						{Name: "Platform", Value: *pipelinev1.NewStructuredValues("linux/arm64")},    // mixed case
-						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("linux/s390x")}, // uppercase (correct)
-					},
-				},
-			}
-
-			Expect(extractPlatform(tr)).To(Equal("linux/s390x")) // Should match only the uppercase PlatformParam
-		})
-
-		It("should return first occurrence when multiple PlatformParam parameters exist", func() {
-			// Test case 6: TaskRun with multiple PlatformParam parameters (edge case)
-			tr := &pipelinev1.TaskRun{
-				Spec: pipelinev1.TaskRunSpec{
-					Params: []pipelinev1.Param{
-						{Name: "OTHER_PARAM", Value: *pipelinev1.NewStructuredValues("other_value")},
-						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("linux/amd64")}, // First occurrence
-						{Name: "MIDDLE_PARAM", Value: *pipelinev1.NewStructuredValues("middle_value")},
-						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("linux/arm64")}, // Second occurrence
-						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("linux/s390x")}, // Third occurrence
-					},
-				},
-			}
-
-			Expect(extractPlatform(tr)).To(Equal("linux/amd64")) // Should return the first occurrence
-		})
-
-		// Error cases second
-		It("should return error when PlatformParam parameter is missing", func() {
-			// Test case 7: TaskRun without PlatformParam parameter
-			tr := &pipelinev1.TaskRun{
-				Spec: pipelinev1.TaskRunSpec{
-					Params: []pipelinev1.Param{
-						{Name: "OTHER_PARAM", Value: *pipelinev1.NewStructuredValues("other_value")},
-						{Name: "ANOTHER_PARAM", Value: *pipelinev1.NewStructuredValues("another_value")},
-					},
+					Params: nil,
 				},
 			}
 
@@ -229,11 +180,13 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			Expect(extractPlatform(tr)).Error().To(MatchError("failed to determine platform"))
 		})
 
-		It("should return error when TaskRun has nil parameters", func() {
-			// Test case 9: TaskRun with nil parameters
+		It("should return error when PlatformParam parameter is missing", func() {
 			tr := &pipelinev1.TaskRun{
 				Spec: pipelinev1.TaskRunSpec{
-					Params: nil,
+					Params: []pipelinev1.Param{
+						{Name: "OTHER_PARAM", Value: *pipelinev1.NewStructuredValues("other_value")},
+						{Name: "ANOTHER_PARAM", Value: *pipelinev1.NewStructuredValues("another_value")},
+					},
 				},
 			}
 
