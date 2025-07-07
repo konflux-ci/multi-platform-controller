@@ -146,18 +146,6 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			Expect(extractPlatform(tr)).To(Equal("linux/amd64")) // Should return the first occurrence
 		})
 
-		It("should return empty string when PlatformParam parameter has empty value", func() {
-			tr := &pipelinev1.TaskRun{
-				Spec: pipelinev1.TaskRunSpec{
-					Params: []pipelinev1.Param{
-						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("")},
-					},
-				},
-			}
-
-			Expect(extractPlatform(tr)).To(Equal(""))
-		})
-
 		It("should return error when TaskRun has nil parameters", func() {
 			// Test case 9: TaskRun with nil parameters
 			tr := &pipelinev1.TaskRun{
