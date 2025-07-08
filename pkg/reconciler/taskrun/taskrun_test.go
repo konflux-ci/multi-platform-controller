@@ -23,8 +23,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-const systemNamespace = "multi-platform-controller"
-const userNamespace = "default"
+const (
+	systemNamespace = "multi-platform-controller"
+	userNamespace   = "default"
+)
 
 var cloudImpl MockCloud = MockCloud{Instances: map[cloud.InstanceIdentifier]MockInstance{}}
 
@@ -39,7 +41,6 @@ func setupClientAndReconciler(objs []runtimeclient.Object) (runtimeclient.Client
 }
 
 var _ = Describe("TaskRun Reconciler Tests", func() {
-
 	Describe("Test Config Map Parsing", func() {
 		var reconciler *ReconcileTaskRun
 
@@ -99,6 +100,83 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("foo", "bar"))
 			Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("key", "value"))
+		})
+	})
+
+	Describe("Test extractPlatform function", func() {
+		It("should extract platform from TaskRun parameters successfully", func() {
+			tr := &pipelinev1.TaskRun{
+				Spec: pipelinev1.TaskRunSpec{
+					Params: []pipelinev1.Param{
+						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("linux/amd64")},
+					},
+				},
+			}
+
+			Expect(extractPlatform(tr)).To(Equal("linux/amd64"))
+		})
+
+		It("should extract platform from TaskRun with multiple parameters", func() {
+			tr := &pipelinev1.TaskRun{
+				Spec: pipelinev1.TaskRunSpec{
+					Params: []pipelinev1.Param{
+						{Name: "OTHER_PARAM", Value: *pipelinev1.NewStructuredValues("other_value")},
+						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("linux/arm64")},
+						{Name: "ANOTHER_PARAM", Value: *pipelinev1.NewStructuredValues("another_value")},
+					},
+				},
+			}
+
+			Expect(extractPlatform(tr)).To(Equal("linux/arm64"))
+		})
+
+		It("should return first occurrence when multiple PlatformParam parameters exist", func() {
+			tr := &pipelinev1.TaskRun{
+				Spec: pipelinev1.TaskRunSpec{
+					Params: []pipelinev1.Param{
+						{Name: "OTHER_PARAM", Value: *pipelinev1.NewStructuredValues("other_value")},
+						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("linux/amd64")},
+						{Name: "MIDDLE_PARAM", Value: *pipelinev1.NewStructuredValues("middle_value")},
+						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("linux/arm64")},
+						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("linux/s390x")},
+					},
+				},
+			}
+
+			Expect(extractPlatform(tr)).To(Equal("linux/amd64")) // Should return the first occurrence
+		})
+
+		It("should return error when TaskRun has nil parameters", func() {
+			tr := &pipelinev1.TaskRun{
+				Spec: pipelinev1.TaskRunSpec{
+					Params: nil,
+				},
+			}
+
+			Expect(extractPlatform(tr)).Error().To(MatchError(errFailedToDeterminePlatform))
+		})
+
+		It("should return error when TaskRun has no parameters", func() {
+			tr := &pipelinev1.TaskRun{
+				Spec: pipelinev1.TaskRunSpec{
+					Params: []pipelinev1.Param{},
+				},
+			}
+
+			Expect(extractPlatform(tr)).Error().To(MatchError(errFailedToDeterminePlatform))
+		})
+
+		It("should return error when PlatformParam parameter is missing", func() {
+			tr := &pipelinev1.TaskRun{
+				Spec: pipelinev1.TaskRunSpec{
+					Params: []pipelinev1.Param{
+						{Name: "OTHER_PARAM", Value: *pipelinev1.NewStructuredValues("other_value")},
+						{Name: "ANOTHER_PARAM", Value: *pipelinev1.NewStructuredValues("another_value")},
+					},
+				},
+			}
+
+			Expect(extractPlatform(tr)).Error().To(MatchError(errFailedToDeterminePlatform))
 		})
 	})
 
@@ -210,7 +288,6 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 
 		BeforeEach(func() {
 			client, reconciler = setupClientAndReconciler(createDynamicHostConfig())
-
 		})
 
 		It("should update the host configuration correctly", func(ctx SpecContext) {
@@ -219,7 +296,6 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			params := map[string]string{}
 			for _, i := range provision.Spec.Params {
 				params[i.Name] = i.Value.StringVal
-
 			}
 
 			Expect(params["SECRET_NAME"]).To(Equal("multi-platform-ssh-test"))
@@ -255,7 +331,6 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			Expect(client.List(ctx, &trl)).To(Succeed())
 			for _, t := range trl.Items {
 				Expect(client.Delete(ctx, &t)).To(Succeed())
-
 			}
 
 			vm := createHostConfigMap()
@@ -270,7 +345,6 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			params = map[string]string{}
 			for _, i := range provision.Spec.Params {
 				params[i.Name] = i.Value.StringVal
-
 			}
 
 			Expect(params["SECRET_NAME"]).To(Equal("multi-platform-ssh-test"))
@@ -292,9 +366,7 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
 			Expect(err).ToNot(HaveOccurred())
-
 		})
-
 	})
 
 	Describe("Test Allocate Cloud Host Instance Failure", func() {
