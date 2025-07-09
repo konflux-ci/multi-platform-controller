@@ -15,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"knative.dev/pkg/apis"
@@ -36,7 +37,15 @@ func setupClientAndReconciler(objs []runtimeclient.Object) (runtimeclient.Client
 	_ = v1.AddToScheme(scheme)
 	_ = appsv1.AddToScheme(scheme)
 	client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
-	reconciler := &ReconcileTaskRun{client: client, scheme: scheme, eventRecorder: &record.FakeRecorder{}, operatorNamespace: systemNamespace, cloudProviders: map[string]func(platform string, config map[string]string, systemnamespace string) cloud.CloudProvider{"mock": MockCloudSetup}, platformConfig: map[string]PlatformConfig{}}
+	reconciler := &ReconcileTaskRun{
+		apiReader:         client,
+		client:            client,
+		scheme:            scheme,
+		eventRecorder:     &record.FakeRecorder{},
+		operatorNamespace: systemNamespace,
+		cloudProviders:    map[string]func(platform string, config map[string]string, systemnamespace string) cloud.CloudProvider{"mock": MockCloudSetup},
+		platformConfig:    map[string]PlatformConfig{},
+	}
 	return client, reconciler
 }
 
@@ -707,6 +716,216 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			Expect(secret.Data["error"]).ToNot(BeEmpty())
 		})
 	})
+
+	Describe("Test UpdateTaskRunWithRetry function", func() {
+		var client runtimeclient.Client
+		var reconciler *ReconcileTaskRun
+		var tr *pipelinev1.TaskRun
+
+		BeforeEach(func() {
+			client, reconciler = setupClientAndReconciler(createHostConfig())
+			tr = &pipelinev1.TaskRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-taskrun",
+					Namespace: userNamespace,
+					Labels: map[string]string{
+						"existing-label": "existing-value",
+					},
+					Annotations: map[string]string{
+						"existing-annotation": "existing-value",
+					},
+					Finalizers: []string{"existing-finalizer"},
+				},
+				Spec: pipelinev1.TaskRunSpec{
+					Params: []pipelinev1.Param{
+						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("linux/amd64")},
+					},
+				},
+			}
+			Expect(client.Create(context.Background(), tr)).To(Succeed())
+		})
+
+		It("should update TaskRun successfully on first attempt", func(ctx SpecContext) {
+			// Modify the TaskRun
+			tr.Labels["new-label"] = "new-value"
+			tr.Annotations["new-annotation"] = "new-value"
+			tr.Finalizers = append(tr.Finalizers, "new-finalizer")
+
+			// Update should succeed immediately
+			err := UpdateTaskRunWithRetry(ctx, client, reconciler.apiReader, tr, 3)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Verify the update was applied
+			updated := &pipelinev1.TaskRun{}
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, updated)).To(Succeed())
+			Expect(updated.Labels).To(HaveKeyWithValue("new-label", "new-value"))
+			Expect(updated.Labels).To(HaveKeyWithValue("existing-label", "existing-value"))
+			Expect(updated.Annotations).To(HaveKeyWithValue("new-annotation", "new-value"))
+			Expect(updated.Annotations).To(HaveKeyWithValue("existing-annotation", "existing-value"))
+			Expect(updated.Finalizers).To(ContainElements("existing-finalizer", "new-finalizer"))
+		})
+
+		It("should handle conflict errors with retry and merge", func(ctx SpecContext) {
+			// Create a conflicting client that will cause conflicts
+			conflictingClient := &ConflictingClient{
+				Client:        client,
+				ConflictCount: 2, // Will fail twice, then succeed
+			}
+
+			// Modify the TaskRun
+			tr.Labels["conflict-label"] = "conflict-value"
+			tr.Annotations["conflict-annotation"] = "conflict-value"
+			tr.Finalizers = append(tr.Finalizers, "conflict-finalizer")
+
+			// Should succeed after retries
+			err := UpdateTaskRunWithRetry(ctx, conflictingClient, reconciler.apiReader, tr, 5)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Verify the update was applied
+			updated := &pipelinev1.TaskRun{}
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, updated)).To(Succeed())
+			Expect(updated.Labels).To(HaveKeyWithValue("conflict-label", "conflict-value"))
+			Expect(updated.Annotations).To(HaveKeyWithValue("conflict-annotation", "conflict-value"))
+			Expect(updated.Finalizers).To(ContainElement("conflict-finalizer"))
+		})
+
+		It("should merge labels and annotations correctly after conflict", func(ctx SpecContext) {
+			// First, update the TaskRun externally to simulate concurrent modification
+			external := &pipelinev1.TaskRun{}
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, external)).To(Succeed())
+			external.Labels["external-label"] = "external-value"
+			external.Annotations["external-annotation"] = "external-value"
+			external.Finalizers = append(external.Finalizers, "external-finalizer")
+			Expect(client.Update(ctx, external)).To(Succeed())
+
+			// Now modify our local copy with different changes
+			tr.Labels["local-label"] = "local-value"
+			tr.Annotations["local-annotation"] = "local-value"
+			tr.Finalizers = append(tr.Finalizers, "local-finalizer")
+
+			// Create a client that will cause one conflict
+			conflictingClient := &ConflictingClient{
+				Client:        client,
+				ConflictCount: 1,
+			}
+
+			// Update should succeed and merge both changes
+			err := UpdateTaskRunWithRetry(ctx, conflictingClient, reconciler.apiReader, tr, 3)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Verify both sets of changes are present
+			updated := &pipelinev1.TaskRun{}
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, updated)).To(Succeed())
+			Expect(updated.Labels).To(HaveKeyWithValue("local-label", "local-value"))
+			Expect(updated.Labels).To(HaveKeyWithValue("external-label", "external-value"))
+			Expect(updated.Labels).To(HaveKeyWithValue("existing-label", "existing-value"))
+			Expect(updated.Annotations).To(HaveKeyWithValue("local-annotation", "local-value"))
+			Expect(updated.Annotations).To(HaveKeyWithValue("external-annotation", "external-value"))
+			Expect(updated.Annotations).To(HaveKeyWithValue("existing-annotation", "existing-value"))
+			Expect(updated.Finalizers).To(ContainElements("existing-finalizer", "local-finalizer", "external-finalizer"))
+		})
+
+		It("should not duplicate finalizers", func(ctx SpecContext) {
+			// Add a finalizer that already exists
+			tr.Finalizers = append(tr.Finalizers, "existing-finalizer") // This should not create a duplicate
+
+			// Create a client that will cause one conflict
+			conflictingClient := &ConflictingClient{
+				Client:        client,
+				ConflictCount: 1,
+			}
+
+			err := UpdateTaskRunWithRetry(ctx, conflictingClient, reconciler.apiReader, tr, 3)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Verify no duplicate finalizers
+			updated := &pipelinev1.TaskRun{}
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, updated)).To(Succeed())
+
+			// Count occurrences of the finalizer
+			count := 0
+			for _, finalizer := range updated.Finalizers {
+				if finalizer == "existing-finalizer" {
+					count++
+				}
+			}
+			Expect(count).To(Equal(1), "Should not have duplicate finalizers")
+		})
+
+		It("should handle nil maps gracefully", func(ctx SpecContext) {
+			// Create TaskRun with nil maps
+			nilTr := &pipelinev1.TaskRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "nil-taskrun",
+					Namespace: userNamespace,
+				},
+				Spec: pipelinev1.TaskRunSpec{
+					Params: []pipelinev1.Param{
+						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("linux/amd64")},
+					},
+				},
+			}
+			Expect(client.Create(ctx, nilTr)).To(Succeed())
+
+			// Add some data to nil maps
+			nilTr.Labels = map[string]string{"new-label": "new-value"}
+			nilTr.Annotations = map[string]string{"new-annotation": "new-value"}
+			nilTr.Finalizers = []string{"new-finalizer"}
+
+			err := UpdateTaskRunWithRetry(ctx, client, reconciler.apiReader, nilTr, 3)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Verify the update was applied
+			updated := &pipelinev1.TaskRun{}
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: nilTr.Namespace, Name: nilTr.Name}, updated)).To(Succeed())
+			Expect(updated.Labels).To(HaveKeyWithValue("new-label", "new-value"))
+			Expect(updated.Annotations).To(HaveKeyWithValue("new-annotation", "new-value"))
+			Expect(updated.Finalizers).To(ContainElement("new-finalizer"))
+		})
+
+		It("should fail immediately on non-conflict errors", func(ctx SpecContext) {
+			// Create a client that returns non-conflict errors
+			errorClient := &ErrorClient{
+				Client: client,
+				Error:  fmt.Errorf("some other error"),
+			}
+
+			tr.Labels["error-label"] = "error-value"
+
+			err := UpdateTaskRunWithRetry(ctx, errorClient, reconciler.apiReader, tr, 3)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to update TaskRun"))
+			Expect(err.Error()).To(ContainSubstring("some other error"))
+		})
+
+		It("should fail after max retries on persistent conflicts", func(ctx SpecContext) {
+			// Create a client that always returns conflicts
+			conflictingClient := &ConflictingClient{
+				Client:        client,
+				ConflictCount: 10, // More than max retries
+			}
+
+			tr.Labels["persistent-conflict"] = "value"
+
+			err := UpdateTaskRunWithRetry(ctx, conflictingClient, reconciler.apiReader, tr, 3)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to update TaskRun after 3 attempts"))
+		})
+
+		It("should use default max retries when maxRetries is 0", func(ctx SpecContext) {
+			// Create a client that will conflict more than 3 times but less than 5
+			conflictingClient := &ConflictingClient{
+				Client:        client,
+				ConflictCount: 4,
+			}
+
+			tr.Labels["default-retry"] = "value"
+
+			// Should succeed because default is 5 retries
+			err := UpdateTaskRunWithRetry(ctx, conflictingClient, reconciler.apiReader, tr, 0)
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
 })
 
 func runSuccessfulProvision(ctx context.Context, provision *pipelinev1.TaskRun, g GinkgoTInterface, client runtimeclient.Client, tr *pipelinev1.TaskRun, reconciler *ReconcileTaskRun) {
@@ -1018,4 +1237,30 @@ func (m *MockCloud) CleanUpVms(ctx context.Context, kubeClient runtimeclient.Cli
 
 func MockCloudSetup(platform string, data map[string]string, systemnamespace string) cloud.CloudProvider {
 	return &cloudImpl
+}
+
+// ConflictingClient simulates conflict errors for testing
+type ConflictingClient struct {
+	runtimeclient.Client
+	ConflictCount int
+	callCount     int
+}
+
+func (c *ConflictingClient) Update(ctx context.Context, obj runtimeclient.Object, opts ...runtimeclient.UpdateOption) error {
+	c.callCount++
+	if c.callCount <= c.ConflictCount {
+		// hardcoded gvk is not perfect but i dunno how to avoid that :(
+		return errors.NewConflict(schema.GroupResource{Group: "tekton.dev", Resource: "taskruns"}, "test", fmt.Errorf("conflict"))
+	}
+	return c.Client.Update(ctx, obj, opts...)
+}
+
+// ErrorClient simulates non-conflict errors for testing
+type ErrorClient struct {
+	runtimeclient.Client
+	Error error
+}
+
+func (c *ErrorClient) Update(ctx context.Context, obj runtimeclient.Object, opts ...runtimeclient.UpdateOption) error {
+	return c.Error
 }
