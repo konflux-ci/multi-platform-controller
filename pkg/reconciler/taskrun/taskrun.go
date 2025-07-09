@@ -970,3 +970,104 @@ type Host struct {
 func platformLabel(platform string) string {
 	return strings.ReplaceAll(platform, "/", "-")
 }
+
+// UpdateTaskRunWithRetry performs a conflict-resilient update of a TaskRun object.
+// On conflict, it fetches the latest version and merges labels, annotations, and finalizers from the incoming TaskRun.
+func UpdateTaskRunWithRetry(ctx context.Context, client client.Client, apiReader client.Reader, tr *tektonapi.TaskRun, maxRetries int) error {
+	log := logr.FromContextOrDiscard(ctx)
+	if maxRetries <= 0 {
+		maxRetries = 5
+	}
+
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		// Attempt to update the TaskRun
+		err := client.Update(ctx, tr)
+		if err == nil {
+			// Success!
+			if attempt > 0 {
+				log.Info("TaskRun update succeeded after retries", "attempts", attempt+1)
+			}
+			return nil
+		}
+
+		// Check if it's a conflict error
+		if !errors.IsConflict(err) {
+			// Non-conflict error - fail immediately
+			return fmt.Errorf("failed to update TaskRun: %w", err)
+		}
+
+		// Handle conflict error
+		lastErr = err
+		log.Info("Conflict detected, retrying update", "attempt", attempt+1, "maxRetries", maxRetries)
+
+		// If this is the last attempt, don't fetch
+		if attempt == maxRetries-1 {
+			break
+		}
+
+		// Store the desired labels, annotations, and finalizers
+		desiredLabels := make(map[string]string)
+		desiredAnnotations := make(map[string]string)
+		desiredFinalizers := make([]string, 0)
+
+		if tr.Labels != nil {
+			for k, v := range tr.Labels {
+				desiredLabels[k] = v
+			}
+		}
+		if tr.Annotations != nil {
+			for k, v := range tr.Annotations {
+				desiredAnnotations[k] = v
+			}
+		}
+		if tr.Finalizers != nil {
+			desiredFinalizers = append(desiredFinalizers, tr.Finalizers...)
+		}
+
+		// Fetch the latest version of the TaskRun
+		namespacedName := types.NamespacedName{
+			Namespace: tr.Namespace,
+			Name:      tr.Name,
+		}
+
+		if err := apiReader.Get(ctx, namespacedName, tr); err != nil {
+			return fmt.Errorf("failed to fetch latest TaskRun version: %w", err)
+		}
+
+		// Ensure maps exist
+		if tr.Labels == nil {
+			tr.Labels = make(map[string]string)
+		}
+		if tr.Annotations == nil {
+			tr.Annotations = make(map[string]string)
+		}
+		if tr.Finalizers == nil {
+			tr.Finalizers = make([]string, 0)
+		}
+
+		// Merge desired labels and annotations into the fresh TaskRun
+		for k, v := range desiredLabels {
+			tr.Labels[k] = v
+		}
+		for k, v := range desiredAnnotations {
+			tr.Annotations[k] = v
+		}
+
+		// Merge finalizers (avoid duplicates)
+		for _, finalizer := range desiredFinalizers {
+			found := false
+			for _, existing := range tr.Finalizers {
+				if existing == finalizer {
+					found = true
+					break
+				}
+			}
+			if !found {
+				tr.Finalizers = append(tr.Finalizers, finalizer)
+			}
+		}
+	}
+
+	return fmt.Errorf("failed to update TaskRun after %d attempts, last error: %w", maxRetries, lastErr)
+}
