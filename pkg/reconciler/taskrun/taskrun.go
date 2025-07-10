@@ -979,7 +979,7 @@ func UpdateTaskRunWithRetry(ctx context.Context, client client.Client, apiReader
 		return updateTaskRun(ctx, client, apiReader, tr)
 	})
 	if err != nil {
-		return fmt.Errorf("failed to update TaskRun after %d attempts, last error: %w", retry.DefaultRetry.Steps, err)
+		return fmt.Errorf("failed to update TaskRun, last error: %w", err)
 	}
 	return nil
 }
