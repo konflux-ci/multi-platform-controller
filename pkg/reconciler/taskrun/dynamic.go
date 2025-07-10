@@ -98,7 +98,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 		} else if address != "" { // An IP address was successfully retrieved for the the VM
 			tr.Labels[AssignedHost] = tr.Annotations[CloudInstanceId]
 			tr.Annotations[CloudAddress] = address
-			err := UpdateTaskRunWithRetry(ctx, taskRun.client, taskRun.apiReader, tr, 3)
+			err := UpdateTaskRunWithRetry(ctx, taskRun.client, taskRun.apiReader, tr)
 			if err != nil {
 				return reconcile.Result{}, err
 			}
@@ -168,7 +168,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 		//no host available
 		//add the waiting label
 		tr.Labels[WaitingForPlatformLabel] = platformLabel(r.platform)
-		if err := UpdateTaskRunWithRetry(ctx, taskRun.client, taskRun.apiReader, tr, 3); err != nil {
+		if err := UpdateTaskRunWithRetry(ctx, taskRun.client, taskRun.apiReader, tr); err != nil {
 			log.Error(err, "Failed to update task with waiting label. Will retry.")
 		}
 		return reconcile.Result{RequeueAfter: time.Minute}, nil
@@ -201,7 +201,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 		}
 		failureCount++
 		tr.Annotations[CloudFailures] = strconv.Itoa(failureCount)
-		err = UpdateTaskRunWithRetry(ctx, taskRun.client, taskRun.apiReader, tr, 3)
+		err = UpdateTaskRunWithRetry(ctx, taskRun.client, taskRun.apiReader, tr)
 		if err != nil {
 			//todo: handle conflict properly, for now you get an extra retry
 			log.Error(err, "failed to update failure count")
@@ -219,7 +219,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 	controllerutil.AddFinalizer(tr, PipelineFinalizer)
 
 	log.Info("updating instance id of cloud host", "instance", instance)
-	err = UpdateTaskRunWithRetry(ctx, taskRun.client, taskRun.apiReader, tr, 5)
+	err = UpdateTaskRunWithRetry(ctx, taskRun.client, taskRun.apiReader, tr)
 	if err != nil {
 		log.Error(err, "failed to update TaskRun with instance ID after retries")
 		err2 := r.CloudProvider.TerminateInstance(taskRun.client, ctx, instance)
@@ -238,5 +238,5 @@ func (dr DynamicResolver) removeInstanceFromTask(reconcileTaskRun *ReconcileTask
 	delete(taskRun.Labels, AssignedHost)
 	delete(taskRun.Annotations, CloudInstanceId)
 	delete(taskRun.Annotations, CloudDynamicPlatform)
-	return UpdateTaskRunWithRetry(ctx, reconcileTaskRun.client, reconcileTaskRun.apiReader, taskRun, 3)
+	return UpdateTaskRunWithRetry(ctx, reconcileTaskRun.client, reconcileTaskRun.apiReader, taskRun)
 }
