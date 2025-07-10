@@ -25,6 +25,10 @@ spec:
     value: quay.io/redhat-user-workloads/rhtap-build-tenant/multi-platform-controller/multi-platform-controller:{{revision}}
   - name: dockerfile
     value: Dockerfile
+  - name: build-platforms
+    value:
+    - linux/x86_64
+    - linux/arm64
   pipelineSpec:
     description: |
       This pipeline is ideal for building container images from a Containerfile while reducing network traffic.
@@ -125,6 +129,11 @@ spec:
       description: Whether to enable privileged mode, should be used only with remote VMs
       name: privileged-nested
       type: string
+    - default:
+      - linux/x86_64
+      description: List of platforms to build the container images on. The available set of values is determined by the configuration of the multi-platform-controller.
+      name: build-platforms
+      type: array
     results:
     - description: ''
       name: IMAGE_URL
@@ -205,7 +214,12 @@ spec:
         workspace: git-auth
       - name: netrc
         workspace: netrc
-    - name: build-container
+    - matrix:
+        params:
+        - name: PLATFORM
+          value:
+          - $(params.build-platforms)
+      name: build-images
       params:
       - name: IMAGE
         value: $(params.output-image)
@@ -228,14 +242,16 @@ spec:
         value: $(params.build-args-file)
       - name: PRIVILEGED_NESTED
         value: $(params.privileged-nested)
+      - name: IMAGE_APPEND_PLATFORM
+        value: 'true'
       runAfter:
       - prefetch-dependencies
       taskRef:
         params:
         - name: name
-          value: buildah
+          value: buildah-remote
         - name: bundle
-          value: quay.io/konflux-ci/tekton-catalog/task-buildah:0.4@sha256:977ebe581158e184504fb5886f534812b91cc3e79445be48449f5b7cfd14f034
+          value: quay.io/konflux-ci/tekton-catalog/task-buildah-remote@sha256:9c772f152e24c01694910c8ddd92edf2946ac70d36731f7bce766d8b17b1b546
         - name: kind
           value: task
         resolver: bundles
@@ -256,12 +272,12 @@ spec:
       - name: IMAGE_EXPIRES_AFTER
         value: $(params.image-expires-after)
       - name: ALWAYS_BUILD_INDEX
-        value: $(params.build-image-index)
+        value: 'true'
       - name: IMAGES
         value:
-        - $(tasks.build-container.results.IMAGE_URL)@$(tasks.build-container.results.IMAGE_DIGEST)
+        - $(tasks.build-images.results.IMAGE_REF[*])
       runAfter:
-      - build-container
+      - build-images
       taskRef:
         params:
         - name: name
