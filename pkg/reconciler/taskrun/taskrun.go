@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/client-go/util/retry"
+
 	"knative.dev/pkg/kmeta"
 
 	mpcmetrics "github.com/konflux-ci/multi-platform-controller/pkg/metrics"
@@ -969,4 +971,78 @@ type Host struct {
 
 func platformLabel(platform string) string {
 	return strings.ReplaceAll(platform, "/", "-")
+}
+
+// UpdateTaskRunWithRetry performs a conflict-resilient update of a TaskRun object.
+func UpdateTaskRunWithRetry(ctx context.Context, client client.Client, apiReader client.Reader, tr *tektonapi.TaskRun) error {
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		return updateTaskRun(ctx, client, apiReader, tr)
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update TaskRun, last error: %w", err)
+	}
+	return nil
+}
+
+func updateTaskRun(ctx context.Context, client client.Client, apiReader client.Reader, tr *tektonapi.TaskRun) error {
+	// Store the desired labels, annotations, and finalizers
+	desiredLabels := make(map[string]string)
+	desiredAnnotations := make(map[string]string)
+	desiredFinalizers := make([]string, 0)
+
+	if tr.Labels != nil {
+		for k, v := range tr.Labels {
+			desiredLabels[k] = v
+		}
+	}
+	if tr.Annotations != nil {
+		for k, v := range tr.Annotations {
+			desiredAnnotations[k] = v
+		}
+	}
+	if tr.Finalizers != nil {
+		desiredFinalizers = append(desiredFinalizers, tr.Finalizers...)
+	}
+
+	// Fetch the latest version of the TaskRun
+	if err := apiReader.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr); err != nil {
+		return fmt.Errorf("failed to fetch latest TaskRun version: %w", err)
+	}
+
+	// Ensure maps exist
+	if tr.Labels == nil {
+		tr.Labels = make(map[string]string)
+	}
+	if tr.Annotations == nil {
+		tr.Annotations = make(map[string]string)
+	}
+	if tr.Finalizers == nil {
+		tr.Finalizers = make([]string, 0)
+	}
+
+	// Merge desired labels and annotations into the fresh TaskRun
+	for k, v := range desiredLabels {
+		tr.Labels[k] = v
+	}
+	for k, v := range desiredAnnotations {
+		tr.Annotations[k] = v
+	}
+
+	// Merge finalizers (avoid duplicates)
+	for _, finalizer := range desiredFinalizers {
+		found := false
+		for _, existing := range tr.Finalizers {
+			if existing == finalizer {
+				found = true
+				break
+			}
+		}
+		if !found {
+			tr.Finalizers = append(tr.Finalizers, finalizer)
+		}
+	}
+
+	// Perform update
+	err := client.Update(ctx, tr)
+	return err
 }
