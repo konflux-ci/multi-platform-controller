@@ -719,11 +719,10 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 
 	Describe("Test UpdateTaskRunWithRetry function", func() {
 		var client runtimeclient.Client
-		var reconciler *ReconcileTaskRun
 		var tr *pipelinev1.TaskRun
 
 		BeforeEach(func() {
-			client, reconciler = setupClientAndReconciler(createHostConfig())
+			client, _ = setupClientAndReconciler(createHostConfig())
 			tr = &pipelinev1.TaskRun{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-taskrun",
@@ -752,7 +751,7 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			tr.Finalizers = append(tr.Finalizers, "new-finalizer")
 
 			// Update should succeed immediately
-			err := UpdateTaskRunWithRetry(ctx, client, reconciler.apiReader, tr, 3)
+			err := UpdateTaskRunWithRetry(ctx, client, tr)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Verify the update was applied
@@ -773,20 +772,20 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			}
 
 			// Modify the TaskRun
-			tr.Labels["conflict-label"] = "conflict-value"
-			tr.Annotations["conflict-annotation"] = "conflict-value"
-			tr.Finalizers = append(tr.Finalizers, "conflict-finalizer")
+			tr.Labels[TargetPlatformLabel] = "conflict-value"
+			tr.Annotations[AllocationStartTimeAnnotation] = "conflict-value"
+			tr.Finalizers = append(tr.Finalizers, PipelineFinalizer)
 
 			// Should succeed after retries
-			err := UpdateTaskRunWithRetry(ctx, conflictingClient, reconciler.apiReader, tr, 5)
+			err := UpdateTaskRunWithRetry(ctx, conflictingClient, tr)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Verify the update was applied
 			updated := &pipelinev1.TaskRun{}
 			Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, updated)).To(Succeed())
-			Expect(updated.Labels).To(HaveKeyWithValue("conflict-label", "conflict-value"))
-			Expect(updated.Annotations).To(HaveKeyWithValue("conflict-annotation", "conflict-value"))
-			Expect(updated.Finalizers).To(ContainElement("conflict-finalizer"))
+			Expect(updated.Labels).To(HaveKeyWithValue(TargetPlatformLabel, "conflict-value"))
+			Expect(updated.Annotations).To(HaveKeyWithValue(AllocationStartTimeAnnotation, "conflict-value"))
+			Expect(updated.Finalizers).To(ContainElement(PipelineFinalizer))
 		})
 
 		It("should merge labels and annotations correctly after conflict", func(ctx SpecContext) {
@@ -799,9 +798,9 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			Expect(client.Update(ctx, external)).To(Succeed())
 
 			// Now modify our local copy with different changes
-			tr.Labels["local-label"] = "local-value"
-			tr.Annotations["local-annotation"] = "local-value"
-			tr.Finalizers = append(tr.Finalizers, "local-finalizer")
+			tr.Labels[TargetPlatformLabel] = "local-value"
+			tr.Annotations[AllocationStartTimeAnnotation] = "local-value"
+			tr.Finalizers = append(tr.Finalizers, PipelineFinalizer)
 
 			// Create a client that will cause one conflict
 			conflictingClient := &ConflictingClient{
@@ -810,46 +809,19 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			}
 
 			// Update should succeed and merge both changes
-			err := UpdateTaskRunWithRetry(ctx, conflictingClient, reconciler.apiReader, tr, 3)
+			err := UpdateTaskRunWithRetry(ctx, conflictingClient, tr)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Verify both sets of changes are present
 			updated := &pipelinev1.TaskRun{}
 			Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, updated)).To(Succeed())
-			Expect(updated.Labels).To(HaveKeyWithValue("local-label", "local-value"))
+			Expect(updated.Labels).To(HaveKeyWithValue(TargetPlatformLabel, "local-value"))
 			Expect(updated.Labels).To(HaveKeyWithValue("external-label", "external-value"))
 			Expect(updated.Labels).To(HaveKeyWithValue("existing-label", "existing-value"))
-			Expect(updated.Annotations).To(HaveKeyWithValue("local-annotation", "local-value"))
+			Expect(updated.Annotations).To(HaveKeyWithValue(AllocationStartTimeAnnotation, "local-value"))
 			Expect(updated.Annotations).To(HaveKeyWithValue("external-annotation", "external-value"))
 			Expect(updated.Annotations).To(HaveKeyWithValue("existing-annotation", "existing-value"))
-			Expect(updated.Finalizers).To(ContainElements("existing-finalizer", "local-finalizer", "external-finalizer"))
-		})
-
-		It("should not duplicate finalizers", func(ctx SpecContext) {
-			// Add a finalizer that already exists
-			tr.Finalizers = append(tr.Finalizers, "existing-finalizer") // This should not create a duplicate
-
-			// Create a client that will cause one conflict
-			conflictingClient := &ConflictingClient{
-				Client:        client,
-				ConflictCount: 1,
-			}
-
-			err := UpdateTaskRunWithRetry(ctx, conflictingClient, reconciler.apiReader, tr, 3)
-			Expect(err).ToNot(HaveOccurred())
-
-			// Verify no duplicate finalizers
-			updated := &pipelinev1.TaskRun{}
-			Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, updated)).To(Succeed())
-
-			// Count occurrences of the finalizer
-			count := 0
-			for _, finalizer := range updated.Finalizers {
-				if finalizer == "existing-finalizer" {
-					count++
-				}
-			}
-			Expect(count).To(Equal(1), "Should not have duplicate finalizers")
+			Expect(updated.Finalizers).To(ConsistOf("existing-finalizer", PipelineFinalizer, "external-finalizer"))
 		})
 
 		It("should handle nil maps gracefully", func(ctx SpecContext) {
@@ -868,19 +840,19 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			Expect(client.Create(ctx, nilTr)).To(Succeed())
 
 			// Add some data to nil maps
-			nilTr.Labels = map[string]string{"new-label": "new-value"}
-			nilTr.Annotations = map[string]string{"new-annotation": "new-value"}
-			nilTr.Finalizers = []string{"new-finalizer"}
+			nilTr.Labels = map[string]string{TargetPlatformLabel: "new-value"}
+			nilTr.Annotations = map[string]string{AllocationStartTimeAnnotation: "new-value"}
+			nilTr.Finalizers = []string{PipelineFinalizer}
 
-			err := UpdateTaskRunWithRetry(ctx, client, reconciler.apiReader, nilTr, 3)
+			err := UpdateTaskRunWithRetry(ctx, client, nilTr)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Verify the update was applied
 			updated := &pipelinev1.TaskRun{}
 			Expect(client.Get(ctx, types.NamespacedName{Namespace: nilTr.Namespace, Name: nilTr.Name}, updated)).To(Succeed())
-			Expect(updated.Labels).To(HaveKeyWithValue("new-label", "new-value"))
-			Expect(updated.Annotations).To(HaveKeyWithValue("new-annotation", "new-value"))
-			Expect(updated.Finalizers).To(ContainElement("new-finalizer"))
+			Expect(updated.Labels).To(HaveKeyWithValue(TargetPlatformLabel, "new-value"))
+			Expect(updated.Annotations).To(HaveKeyWithValue(AllocationStartTimeAnnotation, "new-value"))
+			Expect(updated.Finalizers).To(ContainElement(PipelineFinalizer))
 		})
 
 		It("should fail immediately on non-conflict errors", func(ctx SpecContext) {
@@ -892,9 +864,8 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 
 			tr.Labels["error-label"] = "error-value"
 
-			err := UpdateTaskRunWithRetry(ctx, errorClient, reconciler.apiReader, tr, 3)
+			err := UpdateTaskRunWithRetry(ctx, errorClient, tr)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("failed to update TaskRun"))
 			Expect(err.Error()).To(ContainSubstring("some other error"))
 		})
 
@@ -907,23 +878,8 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 
 			tr.Labels["persistent-conflict"] = "value"
 
-			err := UpdateTaskRunWithRetry(ctx, conflictingClient, reconciler.apiReader, tr, 3)
+			err := UpdateTaskRunWithRetry(ctx, conflictingClient, tr)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("failed to update TaskRun after 3 attempts"))
-		})
-
-		It("should use default max retries when maxRetries is 0", func(ctx SpecContext) {
-			// Create a client that will conflict more than 3 times but less than 5
-			conflictingClient := &ConflictingClient{
-				Client:        client,
-				ConflictCount: 4,
-			}
-
-			tr.Labels["default-retry"] = "value"
-
-			// Should succeed because default is 5 retries
-			err := UpdateTaskRunWithRetry(ctx, conflictingClient, reconciler.apiReader, tr, 0)
-			Expect(err).ToNot(HaveOccurred())
 		})
 	})
 })

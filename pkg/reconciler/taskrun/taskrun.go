@@ -23,6 +23,7 @@ import (
 	k8sRuntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/strings/slices"
 	"knative.dev/pkg/apis"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -49,7 +50,7 @@ const (
 	CloudAddress           = "build.appstudio.redhat.com/cloud-address"
 	CloudDynamicPlatform   = "build.appstudio.redhat.com/cloud-dynamic-platform"
 	ProvisionTaskProcessed = "build.appstudio.redhat.com/provision-task-processed"
-	ProvisionTaskFinalizer = "build.appstudio.redhat.com/provision-task-finalizer"
+	// ProvisionTaskFinalizer = "build.appstudio.redhat.com/provision-task-finalizer"
 
 	//AllocationStartTimeAnnotation Some allocations can take multiple calls, we track the actual start time in this annotation
 	AllocationStartTimeAnnotation = "build.appstudio.redhat.com/allocation-start-time"
@@ -973,101 +974,93 @@ func platformLabel(platform string) string {
 
 // UpdateTaskRunWithRetry performs a conflict-resilient update of a TaskRun object.
 // On conflict, it fetches the latest version and merges labels, annotations, and finalizers from the incoming TaskRun.
-func UpdateTaskRunWithRetry(ctx context.Context, client client.Client, apiReader client.Reader, tr *tektonapi.TaskRun, maxRetries int) error {
-	log := logr.FromContextOrDiscard(ctx)
-	if maxRetries <= 0 {
-		maxRetries = 5
+func UpdateTaskRunWithRetry(ctx context.Context, cli client.Client, tr *tektonapi.TaskRun) error {
+	err := cli.Update(ctx, tr)
+
+	// if no error or a not a conflict error happened
+	// we need to return here
+	if err == nil || !errors.IsConflict(err) {
+		return err
 	}
 
-	var lastErr error
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		// Attempt to update the TaskRun
-		err := client.Update(ctx, tr)
-		if err == nil {
-			// Success!
-			if attempt > 0 {
-				log.Info("TaskRun update succeeded after retries", "attempts", attempt+1)
-			}
-			return nil
-		}
+	// if a conflict happened we retry
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		return updateTaskRun(ctx, cli, tr)
+	})
+}
 
-		// Check if it's a conflict error
-		if !errors.IsConflict(err) {
-			// Non-conflict error - fail immediately
-			return fmt.Errorf("failed to update TaskRun: %w", err)
-		}
+var (
+	managedKeys = []string{
+		ConfigMapLabel,
+		MultiPlatformSecretLabel,
+		AssignedHost,
+		FailedHosts,
+		CloudInstanceId,
+		CloudFailures,
+		CloudAddress,
+		CloudDynamicPlatform,
+		ProvisionTaskProcessed,
+		AllocationStartTimeAnnotation,
+		BuildStartTimeAnnotation,
+		UserTaskName,
+		UserTaskNamespace,
+		TargetPlatformLabel,
+		WaitingForPlatformLabel,
+		PipelineFinalizer,
+		HostConfig,
+		TaskTypeLabel,
+	}
+)
 
-		// Handle conflict error
-		lastErr = err
-		log.Info("Conflict detected, retrying update", "attempt", attempt+1, "maxRetries", maxRetries)
+func updateTaskRun(ctx context.Context, cli client.Client, tr *tektonapi.TaskRun) error {
+	latest := &tektonapi.TaskRun{}
+	if err := cli.Get(ctx, client.ObjectKeyFromObject(tr), latest); err != nil {
+		return err
+	}
 
-		// If this is the last attempt, don't fetch
-		if attempt == maxRetries-1 {
-			break
-		}
+	// merge annotations and labels
+	latest.Annotations = mergeKeysInMaps(latest.GetAnnotations(), tr.GetAnnotations(), managedKeys)
+	latest.Labels = mergeKeysInMaps(latest.GetLabels(), tr.GetLabels(), managedKeys)
 
-		// Store the desired labels, annotations, and finalizers
-		desiredLabels := make(map[string]string)
-		desiredAnnotations := make(map[string]string)
-		desiredFinalizers := make([]string, 0)
+	// update finalizers
+	ensureFinalizerIsUpdated(latest, tr, PipelineFinalizer)
 
-		if tr.Labels != nil {
-			for k, v := range tr.Labels {
-				desiredLabels[k] = v
-			}
-		}
-		if tr.Annotations != nil {
-			for k, v := range tr.Annotations {
-				desiredAnnotations[k] = v
-			}
-		}
-		if tr.Finalizers != nil {
-			desiredFinalizers = append(desiredFinalizers, tr.Finalizers...)
-		}
+	// update the resource
+	return cli.Update(ctx, latest)
+}
 
-		// Fetch the latest version of the TaskRun
-		namespacedName := types.NamespacedName{
-			Namespace: tr.Namespace,
-			Name:      tr.Name,
-		}
+func ensureFinalizerIsUpdated(latest, mutated *tektonapi.TaskRun, finalizer string) {
+	// ensure finalizer is set correctly
+	of := controllerutil.ContainsFinalizer(latest, finalizer)
+	mf := controllerutil.ContainsFinalizer(mutated, finalizer)
 
-		if err := apiReader.Get(ctx, namespacedName, tr); err != nil {
-			return fmt.Errorf("failed to fetch latest TaskRun version: %w", err)
-		}
+	// if both are present or absent we are fine
+	if mf == of {
+		return
+	}
 
-		// Ensure maps exist
-		if tr.Labels == nil {
-			tr.Labels = make(map[string]string)
-		}
-		if tr.Annotations == nil {
-			tr.Annotations = make(map[string]string)
-		}
-		if tr.Finalizers == nil {
-			tr.Finalizers = make([]string, 0)
-		}
+	if !mf {
+		controllerutil.RemoveFinalizer(latest, finalizer)
+	} else {
+		controllerutil.AddFinalizer(latest, finalizer)
+	}
+}
 
-		// Merge desired labels and annotations into the fresh TaskRun
-		for k, v := range desiredLabels {
-			tr.Labels[k] = v
-		}
-		for k, v := range desiredAnnotations {
-			tr.Annotations[k] = v
-		}
+func mergeKeysInMaps(latest, mutation map[string]string, keys []string) map[string]string {
+	if latest == nil {
+		latest = map[string]string{}
+	}
+	if mutation == nil {
+		mutation = map[string]string{}
+	}
 
-		// Merge finalizers (avoid duplicates)
-		for _, finalizer := range desiredFinalizers {
-			found := false
-			for _, existing := range tr.Finalizers {
-				if existing == finalizer {
-					found = true
-					break
-				}
-			}
-			if !found {
-				tr.Finalizers = append(tr.Finalizers, finalizer)
-			}
+	for _, k := range keys {
+		if a, ok := mutation[k]; ok {
+			latest[k] = a
+		} else {
+			delete(latest, k)
 		}
 	}
 
-	return fmt.Errorf("failed to update TaskRun after %d attempts, last error: %w", maxRetries, lastErr)
+	return latest
 }
