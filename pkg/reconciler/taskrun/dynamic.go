@@ -9,8 +9,6 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
 	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -100,7 +98,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 		} else if address != "" { // An IP address was successfully retrieved for the the VM
 			tr.Labels[AssignedHost] = tr.Annotations[CloudInstanceId]
 			tr.Annotations[CloudAddress] = address
-			err := taskRun.client.Update(ctx, tr)
+			err := UpdateTaskRunWithRetry(ctx, taskRun.client, tr)
 			if err != nil {
 				return reconcile.Result{}, err
 			}
@@ -170,7 +168,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 		//no host available
 		//add the waiting label
 		tr.Labels[WaitingForPlatformLabel] = platformLabel(r.platform)
-		if err := taskRun.client.Update(ctx, tr); err != nil {
+		if err := UpdateTaskRunWithRetry(ctx, taskRun.client, tr); err != nil {
 			log.Error(err, "Failed to update task with waiting label. Will retry.")
 		}
 		return reconcile.Result{RequeueAfter: time.Minute}, nil
@@ -203,7 +201,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 		}
 		failureCount++
 		tr.Annotations[CloudFailures] = strconv.Itoa(failureCount)
-		err = taskRun.client.Update(ctx, tr)
+		err = UpdateTaskRunWithRetry(ctx, taskRun.client, tr)
 		if err != nil {
 			//todo: handle conflict properly, for now you get an extra retry
 			log.Error(err, "failed to update failure count")
@@ -214,40 +212,21 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 	message = fmt.Sprintf("launched %s instance for %s", r.instanceTag, tr.Name)
 	r.eventRecorder.Event(tr, "Normal", "Launched", message)
 
-	//this seems super prone to conflicts
-	//we always read a new version direct from the API server on conflict
-	for {
-		tr.Annotations[CloudInstanceId] = string(instance)
-		tr.Labels[CloudDynamicPlatform] = platformLabel(r.platform)
+	// Set the instance ID and platform label, then update with conflict resilience
+	tr.Annotations[CloudInstanceId] = string(instance)
+	tr.Labels[CloudDynamicPlatform] = platformLabel(r.platform)
+	//add a finalizer to clean up
+	controllerutil.AddFinalizer(tr, PipelineFinalizer)
 
-		log.Info("updating instance id of cloud host", "instance", instance)
-		//add a finalizer to clean up
-		controllerutil.AddFinalizer(tr, PipelineFinalizer)
-		err = taskRun.client.Update(ctx, tr)
-		if err == nil {
-			break
-		} else if !errors.IsConflict(err) {
-			log.Error(err, "failed to update")
-			err2 := r.CloudProvider.TerminateInstance(taskRun.client, ctx, instance)
-			if err2 != nil {
-				log.Error(err2, "failed to delete cloud instance")
-			}
-			return reconcile.Result{}, err
-		} else {
-			log.Error(err, "conflict updating, retrying")
-			err := taskRun.apiReader.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)
-			if err != nil {
-				log.Error(err, "failed to update")
-				err2 := r.CloudProvider.TerminateInstance(taskRun.client, ctx, instance)
-				if err2 != nil {
-					log.Error(err2, "failed to delete cloud instance")
-				}
-				return reconcile.Result{}, err
-			}
-			if tr.Annotations == nil {
-				tr.Annotations = map[string]string{}
-			}
+	log.Info("updating instance id of cloud host", "instance", instance)
+	err = UpdateTaskRunWithRetry(ctx, taskRun.client, tr)
+	if err != nil {
+		log.Error(err, "failed to update TaskRun with instance ID after retries")
+		err2 := r.CloudProvider.TerminateInstance(taskRun.client, ctx, instance)
+		if err2 != nil {
+			log.Error(err2, "failed to delete cloud instance")
 		}
+		return reconcile.Result{}, err
 	}
 
 	return reconcile.Result{RequeueAfter: 2 * time.Minute}, nil
@@ -259,6 +238,5 @@ func (dr DynamicResolver) removeInstanceFromTask(reconcileTaskRun *ReconcileTask
 	delete(taskRun.Labels, AssignedHost)
 	delete(taskRun.Annotations, CloudInstanceId)
 	delete(taskRun.Annotations, CloudDynamicPlatform)
-	updateErr := reconcileTaskRun.client.Update(ctx, taskRun)
-	return updateErr
+	return UpdateTaskRunWithRetry(ctx, reconcileTaskRun.client, taskRun)
 }

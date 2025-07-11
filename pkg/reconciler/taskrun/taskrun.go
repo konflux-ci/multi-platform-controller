@@ -23,6 +23,7 @@ import (
 	k8sRuntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/strings/slices"
 	"knative.dev/pkg/apis"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -49,7 +50,7 @@ const (
 	CloudAddress           = "build.appstudio.redhat.com/cloud-address"
 	CloudDynamicPlatform   = "build.appstudio.redhat.com/cloud-dynamic-platform"
 	ProvisionTaskProcessed = "build.appstudio.redhat.com/provision-task-processed"
-	ProvisionTaskFinalizer = "build.appstudio.redhat.com/provision-task-finalizer"
+	// ProvisionTaskFinalizer = "build.appstudio.redhat.com/provision-task-finalizer"
 
 	//AllocationStartTimeAnnotation Some allocations can take multiple calls, we track the actual start time in this annotation
 	AllocationStartTimeAnnotation = "build.appstudio.redhat.com/allocation-start-time"
@@ -969,4 +970,97 @@ type Host struct {
 
 func platformLabel(platform string) string {
 	return strings.ReplaceAll(platform, "/", "-")
+}
+
+// UpdateTaskRunWithRetry performs a conflict-resilient update of a TaskRun object.
+// On conflict, it fetches the latest version and merges labels, annotations, and finalizers from the incoming TaskRun.
+func UpdateTaskRunWithRetry(ctx context.Context, cli client.Client, tr *tektonapi.TaskRun) error {
+	err := cli.Update(ctx, tr)
+
+	// if no error or a not a conflict error happened
+	// we need to return here
+	if err == nil || !errors.IsConflict(err) {
+		return err
+	}
+
+	// if a conflict happened we retry
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		return updateTaskRun(ctx, cli, tr)
+	})
+}
+
+var (
+	managedKeys = []string{
+		ConfigMapLabel,
+		MultiPlatformSecretLabel,
+		AssignedHost,
+		FailedHosts,
+		CloudInstanceId,
+		CloudFailures,
+		CloudAddress,
+		CloudDynamicPlatform,
+		ProvisionTaskProcessed,
+		AllocationStartTimeAnnotation,
+		BuildStartTimeAnnotation,
+		UserTaskName,
+		UserTaskNamespace,
+		TargetPlatformLabel,
+		WaitingForPlatformLabel,
+		PipelineFinalizer,
+		HostConfig,
+		TaskTypeLabel,
+	}
+)
+
+func updateTaskRun(ctx context.Context, cli client.Client, tr *tektonapi.TaskRun) error {
+	latest := &tektonapi.TaskRun{}
+	if err := cli.Get(ctx, client.ObjectKeyFromObject(tr), latest); err != nil {
+		return err
+	}
+
+	// merge annotations and labels
+	latest.Annotations = mergeKeysInMaps(latest.GetAnnotations(), tr.GetAnnotations(), managedKeys)
+	latest.Labels = mergeKeysInMaps(latest.GetLabels(), tr.GetLabels(), managedKeys)
+
+	// update finalizers
+	ensureFinalizerIsUpdated(latest, tr, PipelineFinalizer)
+
+	// update the resource
+	return cli.Update(ctx, latest)
+}
+
+func ensureFinalizerIsUpdated(latest, mutated *tektonapi.TaskRun, finalizer string) {
+	// ensure finalizer is set correctly
+	of := controllerutil.ContainsFinalizer(latest, finalizer)
+	mf := controllerutil.ContainsFinalizer(mutated, finalizer)
+
+	// if both are present or absent we are fine
+	if mf == of {
+		return
+	}
+
+	if !mf {
+		controllerutil.RemoveFinalizer(latest, finalizer)
+	} else {
+		controllerutil.AddFinalizer(latest, finalizer)
+	}
+}
+
+func mergeKeysInMaps(latest, mutation map[string]string, keys []string) map[string]string {
+	if latest == nil {
+		latest = map[string]string{}
+	}
+	if mutation == nil {
+		mutation = map[string]string{}
+	}
+
+	for _, k := range keys {
+		if a, ok := mutation[k]; ok {
+			latest[k] = a
+		} else {
+			delete(latest, k)
+		}
+	}
+
+	return latest
 }
