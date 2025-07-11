@@ -990,25 +990,20 @@ func UpdateTaskRunWithRetry(ctx context.Context, cli client.Client, tr *tektonap
 }
 
 var (
-	managedKeys = []string{
-		ConfigMapLabel,
-		MultiPlatformSecretLabel,
+	managedLabels = []string{
 		AssignedHost,
-		FailedHosts,
-		CloudInstanceId,
-		CloudFailures,
-		CloudAddress,
-		CloudDynamicPlatform,
-		ProvisionTaskProcessed,
-		AllocationStartTimeAnnotation,
-		BuildStartTimeAnnotation,
 		UserTaskName,
 		UserTaskNamespace,
 		TargetPlatformLabel,
 		WaitingForPlatformLabel,
-		PipelineFinalizer,
-		HostConfig,
 		TaskTypeLabel,
+	}
+
+	managedAnnotations = []string{
+		FailedHosts,
+		CloudInstanceId,
+		ProvisionTaskProcessed,
+		AllocationStartTimeAnnotation,
 	}
 )
 
@@ -1019,8 +1014,8 @@ func updateTaskRun(ctx context.Context, cli client.Client, tr *tektonapi.TaskRun
 	}
 
 	// merge annotations and labels
-	latest.Annotations = mergeKeysInMaps(latest.GetAnnotations(), tr.GetAnnotations(), managedKeys)
-	latest.Labels = mergeKeysInMaps(latest.GetLabels(), tr.GetLabels(), managedKeys)
+	latest.Annotations = mergeKeysInMaps(latest.GetAnnotations(), tr.GetAnnotations(), managedAnnotations)
+	latest.Labels = mergeKeysInMaps(latest.GetLabels(), tr.GetLabels(), managedLabels)
 
 	// update finalizers
 	ensureFinalizerIsUpdated(latest, tr, PipelineFinalizer)
