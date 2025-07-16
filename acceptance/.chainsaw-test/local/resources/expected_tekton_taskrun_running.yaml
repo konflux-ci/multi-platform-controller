@@ -1,0 +1,10 @@
+apiVersion: tekton.dev/v1beta1
+kind: taskrun
+metadata:
+  name: ($taskRunName)
+status:
+  conditions:
+  - message: Not all Steps in the Task have finished executing
+    reason: Running
+    status: Unknown
+    type: Succeeded

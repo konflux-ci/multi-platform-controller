@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: local-pending-taskrun
+spec:
+  description: |
+    a taskrun is left pending waiting for the secret
+  steps:
+  - name: when-taskrun-is-created
+    try:
+    - apply:
+        file: ../../resources/actual_pending_tekton_taskrun_no_platform.yaml
+  - name: when-some-time-is-gone
+    try:
+    - sleep:
+        duration: 10s
+  - name: then-taskrun-is-still-pending
+    try:
+    - assert:
+        file: ../../resources/expected_tekton_taskrun_pending.yaml

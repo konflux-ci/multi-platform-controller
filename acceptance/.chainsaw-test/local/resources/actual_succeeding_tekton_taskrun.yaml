@@ -1,0 +1,30 @@
+apiVersion: tekton.dev/v1beta1
+kind: TaskRun
+metadata:
+  name: local-succeeded
+spec:
+  taskSpec:
+    params:
+      - name: PLATFORM 
+        type: string
+    volumes:
+      - name: ssh
+        secret:
+          secretName: "multi-platform-ssh-local-succeeded"
+    steps:
+      - name: show-platform-and-sleep
+        image: ubuntu:latest
+        script: |
+          #!/bin/bash
+          echo "The specified platform is: $(params.PLATFORM)"
+          echo "Checking secret existence (this will not show content):"
+          ls -la /etc/secrets/host || exit 1
+          echo "Sleeping for 5 seconds..."
+          sleep 5
+          echo "Sleep finished."
+        volumeMounts:
+          - name: ssh
+            mountPath: /etc/secrets
+  params:
+    - name: PLATFORM
+      value: "linux/amd64"
