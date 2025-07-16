@@ -1,0 +1,10 @@
+apiVersion: tekton.dev/v1beta1
+kind: TaskRun
+metadata:
+  name: local-succeeded
+status:
+  conditions:
+  - message: All Steps have completed executing
+    reason: Succeeded
+    status: "True"
+    type: Succeeded

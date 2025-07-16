@@ -1,0 +1,10 @@
+apiVersion: tekton.dev/v1beta1
+kind: TaskRun
+metadata:
+  name: local-pending
+status:
+  conditions:
+  - message: 'pod status "PodReadyToStartContainers":"False"; message: ""'
+    reason: Pending
+    status: Unknown
+    type: Succeeded
