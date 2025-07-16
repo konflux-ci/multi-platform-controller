@@ -751,7 +751,7 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			tr.Finalizers = append(tr.Finalizers, "new-finalizer")
 
 			// Update should succeed immediately
-			err := UpdateTaskRunWithRetry(ctx, client, tr)
+			err := UpdateTaskRunWithRetry(ctx, client, client, tr)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Verify the update was applied
@@ -774,17 +774,21 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			// Modify the TaskRun
 			tr.Labels[TargetPlatformLabel] = "conflict-value"
 			tr.Annotations[AllocationStartTimeAnnotation] = "conflict-value"
+			tr.Annotations[CloudInstanceId] = "conflict-value"
 			tr.Finalizers = append(tr.Finalizers, PipelineFinalizer)
 
 			// Should succeed after retries
-			err := UpdateTaskRunWithRetry(ctx, conflictingClient, tr)
+			err := UpdateTaskRunWithRetry(ctx, conflictingClient, client, tr)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Verify the update was applied
 			updated := &pipelinev1.TaskRun{}
 			Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, updated)).To(Succeed())
 			Expect(updated.Labels).To(HaveKeyWithValue(TargetPlatformLabel, "conflict-value"))
-			Expect(updated.Annotations).To(HaveKeyWithValue(AllocationStartTimeAnnotation, "conflict-value"))
+			Expect(updated.Annotations).To(And(
+				HaveKeyWithValue(AllocationStartTimeAnnotation, "conflict-value"),
+				HaveKeyWithValue(CloudInstanceId, "conflict-value"),
+			))
 			Expect(updated.Finalizers).To(ContainElement(PipelineFinalizer))
 		})
 
@@ -809,7 +813,7 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			}
 
 			// Update should succeed and merge both changes
-			err := UpdateTaskRunWithRetry(ctx, conflictingClient, tr)
+			err := UpdateTaskRunWithRetry(ctx, conflictingClient, conflictingClient, tr)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Verify both sets of changes are present
@@ -844,7 +848,7 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 			nilTr.Annotations = map[string]string{AllocationStartTimeAnnotation: "new-value"}
 			nilTr.Finalizers = []string{PipelineFinalizer}
 
-			err := UpdateTaskRunWithRetry(ctx, client, nilTr)
+			err := UpdateTaskRunWithRetry(ctx, client, client, nilTr)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Verify the update was applied
@@ -864,7 +868,7 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 
 			tr.Labels["error-label"] = "error-value"
 
-			err := UpdateTaskRunWithRetry(ctx, errorClient, tr)
+			err := UpdateTaskRunWithRetry(ctx, errorClient, errorClient, tr)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("some other error"))
 		})
@@ -878,7 +882,7 @@ var _ = Describe("TaskRun Reconciler Tests", func() {
 
 			tr.Labels["persistent-conflict"] = "value"
 
-			err := UpdateTaskRunWithRetry(ctx, conflictingClient, tr)
+			err := UpdateTaskRunWithRetry(ctx, conflictingClient, conflictingClient, tr)
 			Expect(err).To(HaveOccurred())
 		})
 	})

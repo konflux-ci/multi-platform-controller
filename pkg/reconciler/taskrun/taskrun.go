@@ -128,7 +128,7 @@ func (r *ReconcileTaskRun) Reconcile(ctx context.Context, request reconcile.Requ
 	log := ctrl.Log.WithName("taskrun").WithValues("request", request.NamespacedName)
 
 	tr := tektonapi.TaskRun{}
-	if err := r.client.Get(ctx, request.NamespacedName, &tr); err != nil {
+	if err := r.apiReader.Get(ctx, request.NamespacedName, &tr); err != nil {
 		if errors.IsNotFound(err) {
 			// gone, no error
 			return ctrl.Result{}, nil
@@ -974,7 +974,7 @@ func platformLabel(platform string) string {
 
 // UpdateTaskRunWithRetry performs a conflict-resilient update of a TaskRun object.
 // On conflict, it fetches the latest version and merges labels, annotations, and finalizers from the incoming TaskRun.
-func UpdateTaskRunWithRetry(ctx context.Context, cli client.Client, tr *tektonapi.TaskRun) error {
+func UpdateTaskRunWithRetry(ctx context.Context, cli client.Client, apiReader client.Reader, tr *tektonapi.TaskRun) error {
 	err := cli.Update(ctx, tr)
 
 	// if no error or a not a conflict error happened
@@ -985,7 +985,7 @@ func UpdateTaskRunWithRetry(ctx context.Context, cli client.Client, tr *tektonap
 
 	// if a conflict happened we retry
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		return updateTaskRun(ctx, cli, tr)
+		return updateTaskRun(ctx, cli, apiReader, tr)
 	})
 }
 
@@ -1007,9 +1007,9 @@ var (
 	}
 )
 
-func updateTaskRun(ctx context.Context, cli client.Client, tr *tektonapi.TaskRun) error {
+func updateTaskRun(ctx context.Context, cli client.Client, apiReader client.Reader, tr *tektonapi.TaskRun) error {
 	latest := &tektonapi.TaskRun{}
-	if err := cli.Get(ctx, client.ObjectKeyFromObject(tr), latest); err != nil {
+	if err := apiReader.Get(ctx, client.ObjectKeyFromObject(tr), latest); err != nil {
 		return err
 	}
 
