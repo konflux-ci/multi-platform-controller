@@ -2,9 +2,11 @@ package mpcmetrics
 
 import (
 	"math/rand"
+	"slices"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	io_prometheus_client "github.com/prometheus/client_model/go"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
@@ -150,6 +152,12 @@ var _ = Describe("PlatformMetrics", func() {
 
 })
 
+func hasLabel(lp []*io_prometheus_client.LabelPair, name, value string) bool {
+	return slices.ContainsFunc(lp, func(l *io_prometheus_client.LabelPair) bool {
+		return l.GetName() == name && l.GetValue() == value
+	})
+}
+
 func getGaugeValue(platform, metricName, namespace string) (int, error) {
 	mfs, err := metrics.Registry.Gather()
 	if err != nil {
@@ -158,20 +166,11 @@ func getGaugeValue(platform, metricName, namespace string) (int, error) {
 	for _, mf := range mfs {
 		if mf.GetName() == metricName {
 			for _, m := range mf.GetMetric() {
-				if m.Gauge != nil {
-					hasPlatform := false
-					hasNamespace := false
-					for _, l := range m.Label {
-						if l.GetName() == "platform" && l.GetValue() == platform {
-							hasPlatform = true
-						}
-						if l.GetName() == "namespace" && l.GetValue() == namespace {
-							hasNamespace = true
-						}
-					}
-					if hasPlatform && hasNamespace {
-						return int(m.Gauge.GetValue()), nil
-					}
+				if m.Gauge == nil {
+					continue
+				}
+				if hasLabel(m.Label, "platform", platform) && hasLabel(m.Label, "namespace", namespace) {
+					return int(m.Gauge.GetValue()), nil
 				}
 			}
 		}
