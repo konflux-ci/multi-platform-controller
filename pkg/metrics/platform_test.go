@@ -21,28 +21,28 @@ var _ = Describe("PlatformMetrics", func() {
 			Expect(RegisterPlatformMetrics(ctx, platform)).NotTo(HaveOccurred())
 			//resetting counters
 			HandleMetrics(platform, func(m *PlatformMetrics) {
-				m.RunningTasks.Set(0)
+				m.RunningTasks.WithLabelValues(platform, "test-namespace").Set(0)
 			})
 			HandleMetrics(platform, func(m *PlatformMetrics) {
-				m.WaitingTasks.Set(0)
+				m.WaitingTasks.WithLabelValues(platform, "test-namespace").Set(0)
 			})
 
 		})
 		When("When appropriate condition happened", func() {
 			It("should increment running_tasks metric", func() {
 				HandleMetrics(platform, func(m *PlatformMetrics) {
-					m.RunningTasks.Inc()
+					m.RunningTasks.WithLabelValues(platform, "test-namespace").Inc()
 				})
-				result, err := getGaugeValue(platform, runTasksMetricName)
+				result, err := getGaugeValue(platform, runTasksMetricName, "test-namespace")
 				Expect(err).ToNot(HaveOccurred())
 				Expect(result).To(Equal(expectedValue))
 			})
 
 			It("should increment waiting_tasks metric", func() {
 				HandleMetrics(platform, func(m *PlatformMetrics) {
-					m.WaitingTasks.Inc()
+					m.WaitingTasks.WithLabelValues(platform, "test-namespace").Inc()
 				})
-				result, err := getGaugeValue(platform, waitingTaskMetricName)
+				result, err := getGaugeValue(platform, waitingTaskMetricName, "test-namespace")
 				Expect(err).ToNot(HaveOccurred())
 				Expect(result).To(Equal(expectedValue))
 			})
@@ -150,7 +150,7 @@ var _ = Describe("PlatformMetrics", func() {
 
 })
 
-func getGaugeValue(platform, metricName string) (int, error) {
+func getGaugeValue(platform, metricName, namespace string) (int, error) {
 	mfs, err := metrics.Registry.Gather()
 	if err != nil {
 		return 0, err
@@ -158,8 +158,20 @@ func getGaugeValue(platform, metricName string) (int, error) {
 	for _, mf := range mfs {
 		if mf.GetName() == metricName {
 			for _, m := range mf.GetMetric() {
-				if m.Gauge != nil && m.Label[0].GetValue() == platform {
-					return int(m.Gauge.GetValue()), nil
+				if m.Gauge != nil {
+					hasPlatform := false
+					hasNamespace := false
+					for _, l := range m.Label {
+						if l.GetName() == "platform" && l.GetValue() == platform {
+							hasPlatform = true
+						}
+						if l.GetName() == "namespace" && l.GetValue() == namespace {
+							hasNamespace = true
+						}
+					}
+					if hasPlatform && hasNamespace {
+						return int(m.Gauge.GetValue()), nil
+					}
 				}
 			}
 		}
