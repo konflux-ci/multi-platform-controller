@@ -63,7 +63,7 @@ func RegisterPlatformMetrics(_ context.Context, platform string) error {
 	if err := metrics.Registry.Register(pmetrics.TaskRunTime); err != nil {
 		return err
 	}
-	// TODO: add namespace of the task run
+
 	pmetrics.RunningTasks = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Subsystem: MetricsSubsystem,
 		Name:      "running_tasks",
@@ -75,7 +75,7 @@ func RegisterPlatformMetrics(_ context.Context, platform string) error {
 			return err
 		}
 	}
-	// TODO: add namespace of the task run
+
 	pmetrics.WaitingTasks = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Subsystem: MetricsSubsystem,
 		Name:      "waiting_tasks",
