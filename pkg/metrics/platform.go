@@ -2,6 +2,7 @@ package mpcmetrics
 
 import (
 	"context"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
@@ -20,8 +21,8 @@ type PlatformMetrics struct {
 	AllocationTime         prometheus.Histogram
 	WaitTime               prometheus.Histogram
 	TaskRunTime            prometheus.Histogram
-	RunningTasks           prometheus.Gauge
-	WaitingTasks           prometheus.Gauge
+	RunningTasks           *prometheus.GaugeVec
+	WaitingTasks           *prometheus.GaugeVec
 	ProvisionFailures      prometheus.Counter
 	CleanupFailures        prometheus.Counter
 	HostAllocationFailures prometheus.Counter
@@ -63,22 +64,27 @@ func RegisterPlatformMetrics(_ context.Context, platform string) error {
 		return err
 	}
 
-	pmetrics.RunningTasks = prometheus.NewGauge(prometheus.GaugeOpts{
-		ConstLabels: map[string]string{"platform": platform},
-		Subsystem:   MetricsSubsystem,
-		Name:        "running_tasks",
-		Help:        "The number of currently running tasks on this platform"})
+	pmetrics.RunningTasks = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Subsystem: MetricsSubsystem,
+		Name:      "running_tasks",
+		Help:      "The number of currently running tasks on this platform",
+	}, []string{"platform", "namespace"})
 	if err := metrics.Registry.Register(pmetrics.RunningTasks); err != nil {
-		return err
+		// This can be called multiple times, so we need to check if it's already registered
+		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
+			return err
+		}
 	}
 
-	pmetrics.WaitingTasks = prometheus.NewGauge(prometheus.GaugeOpts{
-		ConstLabels: map[string]string{"platform": platform},
-		Subsystem:   MetricsSubsystem,
-		Name:        "waiting_tasks",
-		Help:        "The number of tasks waiting for an executor to be available to run"})
+	pmetrics.WaitingTasks = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Subsystem: MetricsSubsystem,
+		Name:      "waiting_tasks",
+		Help:      "The number of tasks waiting for an executor to be available to run",
+	}, []string{"platform", "namespace"})
 	if err := metrics.Registry.Register(pmetrics.WaitingTasks); err != nil {
-		return err
+		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
+			return err
+		}
 	}
 
 	pmetrics.ProvisionFailures = prometheus.NewCounter(prometheus.CounterOpts{
