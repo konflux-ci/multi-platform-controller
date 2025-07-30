@@ -68,7 +68,7 @@ func RegisterPlatformMetrics(_ context.Context, platform string) error {
 		Subsystem: MetricsSubsystem,
 		Name:      "running_tasks",
 		Help:      "The number of currently running tasks on this platform",
-	}, []string{"platform", "namespace"})
+	}, []string{"platform", "taskrun_namespace"})
 	if err := metrics.Registry.Register(pmetrics.RunningTasks); err != nil {
 		// This can be called multiple times, so we need to check if it's already registered
 		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
@@ -80,7 +80,7 @@ func RegisterPlatformMetrics(_ context.Context, platform string) error {
 		Subsystem: MetricsSubsystem,
 		Name:      "waiting_tasks",
 		Help:      "The number of tasks waiting for an executor to be available to run",
-	}, []string{"platform", "namespace"})
+	}, []string{"platform", "taskrun_namespace"})
 	if err := metrics.Registry.Register(pmetrics.WaitingTasks); err != nil {
 		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
 			return err
