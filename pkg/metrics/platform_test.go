@@ -169,7 +169,7 @@ func getGaugeValue(platform, metricName, namespace string) (int, error) {
 				if m.Gauge == nil {
 					continue
 				}
-				if hasLabel(m.Label, "platform", platform) && hasLabel(m.Label, "namespace", namespace) {
+				if hasLabel(m.Label, "platform", platform) && hasLabel(m.Label, "taskrun_namespace", namespace) {
 					return int(m.Gauge.GetValue()), nil
 				}
 			}
