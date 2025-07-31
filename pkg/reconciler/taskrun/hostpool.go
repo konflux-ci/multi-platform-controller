@@ -2,6 +2,7 @@ package taskrun
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -17,6 +18,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
+
+// ErrAllHostsFailed is returned when all hosts matching the requested platform have already failed for this TaskRun.
+var ErrAllHostsFailed = errors.New("all available hosts for the platform have failed")
 
 type HostPool struct {
 	hosts          map[string]*Host
@@ -52,17 +56,28 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 
 	var selected *Host
 	freeSpots := 0
-	hostWithOurPlatform := false
+
+	// We need to track two separate conditions:
+	// 1. If any hosts for the platform exist at all.
+	// 2. If all hosts that do exist have already failed.
+	platformExists := false
+	allPlatformHostsFailed := true
 	for k, v := range hp.hosts {
+
+		if v.Platform != hp.targetPlatform {
+			log.Info("ignoring host with non-matching platform", "host", k, "targetPlatform", hp.targetPlatform, "hostPlatform", v.Platform)
+			continue
+		}
+		// At this point, we know at least one host for the platform exists.
+		platformExists = true
+
 		if slices.Contains(failed, k) {
 			log.Info("ignoring already failed host", "host", k, "targetPlatform", hp.targetPlatform, "hostPlatform", v.Platform)
 			continue
 		}
-		if v.Platform != hp.targetPlatform {
-			log.Info("ignoring host", "host", k, "targetPlatform", hp.targetPlatform, "hostPlatform", v.Platform)
-			continue
-		}
-		hostWithOurPlatform = true
+
+		// If we've gotten this far, we've found a host for our platform that hasn't failed.
+		allPlatformHostsFailed = false
 		free := v.Concurrency - hostCount[k]
 
 		log.Info("considering host", "host", k, "freeSlots", free)
@@ -71,9 +86,18 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 			freeSpots = free
 		}
 	}
-	if !hostWithOurPlatform {
-		log.Info("no hosts with requested platform", "platform", hp.targetPlatform, "failed", failedString)
-		return reconcile.Result{}, fmt.Errorf("no hosts configured for platform %s attempted hosts: %s", hp.targetPlatform, failedString)
+	// If no hosts for the platform were found at all, return the original error.
+	if !platformExists {
+		log.Info("no hosts with requested platform", "platform", hp.targetPlatform)
+		return reconcile.Result{}, fmt.Errorf("no hosts configured for platform %s", hp.targetPlatform)
+	}
+
+	// If hosts for the platform exist, but they have all failed, return a more specific error.
+	if allPlatformHostsFailed {
+		log.Info("all available hosts for the platform have already failed", "platform", hp.targetPlatform, "failedHosts", failedString)
+		// By returning a specific error type, we allow the caller (like a dynamic pool)
+		// to gracefully handle this specific case instead of treating it as a fatal error.
+		return reconcile.Result{}, fmt.Errorf("%w: %s", ErrAllHostsFailed, failedString)
 	}
 	if selected == nil {
 		if tr.Labels[WaitingForPlatformLabel] == platformLabel(hp.targetPlatform) {
