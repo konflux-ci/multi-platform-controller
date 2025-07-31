@@ -6,6 +6,7 @@
 package taskrun
 
 import (
+	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -24,6 +25,9 @@ var _ = Describe("Test Dynamic Host Provisioning", func() {
 
 	BeforeEach(func() {
 		client, reconciler = setupClientAndReconciler(createDynamicHostConfig())
+		cloudImpl.Instances = map[cloud.InstanceIdentifier]MockInstance{}
+		cloudImpl.Running = 0
+		cloudImpl.Terminated = 0
 	})
 
 	When("when dynamic host provisioning is set to succeed", func() {
