@@ -1,4 +1,4 @@
-package taskrun_test
+package taskrun
 
 import (
 	"testing"
