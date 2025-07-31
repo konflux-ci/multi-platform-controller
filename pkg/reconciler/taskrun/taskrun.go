@@ -534,7 +534,7 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektona
 		log.Info("host assigned successfully", "host", assignedHost)
 		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
 			metrics.AllocationTime.Observe(float64(time.Now().Unix() - startTime))
-			metrics.RunningTasks.Inc()
+			metrics.RunningTasks.WithLabelValues(platformLabel(targetPlatform), tr.Namespace).Inc()
 		})
 	}
 
@@ -543,12 +543,12 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektona
 		log.Info("task no longer waiting - host allocated")
 		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
 			metrics.WaitTime.Observe(float64(time.Now().Unix() - tr.CreationTimestamp.Unix()))
-			metrics.WaitingTasks.Dec()
+			metrics.WaitingTasks.WithLabelValues(platformLabel(targetPlatform), tr.Namespace).Dec()
 		})
 	} else if !wasWaiting && isWaiting {
 		log.Info("task now waiting for host")
 		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
-			metrics.WaitingTasks.Inc()
+			metrics.WaitingTasks.WithLabelValues(platformLabel(targetPlatform), tr.Namespace).Inc()
 		})
 	} else if wasWaiting && isWaiting {
 		log.V(1).Info("task still waiting for host")
@@ -599,7 +599,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 	taskRunDuration := time.Now().Unix() - tr.CreationTimestamp.Unix()
 	mpcmetrics.HandleMetrics(platform, func(metrics *mpcmetrics.PlatformMetrics) {
 		metrics.TaskRunTime.Observe(float64(taskRunDuration))
-		metrics.RunningTasks.Dec()
+		metrics.RunningTasks.WithLabelValues(platformLabel(platform), tr.Namespace).Dec()
 	})
 
 	// Attempt host deallocation
