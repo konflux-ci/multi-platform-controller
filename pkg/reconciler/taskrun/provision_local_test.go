@@ -31,11 +31,11 @@ var _ = Describe("Test Local Host Provisioning", func() {
 	// host "localhost" is correctly generated, and that all resources are
 	// cleaned up after the user TaskRun completes.
 	It("should allocate a local host correctly", func(ctx SpecContext) {
-		tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test-local")
-		ExpectNoProvisionTaskRun(ctx, GinkgoT(), client, tr)
+		tr := runUserPipeline(ctx, client, reconciler, "test-local")
+		ExpectNoProvisionTaskRun(ctx, client, tr)
 		secret := getSecret(ctx, client, tr)
-		Expect(secret.Data["error"]).To(BeEmpty())
-		Expect(secret.Data["host"]).To(Equal([]byte("localhost")))
+		Expect(secret.Data["error"]).Should(BeEmpty())
+		Expect(secret.Data["host"]).Should(Equal([]byte("localhost")))
 
 		// Set user task as complete
 		Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)).Should(Succeed())
@@ -52,6 +52,6 @@ var _ = Describe("Test Local Host Provisioning", func() {
 		Expect(err).ShouldNot(HaveOccurred())
 
 		// Verify that the secret has been cleaned up.
-		assertNoSecret(ctx, GinkgoT(), client, tr)
+		assertNoSecret(ctx, client, tr)
 	})
 })

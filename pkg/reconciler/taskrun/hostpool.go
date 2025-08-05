@@ -60,7 +60,7 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 	// We need to track two separate conditions:
 	// 1. If any hosts for the platform exist at all.
 	// 2. If all hosts that do exist have already failed.
-	platformExists := false
+	platformHostsExists := false
 	allPlatformHostsFailed := true
 	for k, v := range hp.hosts {
 
@@ -69,7 +69,7 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 			continue
 		}
 		// At this point, we know at least one host for the platform exists.
-		platformExists = true
+		platformHostsExists = true
 
 		if slices.Contains(failed, k) {
 			log.Info("ignoring already failed host", "host", k, "targetPlatform", hp.targetPlatform, "hostPlatform", v.Platform)
@@ -87,7 +87,7 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 		}
 	}
 	// If no hosts for the platform were found at all, return the original error.
-	if !platformExists {
+	if !platformHostsExists {
 		log.Info("no hosts with requested platform", "platform", hp.targetPlatform)
 		return reconcile.Result{}, fmt.Errorf("no hosts configured for platform %s", hp.targetPlatform)
 	}

@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
-	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v1 "k8s.io/api/core/v1"
@@ -41,9 +40,9 @@ const (
 // with the provided runtime objects.
 func setupClientAndReconciler(objs []runtimeclient.Object) (runtimeclient.Client, *ReconcileTaskRun) {
 	scheme := runtime.NewScheme()
-	_ = pipelinev1.AddToScheme(scheme)
-	_ = v1.AddToScheme(scheme)
-	_ = appsv1.AddToScheme(scheme)
+	Expect(pipelinev1.AddToScheme(scheme)).Should(Succeed())
+	Expect(v1.AddToScheme(scheme)).Should(Succeed())
+	Expect(appsv1.AddToScheme(scheme)).Should(Succeed())
 
 	// We need to tell the fake client about the status subresource for TaskRuns
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).WithStatusSubresource(&pipelinev1.TaskRun{}).Build()
@@ -65,6 +64,12 @@ func setupClientAndReconciler(objs []runtimeclient.Object) (runtimeclient.Client
 
 // cloudImpl is a global mock implementation of the cloud.CloudProvider interface.
 // It allows tests to simulate cloud instance interactions without making real API calls.
+//
+// NOTE: This uses a singleton pattern because the MockCloudSetup function (used in
+// setupClientAndReconciler) needs to return the same instance that tests can manipulate.
+// Each test file that uses cloud functionality MUST reset this state in BeforeEach hooks
+// to ensure proper test isolation. See provision_dynamic_test.go and provision_dynamicpool_test.go
+// for examples of proper state reset patterns.
 var cloudImpl MockCloud = MockCloud{Instances: map[cloud.InstanceIdentifier]MockInstance{}}
 
 // clientWithUIDs is a wrapper around a fake client that adds UIDs on Create,
@@ -90,7 +95,7 @@ func (c *clientWithUIDs) Create(ctx context.Context, obj runtimeclient.Object, o
 // runSuccessfulProvision simulates a successful provision TaskRun. It updates the
 // provision TaskRun's status to Succeeded, creates the corresponding secret that
 // the provisioner would have created, and then runs the reconciler to process the result.
-func runSuccessfulProvision(ctx context.Context, provision *pipelinev1.TaskRun, g GinkgoTInterface, client runtimeclient.Client, tr *pipelinev1.TaskRun, reconciler *ReconcileTaskRun) {
+func runSuccessfulProvision(ctx context.Context, provision *pipelinev1.TaskRun, client runtimeclient.Client, tr *pipelinev1.TaskRun, reconciler *ReconcileTaskRun) {
 	provision.Status.CompletionTime = &metav1.Time{Time: time.Now().Add(time.Hour * -2)}
 	provision.Status.SetCondition(&apis.Condition{
 		Type:               apis.ConditionSucceeded,
@@ -125,7 +130,7 @@ func getSecret(ctx context.Context, client runtimeclient.Client, tr *pipelinev1.
 
 // assertNoSecret asserts that the secret for a given user TaskRun does not exist,
 // which is used to verify cleanup logic.
-func assertNoSecret(ctx context.Context, g GinkgoTInterface, client runtimeclient.Client, tr *pipelinev1.TaskRun) {
+func assertNoSecret(ctx context.Context, client runtimeclient.Client, tr *pipelinev1.TaskRun) {
 	name := SecretPrefix + tr.Name
 	secret := v1.Secret{}
 	err := client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: name}, &secret)
@@ -135,20 +140,24 @@ func assertNoSecret(ctx context.Context, g GinkgoTInterface, client runtimeclien
 // runUserPipeline encapsulates the common flow of creating a user TaskRun
 // and reconciling it until a provisioner TaskRun is created or a host is assigned.
 // This helper is used in happy-path scenarios to reduce boilerplate.
-func runUserPipeline(ctx context.Context, g GinkgoTInterface, client runtimeclient.Client, reconciler *ReconcileTaskRun, name string) *pipelinev1.TaskRun {
-	createUserTaskRun(ctx, g, client, name, "linux/arm64")
+func runUserPipeline(ctx context.Context, client runtimeclient.Client, reconciler *ReconcileTaskRun, name string) *pipelinev1.TaskRun {
+	createUserTaskRun(ctx, client, name, "linux/arm64")
+	// Multiple reconcile calls are needed because the allocation process is asynchronous:
+	// 1st call: Detects TaskRun and initiates host allocation
+	// 2nd call: Processes allocation result (may launch cloud instance)
+	// 3rd call: Assigns host once instance is ready
 	_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
 	Expect(err).ShouldNot(HaveOccurred())
 	_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
 	Expect(err).ShouldNot(HaveOccurred())
 	_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
 	Expect(err).ShouldNot(HaveOccurred())
-	tr := getUserTaskRun(ctx, g, client, name)
+	tr := getUserTaskRun(ctx, client, name)
 	if tr.Labels[AssignedHost] == "" {
 		Expect(tr.Annotations[CloudInstanceId]).ShouldNot(BeEmpty())
 		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
 		Expect(err).ShouldNot(HaveOccurred())
-		tr = getUserTaskRun(ctx, g, client, name)
+		tr = getUserTaskRun(ctx, client, name)
 	}
 	Expect(tr.Labels[AssignedHost]).ShouldNot(BeEmpty())
 	return tr
@@ -156,7 +165,7 @@ func runUserPipeline(ctx context.Context, g GinkgoTInterface, client runtimeclie
 
 // getProvisionTaskRun finds and returns the provisioner TaskRun that was created
 // on behalf of a given user TaskRun.
-func getProvisionTaskRun(ctx context.Context, g GinkgoTInterface, client runtimeclient.Client, tr *pipelinev1.TaskRun) *pipelinev1.TaskRun {
+func getProvisionTaskRun(ctx context.Context, client runtimeclient.Client, tr *pipelinev1.TaskRun) *pipelinev1.TaskRun {
 	list := pipelinev1.TaskRunList{}
 	err := client.List(ctx, &list, &runtimeclient.ListOptions{Namespace: systemNamespace})
 	Expect(err).ShouldNot(HaveOccurred())
@@ -171,7 +180,7 @@ func getProvisionTaskRun(ctx context.Context, g GinkgoTInterface, client runtime
 
 // ExpectNoProvisionTaskRun asserts that no provisioner TaskRun was created for a
 // user TaskRun, which is the expected behavior for certain provisioning types like 'local'.
-func ExpectNoProvisionTaskRun(ctx context.Context, g GinkgoTInterface, client runtimeclient.Client, tr *pipelinev1.TaskRun) {
+func ExpectNoProvisionTaskRun(ctx context.Context, client runtimeclient.Client, tr *pipelinev1.TaskRun) {
 	list := pipelinev1.TaskRunList{}
 	err := client.List(ctx, &list)
 	Expect(err).ShouldNot(HaveOccurred())
@@ -185,7 +194,7 @@ func ExpectNoProvisionTaskRun(ctx context.Context, g GinkgoTInterface, client ru
 }
 
 // getUserTaskRun retrieves a user TaskRun by its name from the default user namespace.
-func getUserTaskRun(ctx context.Context, g GinkgoTInterface, client runtimeclient.Client, name string) *pipelinev1.TaskRun {
+func getUserTaskRun(ctx context.Context, client runtimeclient.Client, name string) *pipelinev1.TaskRun {
 	ret := pipelinev1.TaskRun{}
 	err := client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: name}, &ret)
 	Expect(err).ShouldNot(HaveOccurred())
@@ -193,7 +202,7 @@ func getUserTaskRun(ctx context.Context, g GinkgoTInterface, client runtimeclien
 }
 
 // createUserTaskRun creates a basic user TaskRun with the specified name and platform.
-func createUserTaskRun(ctx context.Context, g GinkgoTInterface, client runtimeclient.Client, name string, platform string) {
+func createUserTaskRun(ctx context.Context, client runtimeclient.Client, name string, platform string) {
 	tr := &pipelinev1.TaskRun{}
 	tr.Namespace = userNamespace
 	tr.Name = name
@@ -224,12 +233,12 @@ func createHostConfigMap() v1.ConfigMap {
 	cm.Labels = map[string]string{ConfigMapLabel: "hosts"}
 	cm.Data = map[string]string{
 		"allowed-namespaces":     "default,system-.*",
-		"host.host1.address":     "ec2-54-165-44-192.compute-1.amazonaws.com",
+		"host.host1.address":     "ec2-12-345-67-890.compute-1.amazonaws.com",
 		"host.host1.secret":      "awskeys",
 		"host.host1.concurrency": "4",
 		"host.host1.user":        "ec2-user",
 		"host.host1.platform":    "linux/arm64",
-		"host.host2.address":     "ec2-34-227-115-211.compute-1.amazonaws.com",
+		"host.host2.address":     "ec2-09-876-543-210.compute-1.amazonaws.com",
 		"host.host2.secret":      "awskeys",
 		"host.host2.concurrency": "4",
 		"host.host2.user":        "ec2-user",
@@ -396,7 +405,7 @@ func (m *MockCloud) GetState(kubeClient runtimeclient.Client, ctx context.Contex
 	return cloud.OKState, nil
 }
 
-// In this implementation of the function, the MockInstance's taskRun value is compared to to the keys in existingTaskRuns for
+// In this implementation of the function, the MockInstance's taskRun value is compared to the keys in existingTaskRuns for
 // a speedier return.
 func (m *MockCloud) CleanUpVms(ctx context.Context, kubeClient runtimeclient.Client, existingTaskRuns map[string][]string) error {
 	if m.FailCleanUpVMs {
@@ -434,7 +443,7 @@ type ConflictingClient struct {
 func (c *ConflictingClient) Update(ctx context.Context, obj runtimeclient.Object, opts ...runtimeclient.UpdateOption) error {
 	c.callCount++
 	if c.callCount <= c.ConflictCount {
-		// hardcoded gvk is not perfect but i dunno how to avoid that :(
+		// hardcoded gvk is not perfect, but I dunno how to avoid that :(
 		return errors.NewConflict(schema.GroupResource{Group: "tekton.dev", Resource: "taskruns"}, "test", fmt.Errorf("conflict"))
 	}
 	return c.Client.Update(ctx, obj, opts...)

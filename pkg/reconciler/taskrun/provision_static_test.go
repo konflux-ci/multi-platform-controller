@@ -30,8 +30,8 @@ var _ = Describe("Test Static Host Provisioning", func() {
 	// It tests the basic happy-path of allocating a host from the static pool
 	// and verifies that the created provisioner TaskRun has the correct parameters.
 	It("should allocate a host correctly", func(ctx SpecContext) {
-		tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test-static-alloc")
-		provision := getProvisionTaskRun(ctx, GinkgoT(), client, tr)
+		tr := runUserPipeline(ctx, client, reconciler, "test-static-alloc")
+		provision := getProvisionTaskRun(ctx, client, tr)
 		params := map[string]string{}
 		for _, i := range provision.Spec.Params {
 			params[i.Name] = i.Value.StringVal
@@ -40,7 +40,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		Expect(params["TASKRUN_NAME"]).Should(Equal("test-static-alloc"))
 		Expect(params["NAMESPACE"]).Should(Equal(userNamespace))
 		Expect(params["USER"]).Should(Equal("ec2-user"))
-		Expect(params["HOST"]).Should(BeElementOf("ec2-34-227-115-211.compute-1.amazonaws.com", "ec2-54-165-44-192.compute-1.amazonaws.com"))
+		Expect(params["HOST"]).Should(BeElementOf("ec2-09-876-543-210.compute-1.amazonaws.com", "ec2-12-345-67-890.compute-1.amazonaws.com"))
 	})
 
 	// It tests the scenario where all available host slots are occupied.
@@ -51,17 +51,17 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		// Saturate the host pool by running tasks until all concurrency slots are used.
 		runs := []*pipelinev1.TaskRun{}
 		for i := 0; i < 8; i++ {
-			tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, fmt.Sprintf("test-%d", i))
-			provision := getProvisionTaskRun(ctx, GinkgoT(), client, tr)
-			runSuccessfulProvision(ctx, provision, GinkgoT(), client, tr, reconciler)
+			tr := runUserPipeline(ctx, client, reconciler, fmt.Sprintf("test-%d", i))
+			provision := getProvisionTaskRun(ctx, client, tr)
+			runSuccessfulProvision(ctx, provision, client, tr, reconciler)
 			runs = append(runs, tr)
 		}
 		// Create one more TaskRun, which should now be forced to wait.
 		name := fmt.Sprintf("test-%d", 9)
-		createUserTaskRun(ctx, GinkgoT(), client, name, "linux/arm64")
+		createUserTaskRun(ctx, client, name, "linux/arm64")
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
 		Expect(err).ShouldNot(HaveOccurred())
-		tr := getUserTaskRun(ctx, GinkgoT(), client, name)
+		tr := getUserTaskRun(ctx, client, name)
 		Expect(tr.Labels[WaitingForPlatformLabel]).Should(Equal("linux-arm64"))
 
 		// Complete one of the running tasks to free up a slot.
@@ -75,15 +75,15 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		Expect(client.Status().Update(ctx, running)).ShouldNot(HaveOccurred())
 		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: running.Namespace, Name: running.Name}})
 		Expect(err).ShouldNot(HaveOccurred())
-		assertNoSecret(ctx, GinkgoT(), client, running)
+		assertNoSecret(ctx, client, running)
 
 		// Verify that the waiting TaskRun is now allocated a host.
-		tr = getUserTaskRun(ctx, GinkgoT(), client, name)
+		tr = getUserTaskRun(ctx, client, name)
 		Expect(tr.Labels[WaitingForPlatformLabel]).Should(BeEmpty())
 		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
 		Expect(err).ShouldNot(HaveOccurred())
-		tr = getUserTaskRun(ctx, GinkgoT(), client, name)
-		Expect(getProvisionTaskRun(ctx, GinkgoT(), client, tr)).ShouldNot(BeNil())
+		tr = getUserTaskRun(ctx, client, name)
+		Expect(getProvisionTaskRun(ctx, client, tr)).ShouldNot(BeNil())
 	})
 
 	When("when provisioning fails", func() {
@@ -94,12 +94,12 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		// allocate a different host from the pool.
 		It("should mark the host as failed and attempt to re-allocate", func(ctx SpecContext) {
 			// Create the initial user task that needs a host.
-			userTask := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test-single-failure")
+			userTask := runUserPipeline(ctx, client, reconciler, "test-single-failure")
 			Expect(userTask.Labels[AssignedHost]).NotTo(BeEmpty(), "A host should have been assigned initially")
 			initialHost := userTask.Labels[AssignedHost]
 
 			// Get the provision task that was created for our user task.
-			provisionTask := getProvisionTaskRun(ctx, GinkgoT(), client, userTask)
+			provisionTask := getProvisionTaskRun(ctx, client, userTask)
 			Expect(provisionTask).NotTo(BeNil(), "A provision task should have been created")
 
 			// Telling the system "this thing failed."
@@ -117,7 +117,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(client.Delete(ctx, provisionTask)).Should(Succeed(), "Failed to delete the old provision task")
 
 			// Get the user task again and see what state it's in.
-			updatedUserTask := getUserTaskRun(ctx, GinkgoT(), client, "test-single-failure")
+			updatedUserTask := getUserTaskRun(ctx, client, "test-single-failure")
 			Expect(updatedUserTask.Annotations[FailedHosts]).Should(ContainSubstring(initialHost), "The failed host should be recorded")
 			Expect(updatedUserTask.Labels[AssignedHost]).Should(BeEmpty(), "The failed host should be un-assigned")
 
@@ -126,12 +126,12 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(err).NotTo(HaveOccurred(), "Re-reconciling the user task should not error")
 
 			// Verify that a new host was found.
-			finalUserTask := getUserTaskRun(ctx, GinkgoT(), client, "test-single-failure")
+			finalUserTask := getUserTaskRun(ctx, client, "test-single-failure")
 			Expect(finalUserTask.Labels[AssignedHost]).NotTo(BeEmpty(), "A new host should have been assigned")
 			Expect(finalUserTask.Labels[AssignedHost]).NotTo(Equal(initialHost), "The new host should not be the same as the one that failed")
 
 			// We should have a new provision task.
-			newProvisionTask := getProvisionTaskRun(ctx, GinkgoT(), client, finalUserTask)
+			newProvisionTask := getProvisionTaskRun(ctx, client, finalUserTask)
 			Expect(newProvisionTask).NotTo(BeNil(), "A new provision task should have been created for the new host")
 			Expect(newProvisionTask.UID).NotTo(Equal(provisionTask.UID), "The new provision task should have a different UID, indicating it's a new object")
 		})
@@ -141,8 +141,8 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		// tried and failed, the user TaskRun is ultimately marked as failed
 		// and an error is written to its secret.
 		It("should fail the task run after all hosts have been tried", func(ctx SpecContext) {
-			tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test-all-fail")
-			provision1 := getProvisionTaskRun(ctx, GinkgoT(), client, tr)
+			tr := runUserPipeline(ctx, client, reconciler, "test-all-fail")
+			provision1 := getProvisionTaskRun(ctx, client, tr)
 			host1 := provision1.Labels[AssignedHost]
 
 			// Fail the first host
@@ -157,14 +157,14 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(client.Delete(ctx, provision1)).Should(Succeed())
 
 			// Reconcile the user task to try the next host
-			tr = getUserTaskRun(ctx, GinkgoT(), client, "test-all-fail")
+			tr = getUserTaskRun(ctx, client, "test-all-fail")
 			Expect(tr.Annotations[FailedHosts]).Should(ContainSubstring(host1))
 			Expect(tr.Labels[AssignedHost]).Should(BeEmpty())
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
 			Expect(err).ShouldNot(HaveOccurred())
 
 			// Fail the second host
-			provision2 := getProvisionTaskRun(ctx, GinkgoT(), client, tr)
+			provision2 := getProvisionTaskRun(ctx, client, tr)
 			host2 := provision2.Labels[AssignedHost]
 			provision2.Status.CompletionTime = &metav1.Time{Time: time.Now()}
 			provision2.Status.SetCondition(&apis.Condition{
@@ -176,7 +176,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 
 			// Check final state
-			tr = getUserTaskRun(ctx, GinkgoT(), client, "test-all-fail")
+			tr = getUserTaskRun(ctx, client, "test-all-fail")
 			Expect(tr.Annotations[FailedHosts]).Should(ContainSubstring(host1))
 			Expect(tr.Annotations[FailedHosts]).Should(ContainSubstring(host2))
 			Expect(tr.Labels[AssignedHost]).Should(BeEmpty())
@@ -197,8 +197,8 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		// never created. The test ensures the controller handles this by creating
 		// an error secret for the user TaskRun.
 		It("should create an error secret if the provision task succeeds but does not create a secret", func(ctx SpecContext) {
-			tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test-no-secret")
-			provision := getProvisionTaskRun(ctx, GinkgoT(), client, tr)
+			tr := runUserPipeline(ctx, client, reconciler, "test-no-secret")
+			provision := getProvisionTaskRun(ctx, client, tr)
 
 			provision.Status.CompletionTime = &metav1.Time{Time: time.Now()}
 			provision.Status.SetCondition(&apis.Condition{
@@ -219,10 +219,10 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		// the test verifies that all related resources (secrets, provisioner TaskRuns)
 		// are properly deleted afterward.
 		It("should successfully provision and clean up", func(ctx SpecContext) {
-			tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test-success")
-			provision := getProvisionTaskRun(ctx, GinkgoT(), client, tr)
+			tr := runUserPipeline(ctx, client, reconciler, "test-success")
+			provision := getProvisionTaskRun(ctx, client, tr)
 
-			runSuccessfulProvision(ctx, provision, GinkgoT(), client, tr, reconciler)
+			runSuccessfulProvision(ctx, provision, client, tr, reconciler)
 
 			tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
 			tr.Status.SetCondition(&apis.Condition{
@@ -233,7 +233,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(client.Status().Update(ctx, tr)).ShouldNot(HaveOccurred())
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
 			Expect(err).ShouldNot(HaveOccurred())
-			assertNoSecret(ctx, GinkgoT(), client, tr)
+			assertNoSecret(ctx, client, tr)
 
 			list := pipelinev1.TaskRunList{}
 			err = client.List(ctx, &list)

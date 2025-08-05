@@ -36,8 +36,8 @@ var _ = Describe("Test Dynamic Pool Host Provisioning", func() {
 	// it gets assigned an instance from the pool, the provisioner succeeds,
 	// and after completion, the instance is returned to the pool (not terminated).
 	It("should allocate a cloud host with dynamic pool correctly", func(ctx SpecContext) {
-		tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test-dyn-pool")
-		provision := getProvisionTaskRun(ctx, GinkgoT(), client, tr)
+		tr := runUserPipeline(ctx, client, reconciler, "test-dyn-pool")
+		provision := getProvisionTaskRun(ctx, client, tr)
 		params := map[string]string{}
 		for _, i := range provision.Spec.Params {
 			params[i.Name] = i.Value.StringVal
@@ -48,7 +48,7 @@ var _ = Describe("Test Dynamic Pool Host Provisioning", func() {
 		Expect(params["USER"]).Should(Equal("root"))
 		Expect(params["HOST"]).Should(ContainSubstring(".host.com"))
 
-		runSuccessfulProvision(ctx, provision, GinkgoT(), client, tr, reconciler)
+		runSuccessfulProvision(ctx, provision, client, tr, reconciler)
 
 		Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)).ShouldNot(HaveOccurred())
 		tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
@@ -78,12 +78,12 @@ var _ = Describe("Test Dynamic Pool Host Provisioning", func() {
 			Expect(len(cloudImpl.Instances)).Should(Equal(1))
 
 			// Start a user task. It should be assigned the single pre-existing instance.
-			userTask := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test-dyn-pool-fail-1")
+			userTask := runUserPipeline(ctx, client, reconciler, "test-dyn-pool-fail-1")
 			initialHost := userTask.Labels[AssignedHost]
 			Expect(initialHost).Should(Equal("preexisting-task"))
 
 			// Fail the provision task for that instance
-			provisionTask := getProvisionTaskRun(ctx, GinkgoT(), client, userTask)
+			provisionTask := getProvisionTaskRun(ctx, client, userTask)
 			provisionTask.Status.CompletionTime = &metav1.Time{Time: time.Now()}
 			provisionTask.Status.SetCondition(&apis.Condition{
 				Type:   apis.ConditionSucceeded,
@@ -95,7 +95,7 @@ var _ = Describe("Test Dynamic Pool Host Provisioning", func() {
 			Expect(client.Delete(ctx, provisionTask)).Should(Succeed())
 
 			// The user task should now be un-assigned and waiting
-			updatedUserTask := getUserTaskRun(ctx, GinkgoT(), client, "test-dyn-pool-fail-1")
+			updatedUserTask := getUserTaskRun(ctx, client, "test-dyn-pool-fail-1")
 			Expect(updatedUserTask.Annotations[FailedHosts]).Should(ContainSubstring(initialHost))
 			Expect(updatedUserTask.Labels[AssignedHost]).Should(BeEmpty())
 
@@ -105,7 +105,7 @@ var _ = Describe("Test Dynamic Pool Host Provisioning", func() {
 
 			// A new instance should have been created. The user task will be requeued while it starts.
 			Expect(len(cloudImpl.Instances)).Should(Equal(2)) // The old failed one plus the new one
-			finalUserTask := getUserTaskRun(ctx, GinkgoT(), client, "test-dyn-pool-fail-1")
+			finalUserTask := getUserTaskRun(ctx, client, "test-dyn-pool-fail-1")
 			// It won't be assigned a host yet, because the new instance is "starting up"
 			Expect(finalUserTask.Labels[AssignedHost]).Should(BeEmpty())
 		})
@@ -123,11 +123,11 @@ var _ = Describe("Test Dynamic Pool Host Provisioning", func() {
 			Expect(len(cloudImpl.Instances)).Should(Equal(2))
 
 			// Start a user task. It will be assigned one of the instances.
-			userTask := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test-dyn-pool-all-fail")
+			userTask := runUserPipeline(ctx, client, reconciler, "test-dyn-pool-all-fail")
 			host1 := userTask.Labels[AssignedHost]
 
 			// Fail the first provision task
-			provision1 := getProvisionTaskRun(ctx, GinkgoT(), client, userTask)
+			provision1 := getProvisionTaskRun(ctx, client, userTask)
 			provision1.Status.CompletionTime = &metav1.Time{Time: time.Now()}
 			provision1.Status.SetCondition(&apis.Condition{Type: apis.ConditionSucceeded, Status: v1.ConditionFalse})
 			Expect(client.Status().Update(ctx, provision1)).Should(Succeed())
@@ -138,12 +138,12 @@ var _ = Describe("Test Dynamic Pool Host Provisioning", func() {
 			// Reconcile the user task. It should pick the second available instance.
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userTask.Namespace, Name: userTask.Name}})
 			Expect(err).ShouldNot(HaveOccurred())
-			userTask = getUserTaskRun(ctx, GinkgoT(), client, "test-dyn-pool-all-fail")
+			userTask = getUserTaskRun(ctx, client, "test-dyn-pool-all-fail")
 			host2 := userTask.Labels[AssignedHost]
 			Expect(host2).ShouldNot(Equal(host1))
 
 			// Fail the second provision task
-			provision2 := getProvisionTaskRun(ctx, GinkgoT(), client, userTask)
+			provision2 := getProvisionTaskRun(ctx, client, userTask)
 			provision2.Status.CompletionTime = &metav1.Time{Time: time.Now()}
 			provision2.Status.SetCondition(&apis.Condition{Type: apis.ConditionSucceeded, Status: v1.ConditionFalse})
 			Expect(client.Status().Update(ctx, provision2)).Should(Succeed())
@@ -151,7 +151,7 @@ var _ = Describe("Test Dynamic Pool Host Provisioning", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 
 			// The task should now have failed both hosts and, since the pool is full, it should give up.
-			userTask = getUserTaskRun(ctx, GinkgoT(), client, "test-dyn-pool-all-fail")
+			userTask = getUserTaskRun(ctx, client, "test-dyn-pool-all-fail")
 			Expect(userTask.Annotations[FailedHosts]).Should(ContainSubstring(host1))
 			Expect(userTask.Annotations[FailedHosts]).Should(ContainSubstring(host2))
 

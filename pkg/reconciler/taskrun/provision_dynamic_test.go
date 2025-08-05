@@ -37,7 +37,7 @@ var _ = Describe("Test Dynamic Host Provisioning", func() {
 		It("the ConfigMap should be parsed correctly", func(ctx SpecContext) {
 			configIface, err := reconciler.readConfiguration(ctx, "linux/arm64", userNamespace)
 			config := configIface.(DynamicResolver)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).ShouldNot(HaveOccurred())
 			Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("foo", "bar"))
 			Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("key", "value"))
 		})
@@ -50,8 +50,8 @@ var _ = Describe("Test Dynamic Host Provisioning", func() {
 		// 5. The user TaskRun completes.
 		// 6. The cloud instance is terminated as part of cleanup.
 		It("should allocate a cloud host correctly", func(ctx SpecContext) {
-			tr := runUserPipeline(ctx, GinkgoT(), client, reconciler, "test-dynamic-alloc")
-			provision := getProvisionTaskRun(ctx, GinkgoT(), client, tr)
+			tr := runUserPipeline(ctx, client, reconciler, "test-dynamic-alloc")
+			provision := getProvisionTaskRun(ctx, client, tr)
 			params := map[string]string{}
 			for _, i := range provision.Spec.Params {
 				params[i.Name] = i.Value.StringVal
@@ -62,12 +62,11 @@ var _ = Describe("Test Dynamic Host Provisioning", func() {
 			Expect(params["USER"]).Should(Equal("root"))
 			Expect(params["HOST"]).Should(Equal("test-dynamic-alloc.host.com"))
 
-			_, ok := cloudImpl.Instances[("test-dynamic-alloc")]
-			Expect(ok).Should(Equal(true))
+			Expect(cloudImpl.Instances).Should(HaveKey(cloud.InstanceIdentifier("test-dynamic-alloc")))
 			Expect(cloudImpl.Instances[("test-dynamic-alloc")].Address).Should(Equal("test-dynamic-alloc.host.com"))
 			Expect(cloudImpl.Instances[("test-dynamic-alloc")].taskRun).Should(Equal("test-dynamic-alloc task run"))
 
-			runSuccessfulProvision(ctx, provision, GinkgoT(), client, tr, reconciler)
+			runSuccessfulProvision(ctx, provision, client, tr, reconciler)
 
 			Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, tr)).ShouldNot(HaveOccurred())
 			tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
@@ -81,8 +80,8 @@ var _ = Describe("Test Dynamic Host Provisioning", func() {
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
 			Expect(err).ShouldNot(HaveOccurred())
 
-			_, ok = cloudImpl.Instances[("multi-platform-builder-test-dynamic-alloc")]
-			Expect(ok).Should(Equal(false))
+			// Verify step 6: The cloud instance is terminated as part of cleanup
+			Expect(cloudImpl.Instances).ShouldNot(HaveKey(cloud.InstanceIdentifier("multi-platform-builder-test-dynamic-alloc")))
 		})
 	})
 
@@ -96,18 +95,17 @@ var _ = Describe("Test Dynamic Host Provisioning", func() {
 			cloudImpl.FailGetAddress = true
 			defer func() { cloudImpl.FailGetAddress = false }()
 
-			createUserTaskRun(ctx, GinkgoT(), client, "test-addr-fail", "linux/arm64")
+			createUserTaskRun(ctx, client, "test-addr-fail", "linux/arm64")
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-addr-fail"}})
 			Expect(err).ShouldNot(HaveOccurred())
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-addr-fail"}})
 			Expect(err).Should(HaveOccurred())
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-addr-fail"}})
 			Expect(err).ShouldNot(HaveOccurred())
-			tr := getUserTaskRun(ctx, GinkgoT(), client, "test-addr-fail")
+			tr := getUserTaskRun(ctx, client, "test-addr-fail")
 			Expect(tr.Labels[AssignedHost]).Should(BeEmpty())
 			Expect(cloudImpl.Running).Should(Equal(0))
-			_, ok := cloudImpl.Instances[("multi-platform-builder-test-addr-fail")]
-			Expect(ok).Should(Equal(false))
+			Expect(cloudImpl.Instances).ShouldNot(HaveKey(cloud.InstanceIdentifier("multi-platform-builder-test-addr-fail")))
 		})
 
 		// It simulates a scenario where launching a cloud instance times out.
@@ -117,7 +115,7 @@ var _ = Describe("Test Dynamic Host Provisioning", func() {
 			cloudImpl.TimeoutGetAddress = true
 			defer func() { cloudImpl.TimeoutGetAddress = false }()
 
-			createUserTaskRun(ctx, GinkgoT(), client, "test-timeout", "linux/arm64")
+			createUserTaskRun(ctx, client, "test-timeout", "linux/arm64")
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-timeout"}})
 			Expect(err).ShouldNot(HaveOccurred())
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-timeout"}})
@@ -130,11 +128,10 @@ var _ = Describe("Test Dynamic Host Provisioning", func() {
 			time.Sleep(time.Second * 2)
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-timeout"}})
 			Expect(err).Should(HaveOccurred())
-			tr := getUserTaskRun(ctx, GinkgoT(), client, "test-timeout")
+			tr := getUserTaskRun(ctx, client, "test-timeout")
 			Expect(tr.Labels[AssignedHost]).Should(BeEmpty())
 			Expect(cloudImpl.Running).Should(Equal(0))
-			_, ok := cloudImpl.Instances[("multi-platform-builder-test-timeout")]
-			Expect(ok).Should(Equal(false))
+			Expect(cloudImpl.Instances).ShouldNot(HaveKey(cloud.InstanceIdentifier("multi-platform-builder-test-timeout")))
 		})
 
 		// It tests the cleanup logic for a scenario where a user TaskRun fails
@@ -142,11 +139,11 @@ var _ = Describe("Test Dynamic Host Provisioning", func() {
 		// provisioner has finished. This ensures that no orphaned cloud
 		// instances are left running.
 		It("should handle provision failure in the middle correctly", func(ctx SpecContext) {
-			createUserTaskRun(ctx, GinkgoT(), client, "test-mid-fail", "linux/arm64")
+			createUserTaskRun(ctx, client, "test-mid-fail", "linux/arm64")
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-mid-fail"}})
 			Expect(err).ShouldNot(HaveOccurred())
 
-			tr := getUserTaskRun(ctx, GinkgoT(), client, "test-mid-fail")
+			tr := getUserTaskRun(ctx, client, "test-mid-fail")
 			if tr.Labels[AssignedHost] == "" {
 				Expect(tr.Annotations[CloudInstanceId]).ShouldNot(BeEmpty())
 			}
@@ -161,8 +158,7 @@ var _ = Describe("Test Dynamic Host Provisioning", func() {
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
 			Expect(err).ShouldNot(HaveOccurred())
 
-			_, ok := cloudImpl.Instances[("multi-platform-builder-test-mid-fail")]
-			Expect(ok).Should(Equal(false))
+			Expect(cloudImpl.Instances).ShouldNot(HaveKey(cloud.InstanceIdentifier("multi-platform-builder-test-mid-fail")))
 			Expect(cloudImpl.Running).Should(Equal(0))
 		})
 	})

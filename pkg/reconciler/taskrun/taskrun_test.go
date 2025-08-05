@@ -25,23 +25,23 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 			_, reconciler := setupClientAndReconciler(createHostConfig())
 			configIface, err := reconciler.readConfiguration(ctx, "linux/arm64", userNamespace)
 			config := configIface.(HostPool)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(len(config.hosts)).To(Equal(2))
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(len(config.hosts)).Should(Equal(2))
 			Expect(config.hosts["host1"].Platform).Should(Equal("linux/arm64"))
 		})
 
 		It("should parse the local host ConfigMap correctly", func(ctx SpecContext) {
 			_, reconciler := setupClientAndReconciler(createLocalHostConfig())
 			configIface, err := reconciler.readConfiguration(ctx, "linux/arm64", userNamespace)
-			Expect(configIface).To(BeAssignableToTypeOf(Local{}))
-			Expect(err).ToNot(HaveOccurred())
+			Expect(configIface).Should(BeAssignableToTypeOf(Local{}))
+			Expect(err).ShouldNot(HaveOccurred())
 		})
 
 		It("should parse the dynamic host ConfigMap correctly", func(ctx SpecContext) {
 			_, reconciler := setupClientAndReconciler(createDynamicHostConfig())
 			configIface, err := reconciler.readConfiguration(ctx, "linux/arm64", userNamespace)
 			config := configIface.(DynamicResolver)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).ShouldNot(HaveOccurred())
 			Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("foo", "bar"))
 			Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("key", "value"))
 		})
@@ -50,7 +50,7 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 			_, reconciler := setupClientAndReconciler(createDynamicPoolHostConfig())
 			configIface, err := reconciler.readConfiguration(ctx, "linux/arm64", userNamespace)
 			config := configIface.(DynamicHostPool)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).ShouldNot(HaveOccurred())
 			Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("foo", "bar"))
 			Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("key", "value"))
 		})
@@ -69,8 +69,8 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 			}
 
 			platform, err := extractPlatform(tr)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(platform).To(Equal("linux/amd64"))
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(platform).Should(Equal("linux/amd64"))
 		})
 
 		It("should return error when PlatformParam parameter is missing", func() {
@@ -83,7 +83,7 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 			}
 
 			_, err := extractPlatform(tr)
-			Expect(err).To(MatchError(errFailedToDeterminePlatform))
+			Expect(err).Should(MatchError(errFailedToDeterminePlatform))
 		})
 	})
 
@@ -97,26 +97,26 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 		// is immediately failed with an error secret.
 		It("should create an error secret if no host config exists", func(ctx SpecContext) {
 			client, reconciler = setupClientAndReconciler([]runtimeclient.Object{})
-			createUserTaskRun(ctx, GinkgoT(), client, "test-no-config", "linux/arm64")
+			createUserTaskRun(ctx, client, "test-no-config", "linux/arm64")
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-no-config"}})
-			Expect(err).ToNot(HaveOccurred())
-			tr := getUserTaskRun(ctx, GinkgoT(), client, "test-no-config")
+			Expect(err).ShouldNot(HaveOccurred())
+			tr := getUserTaskRun(ctx, client, "test-no-config")
 
 			secret := getSecret(ctx, client, tr)
-			Expect(secret.Data["error"]).ToNot(BeEmpty())
+			Expect(secret.Data["error"]).ShouldNot(BeEmpty())
 		})
 
 		// It verifies that if a host config exists but contains no hosts for the
 		// requested platform, the TaskRun is failed with an error secret.
 		It("should create an error secret if no host with the requested platform exists", func(ctx SpecContext) {
 			client, reconciler = setupClientAndReconciler(createHostConfig())
-			createUserTaskRun(ctx, GinkgoT(), client, "test-no-platform", "powerpc")
+			createUserTaskRun(ctx, client, "test-no-platform", "powerpc")
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-no-platform"}})
-			Expect(err).To(HaveOccurred())
-			tr := getUserTaskRun(ctx, GinkgoT(), client, "test-no-platform")
+			Expect(err).Should(HaveOccurred())
+			tr := getUserTaskRun(ctx, client, "test-no-platform")
 
 			secret := getSecret(ctx, client, tr)
-			Expect(secret.Data["error"]).ToNot(BeEmpty())
+			Expect(secret.Data["error"]).ShouldNot(BeEmpty())
 		})
 	})
 
@@ -146,7 +146,7 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 					},
 				},
 			}
-			Expect(client.Create(context.Background(), tr)).To(Succeed())
+			Expect(client.Create(context.Background(), tr)).Should(Succeed())
 		})
 
 		It("should update TaskRun successfully on first attempt", func(ctx SpecContext) {
@@ -157,16 +157,16 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 
 			// Update should succeed immediately
 			err := UpdateTaskRunWithRetry(ctx, client, client, tr)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).ShouldNot(HaveOccurred())
 
 			// Verify the update was applied
 			updated := &pipelinev1.TaskRun{}
-			Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, updated)).To(Succeed())
-			Expect(updated.Labels).To(HaveKeyWithValue("new-label", "new-value"))
-			Expect(updated.Labels).To(HaveKeyWithValue("existing-label", "existing-value"))
-			Expect(updated.Annotations).To(HaveKeyWithValue("new-annotation", "new-value"))
-			Expect(updated.Annotations).To(HaveKeyWithValue("existing-annotation", "existing-value"))
-			Expect(updated.Finalizers).To(ContainElements("existing-finalizer", "new-finalizer"))
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, updated)).Should(Succeed())
+			Expect(updated.Labels).Should(HaveKeyWithValue("new-label", "new-value"))
+			Expect(updated.Labels).Should(HaveKeyWithValue("existing-label", "existing-value"))
+			Expect(updated.Annotations).Should(HaveKeyWithValue("new-annotation", "new-value"))
+			Expect(updated.Annotations).Should(HaveKeyWithValue("existing-annotation", "existing-value"))
+			Expect(updated.Finalizers).Should(ContainElements("existing-finalizer", "new-finalizer"))
 		})
 
 		// It verifies that the retry logic can successfully handle and merge
@@ -187,17 +187,17 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 
 			// Should succeed after retries
 			err := UpdateTaskRunWithRetry(ctx, conflictingClient, client, tr)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).ShouldNot(HaveOccurred())
 
 			// Verify the update was applied
 			updated := &pipelinev1.TaskRun{}
-			Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, updated)).To(Succeed())
-			Expect(updated.Labels).To(HaveKeyWithValue(TargetPlatformLabel, "conflict-value"))
-			Expect(updated.Annotations).To(And(
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, updated)).Should(Succeed())
+			Expect(updated.Labels).Should(HaveKeyWithValue(TargetPlatformLabel, "conflict-value"))
+			Expect(updated.Annotations).Should(And(
 				HaveKeyWithValue(AllocationStartTimeAnnotation, "conflict-value"),
 				HaveKeyWithValue(CloudInstanceId, "conflict-value"),
 			))
-			Expect(updated.Finalizers).To(ContainElement(PipelineFinalizer))
+			Expect(updated.Finalizers).Should(ContainElement(PipelineFinalizer))
 		})
 
 		// It simulates a real-world race condition where an external actor modifies
@@ -206,11 +206,11 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 		It("should merge labels and annotations correctly after conflict", func(ctx SpecContext) {
 			// First, update the TaskRun externally to simulate concurrent modification
 			external := &pipelinev1.TaskRun{}
-			Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, external)).To(Succeed())
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, external)).Should(Succeed())
 			external.Labels["external-label"] = "external-value"
 			external.Annotations["external-annotation"] = "external-value"
 			external.Finalizers = append(external.Finalizers, "external-finalizer")
-			Expect(client.Update(ctx, external)).To(Succeed())
+			Expect(client.Update(ctx, external)).Should(Succeed())
 
 			// Now modify our local copy with different changes
 			tr.Labels[TargetPlatformLabel] = "local-value"
@@ -225,18 +225,18 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 
 			// Update should succeed and merge both changes
 			err := UpdateTaskRunWithRetry(ctx, conflictingClient, conflictingClient, tr)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).ShouldNot(HaveOccurred())
 
 			// Verify both sets of changes are present
 			updated := &pipelinev1.TaskRun{}
-			Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, updated)).To(Succeed())
-			Expect(updated.Labels).To(HaveKeyWithValue(TargetPlatformLabel, "local-value"))
-			Expect(updated.Labels).To(HaveKeyWithValue("external-label", "external-value"))
-			Expect(updated.Labels).To(HaveKeyWithValue("existing-label", "existing-value"))
-			Expect(updated.Annotations).To(HaveKeyWithValue(AllocationStartTimeAnnotation, "local-value"))
-			Expect(updated.Annotations).To(HaveKeyWithValue("external-annotation", "external-value"))
-			Expect(updated.Annotations).To(HaveKeyWithValue("existing-annotation", "existing-value"))
-			Expect(updated.Finalizers).To(ConsistOf("existing-finalizer", PipelineFinalizer, "external-finalizer"))
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, updated)).Should(Succeed())
+			Expect(updated.Labels).Should(HaveKeyWithValue(TargetPlatformLabel, "local-value"))
+			Expect(updated.Labels).Should(HaveKeyWithValue("external-label", "external-value"))
+			Expect(updated.Labels).Should(HaveKeyWithValue("existing-label", "existing-value"))
+			Expect(updated.Annotations).Should(HaveKeyWithValue(AllocationStartTimeAnnotation, "local-value"))
+			Expect(updated.Annotations).Should(HaveKeyWithValue("external-annotation", "external-value"))
+			Expect(updated.Annotations).Should(HaveKeyWithValue("existing-annotation", "existing-value"))
+			Expect(updated.Finalizers).Should(ConsistOf("existing-finalizer", PipelineFinalizer, "external-finalizer"))
 		})
 
 		// It tests that the update function does not panic or error when the
@@ -254,7 +254,7 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 					},
 				},
 			}
-			Expect(client.Create(ctx, nilTr)).To(Succeed())
+			Expect(client.Create(ctx, nilTr)).Should(Succeed())
 
 			// Add some data to nil maps
 			nilTr.Labels = map[string]string{TargetPlatformLabel: "new-value"}
@@ -262,14 +262,14 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 			nilTr.Finalizers = []string{PipelineFinalizer}
 
 			err := UpdateTaskRunWithRetry(ctx, client, client, nilTr)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).ShouldNot(HaveOccurred())
 
 			// Verify the update was applied
 			updated := &pipelinev1.TaskRun{}
-			Expect(client.Get(ctx, types.NamespacedName{Namespace: nilTr.Namespace, Name: nilTr.Name}, updated)).To(Succeed())
-			Expect(updated.Labels).To(HaveKeyWithValue(TargetPlatformLabel, "new-value"))
-			Expect(updated.Annotations).To(HaveKeyWithValue(AllocationStartTimeAnnotation, "new-value"))
-			Expect(updated.Finalizers).To(ContainElement(PipelineFinalizer))
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: nilTr.Namespace, Name: nilTr.Name}, updated)).Should(Succeed())
+			Expect(updated.Labels).Should(HaveKeyWithValue(TargetPlatformLabel, "new-value"))
+			Expect(updated.Annotations).Should(HaveKeyWithValue(AllocationStartTimeAnnotation, "new-value"))
+			Expect(updated.Finalizers).Should(ContainElement(PipelineFinalizer))
 		})
 
 		// It ensures that the retry loop exits immediately for errors that are
@@ -284,8 +284,8 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 			tr.Labels["error-label"] = "error-value"
 
 			err := UpdateTaskRunWithRetry(ctx, errorClient, errorClient, tr)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("some other error"))
+			Expect(err).Should(HaveOccurred())
+			Expect(err.Error()).Should(ContainSubstring("some other error"))
 		})
 
 		// It verifies that the function gives up after a maximum number of retries
@@ -300,7 +300,7 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 			tr.Labels["persistent-conflict"] = "value"
 
 			err := UpdateTaskRunWithRetry(ctx, conflictingClient, conflictingClient, tr)
-			Expect(err).To(HaveOccurred())
+			Expect(err).Should(HaveOccurred())
 		})
 	})
 
