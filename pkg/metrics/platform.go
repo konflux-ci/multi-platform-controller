@@ -30,7 +30,8 @@ type PlatformMetrics struct {
 }
 
 func RegisterPlatformMetrics(_ context.Context, platform string) error {
-	if _, ok := platformMetrics[platform]; ok {
+	platform = platformLabel(platform)
+	if _, ok := platformMetrics[platformLabel(platform)]; ok {
 		return nil
 	}
 	pmetrics := PlatformMetrics{}
@@ -120,22 +121,12 @@ func RegisterPlatformMetrics(_ context.Context, platform string) error {
 
 // Convert the platform label to the format used by PlatformMetrics in case of a mismatch
 func platformLabel(platform string) string {
-	return strings.ReplaceAll(platform, "-", "/")
-}
-
-// Compare the platform label to the format used by PlatformMetrics and return the corresponding PlatformMetrics
-func platformLabelComperator(platformMetrics map[string]*PlatformMetrics, platform string) *PlatformMetrics {
-	if pmetrics, ok := platformMetrics[platform]; ok {
-		return pmetrics
-	}
-	if pmetrics, ok := platformMetrics[platformLabel(platform)]; ok {
-		return pmetrics
-	}
-	return nil
+	return strings.ReplaceAll(platform, "/", "-")
 }
 
 func HandleMetrics(platform string, f func(*PlatformMetrics)) {
-	if pmetrics := platformLabelComperator(platformMetrics, platform); pmetrics != nil {
+	platform = platformLabel(platform)
+	if pmetrics := platformMetrics[platform]; pmetrics != nil {
 		f(pmetrics)
 	}
 }
