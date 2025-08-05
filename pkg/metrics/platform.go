@@ -2,6 +2,7 @@ package mpcmetrics
 
 import (
 	"context"
+	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
@@ -29,7 +30,8 @@ type PlatformMetrics struct {
 }
 
 func RegisterPlatformMetrics(_ context.Context, platform string) error {
-	if _, ok := platformMetrics[platform]; ok {
+	platform = platformLabel(platform)
+	if _, ok := platformMetrics[platformLabel(platform)]; ok {
 		return nil
 	}
 	pmetrics := PlatformMetrics{}
@@ -117,7 +119,13 @@ func RegisterPlatformMetrics(_ context.Context, platform string) error {
 	return nil
 }
 
+// Convert the platform label to the format used by PlatformMetrics in case of a mismatch
+func platformLabel(platform string) string {
+	return strings.ReplaceAll(platform, "/", "-")
+}
+
 func HandleMetrics(platform string, f func(*PlatformMetrics)) {
+	platform = platformLabel(platform)
 	if pmetrics := platformMetrics[platform]; pmetrics != nil {
 		f(pmetrics)
 	}
