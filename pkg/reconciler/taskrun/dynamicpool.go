@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
@@ -108,16 +109,17 @@ func (a DynamicHostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *
 	if err != nil {
 		return reconcile.Result{}, err
 	}
-	if len(hostPool.hosts) > 0 {
-		_, err = hostPool.Allocate(r, ctx, tr, secretName)
-		if err != nil {
-			log.Error(err, "could not allocate host from pool")
-		}
-		if tr.Labels == nil || tr.Labels[WaitingForPlatformLabel] == "" {
 
-			log.Info("returning, as task is not waiting for a host")
-			//We only need to launch an instance if the task run is waiting for a label
-			return reconcile.Result{}, err
+	var allocationErr error
+	if len(hostPool.hosts) > 0 {
+		_, allocationErr = hostPool.Allocate(r, ctx, tr, secretName)
+		if allocationErr != nil && !errors.Is(allocationErr, ErrAllHostsFailed) {
+			log.Error(allocationErr, "could not allocate host from pool")
+			return reconcile.Result{}, allocationErr
+		}
+		if allocationErr == nil && (tr.Labels == nil || tr.Labels[WaitingForPlatformLabel] == "") {
+			log.Info("successfully allocated host from existing pool")
+			return reconcile.Result{}, nil
 		}
 	}
 	log.Info("could not allocate existing host, attempting to start a new one")
@@ -130,9 +132,9 @@ func (a DynamicHostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *
 	log.Info(fmt.Sprintf("%d instances running", count))
 	// We don't count old instances towards the total, as they will shut down soon
 	if count-oldInstanceCount >= a.maxInstances {
-		log.Info("cannot provision new instances")
-		// Too many instances, we just have to wait
-		return reconcile.Result{RequeueAfter: time.Minute}, err
+		log.Info("cannot provision new instances, pool is at capacity")
+		// Pool is full, and we couldn't allocate. Return the original allocation error.
+		return reconcile.Result{RequeueAfter: time.Minute}, allocationErr
 	}
 	name, err := getRandomString(8)
 	if err != nil {
@@ -150,8 +152,9 @@ func (a DynamicHostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *
 	}
 
 	log.Info("allocated instance", "instance", inst)
-	return reconcile.Result{RequeueAfter: time.Minute}, err
-
+	// The operation to launch a new instance was successful, so we return nil.
+	// The reconciler will requeue and assign the new instance once it's ready.
+	return reconcile.Result{RequeueAfter: time.Minute}, nil
 }
 
 func getRandomString(length int) (string, error) {
