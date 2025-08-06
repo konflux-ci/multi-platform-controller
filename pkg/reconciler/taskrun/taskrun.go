@@ -538,6 +538,10 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektona
 		})
 	}
 
+	if wasWaiting {
+		fmt.Println("was waiting")
+	}
+
 	// Handle waiting state transitions with clear logging
 	if wasWaiting && !isWaiting {
 		log.Info("task no longer waiting - host allocated")
@@ -650,6 +654,9 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 
 	// Handle waiting tasks - try to allocate next waiting task
 	log.Info("checking for waiting tasks to requeue")
+
+	// fmt.Printf("Label value for %s: %s\n", WaitingForPlatformLabel, tr.Labels[WaitingForPlatformLabel])
+	fmt.Println(tr.Labels)
 	result, err := r.handleWaitingTasks(ctx, platform)
 	if err != nil {
 		log.Error(err, "failed to handle waiting tasks")
@@ -696,6 +703,8 @@ func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, platform stri
 	delete(oldest.Labels, WaitingForPlatformLabel)
 
 	// Update the task
+	// TODO: fix it and think about a way to change it!
+	// updating the task there's no more "WaitingForPlatformLabel" - so the wasWaiting is never set to true!!!!!
 	err = r.client.Update(ctx, oldest)
 	if err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed to update waiting task %s/%s: %w", oldest.Namespace, oldest.Name, err)

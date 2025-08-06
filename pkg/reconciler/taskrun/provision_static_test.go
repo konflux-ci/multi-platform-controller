@@ -63,7 +63,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		Expect(err).ShouldNot(HaveOccurred())
 		tr := getUserTaskRun(ctx, client, name)
 		Expect(tr.Labels[WaitingForPlatformLabel]).Should(Equal("linux-arm64"))
-
+		// tr.Lables can be found in - tr => v1.taskrun => ObjectMeta => Labels
 		// Complete one of the running tasks to free up a slot.
 		running := runs[0]
 		running.Status.CompletionTime = &metav1.Time{Time: time.Now()}
@@ -73,12 +73,16 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now()}},
 		})
 		Expect(client.Status().Update(ctx, running)).ShouldNot(HaveOccurred())
+		// here the label is removed from the running task
 		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: running.Namespace, Name: running.Name}})
 		Expect(err).ShouldNot(HaveOccurred())
 		assertNoSecret(ctx, client, running)
 
 		// Verify that the waiting TaskRun is now allocated a host.
-		tr = getUserTaskRun(ctx, client, name)
+		tmp_tr := tr
+		fmt.Println(tmp_tr.Labels)
+		tr = getUserTaskRun(ctx, client, name) // ask Meirav what does that do exactly! this is where the reference for old
+		// "build.appstudio.redhat.com/waiting-for-platform" is disappaering and then "wasWaiting" never gets set to true.
 		Expect(tr.Labels[WaitingForPlatformLabel]).Should(BeEmpty())
 		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
 		Expect(err).ShouldNot(HaveOccurred())
