@@ -848,7 +848,7 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 	}
 
 	ret := HostPool{hosts: map[string]*Host{}, targetPlatform: targetPlatform}
-	capacity := 0
+	platformCapacity := 0
 	for k, v := range cm.Data {
 		if !strings.HasPrefix(k, "host.") {
 			continue
@@ -881,14 +881,13 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 				return nil, err
 			}
 			host.Concurrency = atoi
-			capacity += atoi
 		default:
 			log.Info("unknown key", "key", key)
 		}
 
 	}
 	r.platformConfig[targetPlatform] = ret
-	err = mpcmetrics.RegisterPlatformMetrics(ctx, targetPlatform, capacity)
+	err = mpcmetrics.RegisterPlatformMetrics(ctx, targetPlatform, platformCapacity)
 	if err != nil {
 		return nil, err
 	}
