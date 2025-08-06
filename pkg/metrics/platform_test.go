@@ -18,7 +18,7 @@ var _ = Describe("PlatformMetrics", func() {
 			runTasksMetricName    = "multi_platform_controller_running_tasks"
 			waitingTaskMetricName = "multi_platform_controller_waiting_tasks"
 			poolSizeMetricName    = "multi_platform_controller_platform_pool_size"
-			poolSize              = 13
+			poolSize              = rand.Intn(100)
 			expectedValue         = 1
 		)
 		BeforeEach(func(ctx SpecContext) {
@@ -67,7 +67,7 @@ var _ = Describe("PlatformMetrics", func() {
 			provisionFailuresMetricName      = "multi_platform_controller_provisioning_failures"
 			cleanupFailuresMetricName        = "multi_platform_controller_cleanup_failures"
 			hostAllocationFailuresMetricName = "multi_platform_controller_host_allocation_failures"
-			poolSize                         = 10
+			poolSize                         = rand.Intn(100)
 			expectedValue                    int
 		)
 		BeforeEach(func(ctx SpecContext) {
@@ -117,7 +117,7 @@ var _ = Describe("PlatformMetrics", func() {
 			allocationTimeMetricName = "multi_platform_controller_host_allocation_time"
 			waitTimeMetricName       = "multi_platform_controller_wait_time"
 			taskRunMetricName        = "multi_platform_controller_task_run_time"
-			poolSize                 = 10
+			poolSize                 = rand.Intn(100)
 			expectedValue            float64
 		)
 		BeforeEach(func(ctx SpecContext) {
