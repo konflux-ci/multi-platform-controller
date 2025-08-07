@@ -790,7 +790,7 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 					eventRecorder:          r.eventRecorder,
 				}
 				r.platformConfig[targetPlatform] = ret
-				err = mpcmetrics.RegisterPlatformMetrics(ctx, targetPlatform)
+				err = mpcmetrics.RegisterPlatformMetrics(ctx, targetPlatform, maxInstances)
 				if err != nil {
 					return nil, err
 				}
@@ -838,7 +838,7 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 					additionalInstanceTags: additionalInstanceTags,
 				}
 				r.platformConfig[targetPlatform] = ret
-				err = mpcmetrics.RegisterPlatformMetrics(ctx, targetPlatform)
+				err = mpcmetrics.RegisterPlatformMetrics(ctx, targetPlatform, maxInstances)
 				if err != nil {
 					return nil, err
 				}
@@ -848,6 +848,7 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 	}
 
 	ret := HostPool{hosts: map[string]*Host{}, targetPlatform: targetPlatform}
+	platformCapacity := 0
 	for k, v := range cm.Data {
 		if !strings.HasPrefix(k, "host.") {
 			continue
@@ -880,13 +881,14 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 				return nil, err
 			}
 			host.Concurrency = atoi
+			platformCapacity += atoi
 		default:
 			log.Info("unknown key", "key", key)
 		}
 
 	}
 	r.platformConfig[targetPlatform] = ret
-	err = mpcmetrics.RegisterPlatformMetrics(ctx, targetPlatform)
+	err = mpcmetrics.RegisterPlatformMetrics(ctx, targetPlatform, platformCapacity)
 	if err != nil {
 		return nil, err
 	}
