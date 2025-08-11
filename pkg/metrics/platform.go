@@ -68,26 +68,23 @@ func RegisterPlatformMetrics(_ context.Context, platform string, poolSize int) e
 	}
 
 	pmetrics.RunningTasks = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Subsystem: MetricsSubsystem,
-		Name:      "running_tasks",
-		Help:      "The number of currently running tasks on this platform",
-	}, []string{"platform", "taskrun_namespace"})
+		ConstLabels: map[string]string{"platform": platform},
+		Subsystem:   MetricsSubsystem,
+		Name:        "running_tasks",
+		Help:        "The number of currently running tasks on this platform",
+	}, []string{"taskrun_namespace"})
 	if err := metrics.Registry.Register(pmetrics.RunningTasks); err != nil {
-		// This can be called multiple times, so we need to check if it's already registered
-		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
-			return err
-		}
+		return err
 	}
 
 	pmetrics.WaitingTasks = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Subsystem: MetricsSubsystem,
-		Name:      "waiting_tasks",
-		Help:      "The number of tasks waiting for an executor to be available to run",
-	}, []string{"platform", "taskrun_namespace"})
+		ConstLabels: map[string]string{"platform": platform},
+		Subsystem:   MetricsSubsystem,
+		Name:        "waiting_tasks",
+		Help:        "The number of tasks waiting for an executor to be available to run",
+	}, []string{"taskrun_namespace"})
 	if err := metrics.Registry.Register(pmetrics.WaitingTasks); err != nil {
-		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
-			return err
-		}
+		return err
 	}
 
 	pmetrics.ProvisionFailures = prometheus.NewCounter(prometheus.CounterOpts{
@@ -118,16 +115,15 @@ func RegisterPlatformMetrics(_ context.Context, platform string, poolSize int) e
 	}
 
 	pmetrics.poolSize = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Subsystem: MetricsSubsystem,
-		Name:      "platform_pool_size",
-		Help:      "The size of platform machines pool",
-	}, []string{"platform"})
+		ConstLabels: map[string]string{"platform": platform},
+		Subsystem:   MetricsSubsystem,
+		Name:        "platform_pool_size",
+		Help:        "The size of platform machines pool",
+	}, []string{})
 	if err := metrics.Registry.Register(pmetrics.poolSize); err != nil {
-		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
-			return err
-		}
+		return err
 	}
-	pmetrics.poolSize.WithLabelValues(platform).Set(float64(poolSize))
+	pmetrics.poolSize.WithLabelValues().Set(float64(poolSize))
 	platformMetrics[platform] = &pmetrics
 	return nil
 }
