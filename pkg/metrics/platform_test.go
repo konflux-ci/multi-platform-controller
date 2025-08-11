@@ -25,10 +25,10 @@ var _ = Describe("PlatformMetrics", func() {
 			Expect(RegisterPlatformMetrics(ctx, platform, poolSize)).NotTo(HaveOccurred())
 			//resetting counters
 			HandleMetrics(platform, func(m *PlatformMetrics) {
-				m.RunningTasks.WithLabelValues(platform, "test-namespace").Set(0)
+				m.RunningTasks.WithLabelValues("test-namespace").Set(0)
 			})
 			HandleMetrics(platform, func(m *PlatformMetrics) {
-				m.WaitingTasks.WithLabelValues(platform, "test-namespace").Set(0)
+				m.WaitingTasks.WithLabelValues("test-namespace").Set(0)
 			})
 
 		})
@@ -42,7 +42,7 @@ var _ = Describe("PlatformMetrics", func() {
 
 			It("should increment running_tasks metric", func() {
 				HandleMetrics(platform, func(m *PlatformMetrics) {
-					m.RunningTasks.WithLabelValues(platform, "test-namespace").Inc()
+					m.RunningTasks.WithLabelValues("test-namespace").Inc()
 				})
 				result, err := getGaugeValue(platform, runTasksMetricName, "test-namespace")
 				Expect(err).ToNot(HaveOccurred())
@@ -51,7 +51,7 @@ var _ = Describe("PlatformMetrics", func() {
 
 			It("should increment waiting_tasks metric", func() {
 				HandleMetrics(platform, func(m *PlatformMetrics) {
-					m.WaitingTasks.WithLabelValues(platform, "test-namespace").Inc()
+					m.WaitingTasks.WithLabelValues("test-namespace").Inc()
 				})
 				result, err := getGaugeValue(platform, waitingTaskMetricName, "test-namespace")
 				Expect(err).ToNot(HaveOccurred())
