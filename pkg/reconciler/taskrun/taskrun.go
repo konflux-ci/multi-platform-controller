@@ -881,7 +881,9 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 				return nil, err
 			}
 			host.Concurrency = atoi
-			platformCapacity += atoi
+			if host.Platform == targetPlatform {
+				platformCapacity += atoi
+			}
 		default:
 			log.Info("unknown key", "key", key)
 		}
