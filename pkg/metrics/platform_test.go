@@ -17,10 +17,12 @@ var _ = Describe("PlatformMetrics", func() {
 			platform              = "ibm_p"
 			runTasksMetricName    = "multi_platform_controller_running_tasks"
 			waitingTaskMetricName = "multi_platform_controller_waiting_tasks"
+			poolSizeMetricName    = "multi_platform_controller_platform_pool_size"
+			poolSize              = rand.Intn(100)
 			expectedValue         = 1
 		)
 		BeforeEach(func(ctx SpecContext) {
-			Expect(RegisterPlatformMetrics(ctx, platform)).NotTo(HaveOccurred())
+			Expect(RegisterPlatformMetrics(ctx, platform, poolSize)).NotTo(HaveOccurred())
 			//resetting counters
 			HandleMetrics(platform, func(m *PlatformMetrics) {
 				m.RunningTasks.WithLabelValues(platform, "test-namespace").Set(0)
@@ -31,6 +33,13 @@ var _ = Describe("PlatformMetrics", func() {
 
 		})
 		When("When appropriate condition happened", func() {
+
+			It("have pool size set", func() {
+				result, err := getGaugeValue(platform, poolSizeMetricName, "")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(poolSize))
+			})
+
 			It("should increment running_tasks metric", func() {
 				HandleMetrics(platform, func(m *PlatformMetrics) {
 					m.RunningTasks.WithLabelValues(platform, "test-namespace").Inc()
@@ -58,10 +67,11 @@ var _ = Describe("PlatformMetrics", func() {
 			provisionFailuresMetricName      = "multi_platform_controller_provisioning_failures"
 			cleanupFailuresMetricName        = "multi_platform_controller_cleanup_failures"
 			hostAllocationFailuresMetricName = "multi_platform_controller_host_allocation_failures"
+			poolSize                         = rand.Intn(100)
 			expectedValue                    int
 		)
 		BeforeEach(func(ctx SpecContext) {
-			Expect(RegisterPlatformMetrics(ctx, platform)).NotTo(HaveOccurred())
+			Expect(RegisterPlatformMetrics(ctx, platform, poolSize)).NotTo(HaveOccurred())
 		})
 
 		When("When appropriate condition happened", func() {
@@ -107,10 +117,11 @@ var _ = Describe("PlatformMetrics", func() {
 			allocationTimeMetricName = "multi_platform_controller_host_allocation_time"
 			waitTimeMetricName       = "multi_platform_controller_wait_time"
 			taskRunMetricName        = "multi_platform_controller_task_run_time"
+			poolSize                 = rand.Intn(100)
 			expectedValue            float64
 		)
 		BeforeEach(func(ctx SpecContext) {
-			Expect(RegisterPlatformMetrics(ctx, platform)).NotTo(HaveOccurred())
+			Expect(RegisterPlatformMetrics(ctx, platform, poolSize)).NotTo(HaveOccurred())
 		})
 
 		When("When appropriate condition happened", func() {
@@ -169,7 +180,7 @@ func getGaugeValue(platform, metricName, namespace string) (int, error) {
 				if m.Gauge == nil {
 					continue
 				}
-				if hasLabel(m.Label, "platform", platform) && hasLabel(m.Label, "taskrun_namespace", namespace) {
+				if hasLabel(m.Label, "platform", platform) && (namespace == "" || hasLabel(m.Label, "taskrun_namespace", namespace)) {
 					return int(m.Gauge.GetValue()), nil
 				}
 			}

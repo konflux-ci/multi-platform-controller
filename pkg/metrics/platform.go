@@ -27,9 +27,10 @@ type PlatformMetrics struct {
 	ProvisionFailures      prometheus.Counter
 	CleanupFailures        prometheus.Counter
 	HostAllocationFailures prometheus.Counter
+	poolSize               *prometheus.GaugeVec // package-private to avoid modifications
 }
 
-func RegisterPlatformMetrics(_ context.Context, platform string) error {
+func RegisterPlatformMetrics(_ context.Context, platform string, poolSize int) error {
 	platform = platformLabel(platform)
 	if _, ok := platformMetrics[platformLabel(platform)]; ok {
 		return nil
@@ -115,6 +116,18 @@ func RegisterPlatformMetrics(_ context.Context, platform string) error {
 	if err := metrics.Registry.Register(pmetrics.HostAllocationFailures); err != nil {
 		return err
 	}
+
+	pmetrics.poolSize = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Subsystem: MetricsSubsystem,
+		Name:      "platform_pool_size",
+		Help:      "The size of platform machines pool",
+	}, []string{"platform"})
+	if err := metrics.Registry.Register(pmetrics.poolSize); err != nil {
+		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
+			return err
+		}
+	}
+	pmetrics.poolSize.WithLabelValues(platform).Set(float64(poolSize))
 	platformMetrics[platform] = &pmetrics
 	return nil
 }
