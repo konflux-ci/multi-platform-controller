@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"time"
 
+	mpcmetrics "github.com/konflux-ci/multi-platform-controller/pkg/metrics"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	dto "github.com/prometheus/client_model/go"
 	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -63,7 +65,16 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		Expect(err).ShouldNot(HaveOccurred())
 		tr := getUserTaskRun(ctx, client, name)
 		Expect(tr.Labels[WaitingForPlatformLabel]).Should(Equal("linux-arm64"))
-
+		metricDto := &dto.Metric{}
+		var pmetrics *mpcmetrics.PlatformMetrics
+		mpcmetrics.HandleMetrics(tr.Labels[TargetPlatformLabel], func(metrics *mpcmetrics.PlatformMetrics) {
+			pmetrics = metrics
+		})
+		Expect(pmetrics).ShouldNot(BeNil())
+		gauge, err := pmetrics.WaitingTasks.GetMetricWithLabelValues(tr.Namespace)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(gauge.Write(metricDto)).ShouldNot(HaveOccurred())
+		Expect(metricDto.GetGauge().GetValue()).Should(Equal(1.0))
 		// Complete one of the running tasks to free up a slot.
 		running := runs[0]
 		running.Status.CompletionTime = &metav1.Time{Time: time.Now()}
@@ -79,11 +90,21 @@ var _ = Describe("Test Static Host Provisioning", func() {
 
 		// Verify that the waiting TaskRun is now allocated a host.
 		tr = getUserTaskRun(ctx, client, name)
-		Expect(tr.Labels[WaitingForPlatformLabel]).Should(BeEmpty())
+		Expect(tr.Labels[FinishedWaitingLabel]).Should(Equal("true"))
 		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
 		Expect(err).ShouldNot(HaveOccurred())
 		tr = getUserTaskRun(ctx, client, name)
 		Expect(getProvisionTaskRun(ctx, client, tr)).ShouldNot(BeNil())
+		Expect(tr.Labels[AssignedHost]).ShouldNot(BeEmpty())
+
+		mpcmetrics.HandleMetrics(tr.Labels[TargetPlatformLabel], func(metrics *mpcmetrics.PlatformMetrics) {
+			pmetrics = metrics
+		})
+		Expect(pmetrics).ShouldNot(BeNil())
+		gauge, err = pmetrics.WaitingTasks.GetMetricWithLabelValues(tr.Namespace)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(gauge.Write(metricDto)).ShouldNot(HaveOccurred())
+		Expect(metricDto.GetGauge().GetValue()).Should(Equal(0.0))
 	})
 
 	When("when provisioning fails", func() {

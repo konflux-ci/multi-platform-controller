@@ -62,6 +62,7 @@ const (
 
 	TargetPlatformLabel     = "build.appstudio.redhat.com/target-platform"
 	WaitingForPlatformLabel = "build.appstudio.redhat.com/waiting-for-platform"
+	FinishedWaitingLabel    = "build.appstudio.redhat.com/finished-waiting"
 	PipelineFinalizer       = "appstudio.io/multi-platform-finalizer"
 	HostConfig              = "host-config"
 
@@ -692,8 +693,8 @@ func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, platform stri
 	if oldest == nil {
 		return reconcile.Result{}, nil
 	}
-	//remove the waiting label, which will trigger a requeue
-	delete(oldest.Labels, WaitingForPlatformLabel)
+	//add the "finished-waiting" label, which will trigger a requeue
+	oldest.Labels[FinishedWaitingLabel] = "true"
 
 	// Update the task
 	err = r.client.Update(ctx, oldest)
