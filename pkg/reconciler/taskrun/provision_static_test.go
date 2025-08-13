@@ -90,7 +90,6 @@ var _ = Describe("Test Static Host Provisioning", func() {
 
 		// Verify that the waiting TaskRun is now allocated a host.
 		tr = getUserTaskRun(ctx, client, name)
-		Expect(tr.Labels[WaitingForPlatformLabel]).Should(BeEmpty())
 		Expect(tr.Labels[FinishedWaitingLabel]).Should(Equal("true"))
 		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
 		Expect(err).ShouldNot(HaveOccurred())

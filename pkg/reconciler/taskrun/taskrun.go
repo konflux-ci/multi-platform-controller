@@ -505,7 +505,7 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektona
 	}
 
 	// Track waiting state and allocation timing
-	wasWaiting := tr.Labels[FinishedWaitingLabel] != ""
+	wasWaiting := tr.Labels[WaitingForPlatformLabel] != ""
 	startTime := time.Now().Unix()
 
 	// Parse existing allocation start time if available
@@ -693,10 +693,7 @@ func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, platform stri
 	if oldest == nil {
 		return reconcile.Result{}, nil
 	}
-	//remove the waiting label, which will trigger a requeue
-	delete(oldest.Labels, WaitingForPlatformLabel)
-
-	// add the finished waiting label, which will trigger decrementing the waiting tasks metric
+	//add the "finished-waiting" label, which will trigger a requeue
 	oldest.Labels[FinishedWaitingLabel] = "true"
 
 	// Update the task
