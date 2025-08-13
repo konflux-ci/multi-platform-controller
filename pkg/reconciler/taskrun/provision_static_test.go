@@ -71,7 +71,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			pmetrics = metrics
 		})
 		Expect(pmetrics).ShouldNot(BeNil())
-		gauge, err := pmetrics.WaitingTasks.GetMetricWithLabelValues(tr.Labels[TargetPlatformLabel], "default")
+		gauge, err := pmetrics.WaitingTasks.GetMetricWithLabelValues(tr.Namespace)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(gauge.Write(metricDto)).ShouldNot(HaveOccurred())
 		Expect(metricDto.GetGauge().GetValue()).Should(Equal(1.0))
@@ -89,6 +89,9 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		assertNoSecret(ctx, client, running)
 
 		// Verify that the waiting TaskRun is now allocated a host.
+		tr = getUserTaskRun(ctx, client, name)
+		Expect(tr.Labels[WaitingForPlatformLabel]).Should(BeEmpty())
+		Expect(tr.Labels[FinishedWaitingLabel]).Should(Equal("true"))
 		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
 		Expect(err).ShouldNot(HaveOccurred())
 		tr = getUserTaskRun(ctx, client, name)
@@ -99,7 +102,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			pmetrics = metrics
 		})
 		Expect(pmetrics).ShouldNot(BeNil())
-		gauge, err = pmetrics.WaitingTasks.GetMetricWithLabelValues(tr.Labels[TargetPlatformLabel], "default")
+		gauge, err = pmetrics.WaitingTasks.GetMetricWithLabelValues(tr.Namespace)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(gauge.Write(metricDto)).ShouldNot(HaveOccurred())
 		Expect(metricDto.GetGauge().GetValue()).Should(Equal(0.0))
