@@ -120,6 +120,7 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 	log.Info("allocated host", "host", selected.Name)
 	tr.Labels[AssignedHost] = selected.Name
 	delete(tr.Labels, WaitingForPlatformLabel)
+	delete(tr.Labels, FinishedWaitingLabel)
 	//add a finalizer to clean up the secret
 	controllerutil.AddFinalizer(tr, PipelineFinalizer)
 	err = UpdateTaskRunWithRetry(ctx, r.client, r.apiReader, tr)
