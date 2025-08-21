@@ -3,6 +3,7 @@ package taskrun
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -89,6 +90,48 @@ const (
 )
 
 var errFailedToDeterminePlatform = errors2.New("failed to determine platform")
+var errInvalidPlatformFormat = errors2.New("platform must be in format 'label/label' where each label follows Kubernetes RFC 1035 label name format")
+var errInvalidPlatform = errors2.New("platform not in allowed list")
+
+var allowedPlatforms = []string{
+	// Standard platforms
+	"linux/amd64", "linux/x86_64", "local", "localhost", "linux/arm64",
+	// M-series instances
+	"linux-mlarge/amd64", "linux-mlarge/arm64", "linux-mxlarge/amd64", "linux-mxlarge/arm64", "linux-m2xlarge/amd64",
+	"linux-m2xlarge/arm64", "linux-m4xlarge/amd64", "linux-m4xlarge/arm64", "linux-m8xlarge/amd64", "linux-m8xlarge/arm64",
+	// C-series instances
+	"linux-cxlarge/amd64", "linux-cxlarge/arm64", "linux-c2xlarge/amd64", "linux-c2xlarge/arm64", "linux-c4xlarge/amd64",
+	"linux-c4xlarge/arm64", "linux-c8xlarge/amd64", "linux-c8xlarge/arm64", "linux-c6gd2xlarge/arm64",
+	// G-series instances
+	"linux-g4xlarge/amd64", "linux-g6xlarge/amd64", "linux-g64xlarge/amd64",
+	// Root instances
+	"linux-root/amd64", "linux-root/arm64",
+	// Fast instances
+	"linux-fast/amd64", "linux-extra-fast/amd64",
+	// D160-series instances
+	"linux-d160/arm64", "linux-d160-m2xlarge/amd64", "linux-d160-m2xlarge/arm64", "linux-d160-m4xlarge/amd64",
+	"linux-d160-m4xlarge/arm64", "linux-d160-m8xlarge/amd64", "linux-d160-m8xlarge/arm64", "linux-d160-cxlarge/arm64",
+	"linux-d160-c4xlarge/amd64", "linux-d160-c4xlarge/arm64", "linux-d160-c8xlarge/amd64", "linux-d160-c8xlarge/arm64",
+	"linux-d160-m8-8xlarge/arm64", "linux-d160-m7-8xlarge/amd64",
+	// D320-series instances
+	"linux-d320-c4xlarge/amd64", "linux-d320-c4xlarge/arm64",
+	// s390x platforms
+	"linux/s390x", "linux-large/s390x", "linux-d200/s390x", "linux-d200-large/s390x",
+	// ppc64le platforms
+	"linux/ppc64le", "linux-large/ppc64le", "linux-xlarge/ppc64le", "linux-2xlarge/ppc64le", "linux-d200-large/ppc64le",
+	"linux-d200-xlarge/ppc64le", "linux-d200-2xlarge/ppc64le",
+}
+
+// RFC 1035 label name regex: starts with letter, contains only lowercase letters/numbers/hyphens, max 63 chars, ends with alphanumeric
+var rfc1035LabelRegex = regexp.MustCompile(`^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$`)
+
+var allowedPlatformsMap = func() map[string]struct{} {
+	m := make(map[string]struct{}, len(allowedPlatforms))
+	for _, platform := range allowedPlatforms {
+		m[platform] = struct{}{}
+	}
+	return m
+}()
 
 type ReconcileTaskRun struct {
 	apiReader                client.Reader
@@ -469,7 +512,33 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *tektonapi.Tas
 func extractPlatform(tr *tektonapi.TaskRun) (string, error) {
 	for _, p := range tr.Spec.Params {
 		if p.Name == PlatformParam {
-			return p.Value.StringVal, nil
+			platform := p.Value.StringVal
+
+			// Check for exceptional platforms that bypass standard validation
+			if platform == "local" || platform == "localhost" || platform == "linux/x86_64" {
+				// Check if platform is in allowed list, for future-proofing
+				if _, ok := allowedPlatformsMap[platform]; !ok {
+					return "", errInvalidPlatform
+				}
+				return platform, nil
+			}
+
+			// Validate platform format: must be "label/label" where each label follows RFC 1035
+			parts := strings.Split(platform, "/")
+			if len(parts) != 2 {
+				return "", errInvalidPlatformFormat
+			}
+			// Validate each part against RFC 1035 label name rules
+			for _, part := range parts {
+				if !rfc1035LabelRegex.MatchString(part) {
+					return "", errInvalidPlatformFormat
+				}
+			}
+			// Check if platform is in allowed list
+			if _, ok := allowedPlatformsMap[platform]; !ok {
+				return "", errInvalidPlatform
+			}
+			return platform, nil
 		}
 	}
 	return "", errFailedToDeterminePlatform
