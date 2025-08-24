@@ -6,7 +6,7 @@ toolchain go1.23.4
 
 require (
 	github.com/IBM-Cloud/power-go-client v1.11.0
-	github.com/IBM/go-sdk-core/v5 v5.17.5
+	github.com/IBM/go-sdk-core/v5 v5.21.0
 	github.com/IBM/vpc-go-sdk v0.50.0
 	github.com/aws/aws-sdk-go-v2 v1.27.0
 	github.com/aws/aws-sdk-go-v2/config v1.27.16
@@ -64,7 +64,7 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
-	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
+	github.com/gabriel-vasile/mimetype v1.4.8 // indirect
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
 	github.com/go-logr/zapr v1.3.0 // indirect
@@ -74,12 +74,12 @@ require (
 	github.com/go-openapi/jsonreference v0.20.3 // indirect
 	github.com/go-openapi/loads v0.21.3 // indirect
 	github.com/go-openapi/spec v0.20.12 // indirect
-	github.com/go-openapi/strfmt v0.22.1 // indirect
+	github.com/go-openapi/strfmt v0.23.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
 	github.com/go-openapi/validate v0.22.4 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
-	github.com/go-playground/validator/v10 v10.19.0 // indirect
+	github.com/go-playground/validator/v10 v10.26.0 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
@@ -111,7 +111,7 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	go.mongodb.org/mongo-driver v1.14.0 // indirect
+	go.mongodb.org/mongo-driver v1.17.2 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.53.0 // indirect
@@ -125,7 +125,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	golang.org/x/mod v0.23.0 // indirect
-	golang.org/x/net v0.37.0 // indirect
+	golang.org/x/net v0.38.0 // indirect
 	golang.org/x/oauth2 v0.25.0 // indirect
 	golang.org/x/sync v0.12.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect
