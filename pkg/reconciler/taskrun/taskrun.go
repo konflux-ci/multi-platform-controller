@@ -620,7 +620,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 	}
 
 	// Update TaskRun with cleanup changes
-	err = r.client.Update(ctx, tr)
+	err = updateTaskRun(ctx, r.client, r.apiReader, tr)
 	if err != nil {
 		log.Error(err, "failed to update TaskRun after cleanup")
 		return reconcile.Result{}, fmt.Errorf("failed to update TaskRun: %w", err)
