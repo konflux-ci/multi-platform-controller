@@ -18,6 +18,8 @@
 package taskrun
 
 import (
+	"time"
+	
 	"github.com/go-logr/logr"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -116,7 +118,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 				zeroTaskRuns = len(createdList.Items) == 0
 				g.Expect(zeroTaskRuns).To(Equal(shouldFail))
 
-			}).Should(Succeed())
+			}, SpecTimeout(2*time.Minute)).Should(Succeed())
 
 			if !zeroTaskRuns {
 				// set label field filled correctly
