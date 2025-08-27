@@ -621,9 +621,9 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 
 	// Update metrics for task completion after a successful cleanup
 	log.Info("updating completion metrics")
-	taskRunDuration := time.Now().Unix() - tr.CreationTimestamp.Unix()
+	taskRunDuration := time.Since(tr.CreationTimestamp.Time)
 	mpcmetrics.HandleMetrics(platform, func(metrics *mpcmetrics.PlatformMetrics) {
-		metrics.TaskRunTime.Observe(float64(taskRunDuration))
+		metrics.TaskRunTime.Observe(taskRunDuration.Seconds())
 		metrics.RunningTasks.WithLabelValues(tr.Namespace).Dec()
 	})
 
