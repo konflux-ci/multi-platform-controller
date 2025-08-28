@@ -339,6 +339,12 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 				return reconcile.Result{}, err
 			}
 		}
+
+		// after a successful provision task, we increment the provisioning_successes metric
+		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
+			metrics.ProvisionSuccesses.Inc()
+		})
+
 		// Now we 'bump' the pod, by giving it a label
 		// This forces a reconcile
 		pods := kubecore.PodList{}
