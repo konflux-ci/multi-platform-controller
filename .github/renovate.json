@@ -1,5 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "prConcurrentLimit": 20,
   "extends": ["config:recommended"],
   "pinDigests": true,
   "postUpdateOptions": ["gomodTidy"]
