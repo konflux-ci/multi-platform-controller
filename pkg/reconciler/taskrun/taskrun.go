@@ -339,6 +339,12 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 				return reconcile.Result{}, err
 			}
 		}
+
+		// after a successful provision task, we increment the provisioning_successes metric
+		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
+			metrics.ProvisionSuccesses.Inc()
+		})
+
 		// Now we 'bump' the pod, by giving it a label
 		// This forces a reconcile
 		pods := kubecore.PodList{}
@@ -595,14 +601,6 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 		return reconcile.Result{}, nil
 	}
 
-	// Update metrics for task completion
-	log.Info("updating completion metrics")
-	taskRunDuration := time.Now().Unix() - tr.CreationTimestamp.Unix()
-	mpcmetrics.HandleMetrics(platform, func(metrics *mpcmetrics.PlatformMetrics) {
-		metrics.TaskRunTime.Observe(float64(taskRunDuration))
-		metrics.RunningTasks.WithLabelValues(tr.Namespace).Dec()
-	})
-
 	// Attempt host deallocation
 	log.Info("calling host deallocation")
 	err = config.Deallocate(r, ctx, tr, secretName, assignedHost)
@@ -620,12 +618,20 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 	}
 
 	// Update TaskRun with cleanup changes
-	err = r.client.Update(ctx, tr)
+	err = updateTaskRun(ctx, r.client, r.apiReader, tr)
 	if err != nil {
 		log.Error(err, "failed to update TaskRun after cleanup")
 		return reconcile.Result{}, fmt.Errorf("failed to update TaskRun: %w", err)
 	}
 	log.Info("TaskRun updated successfully")
+
+	// Update metrics for task completion after a successful cleanup
+	log.Info("updating completion metrics")
+	taskRunDuration := time.Since(tr.CreationTimestamp.Time)
+	mpcmetrics.HandleMetrics(platform, func(metrics *mpcmetrics.PlatformMetrics) {
+		metrics.TaskRunTime.Observe(taskRunDuration.Seconds())
+		metrics.RunningTasks.WithLabelValues(tr.Namespace).Dec()
+	})
 
 	// Handle secret cleanup
 	log.Info("cleaning up secret")

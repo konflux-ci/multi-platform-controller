@@ -65,6 +65,7 @@ var _ = Describe("PlatformMetrics", func() {
 		var (
 			platform                         = "ibm_z"
 			provisionFailuresMetricName      = "multi_platform_controller_provisioning_failures"
+			provisionSuccessesMetricName     = "multi_platform_controller_provisioning_successes"
 			cleanupFailuresMetricName        = "multi_platform_controller_cleanup_failures"
 			hostAllocationFailuresMetricName = "multi_platform_controller_host_allocation_failures"
 			poolSize                         = rand.Intn(100)
@@ -82,6 +83,17 @@ var _ = Describe("PlatformMetrics", func() {
 					m.ProvisionFailures.Add(float64(rnd))
 				})
 				result, err := getCounterValue(platform, provisionFailuresMetricName)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(expectedValue))
+			})
+
+			It("should increment provisioning_successes metric", func() {
+				HandleMetrics(platform, func(m *PlatformMetrics) {
+					rnd := rand.Intn(100)
+					expectedValue = rnd
+					m.ProvisionSuccesses.Add(float64(rnd))
+				})
+				result, err := getCounterValue(platform, provisionSuccessesMetricName)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(result).To(Equal(expectedValue))
 			})
