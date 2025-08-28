@@ -25,6 +25,7 @@ type PlatformMetrics struct {
 	RunningTasks           *prometheus.GaugeVec
 	WaitingTasks           *prometheus.GaugeVec
 	ProvisionFailures      prometheus.Counter
+	ProvisionSuccesses     prometheus.Counter
 	CleanupFailures        prometheus.Counter
 	HostAllocationFailures prometheus.Counter
 	poolSize               *prometheus.GaugeVec // package-private to avoid modifications
@@ -93,6 +94,15 @@ func RegisterPlatformMetrics(_ context.Context, platform string, poolSize int) e
 		Name:        "provisioning_failures",
 		Help:        "The number of times a provisioning task has failed"})
 	if err := metrics.Registry.Register(pmetrics.ProvisionFailures); err != nil {
+		return err
+	}
+
+	pmetrics.ProvisionSuccesses = prometheus.NewCounter(prometheus.CounterOpts{
+		ConstLabels: map[string]string{"platform": platform},
+		Subsystem:   MetricsSubsystem,
+		Name:        "provisioning_successes",
+		Help:        "The number of times a provisioning task has succeeded"})
+	if err := metrics.Registry.Register(pmetrics.ProvisionSuccesses); err != nil {
 		return err
 	}
 
