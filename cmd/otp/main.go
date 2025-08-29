@@ -58,6 +58,10 @@ func main() {
 		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: time.Second * 3,
 	}
-	defer server.Close()
+	defer func() {
+		if err := server.Close(); err != nil {
+			logger.Error(err, "failed to shutdown server")
+		}
+	}()
 	log.Fatal(server.ListenAndServeTLS("", ""))
 }
