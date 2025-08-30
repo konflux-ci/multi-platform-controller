@@ -7,6 +7,7 @@ package taskrun
 import (
 	"context"
 	"fmt"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
@@ -73,6 +74,32 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 			Expect(platform).Should(Equal("linux/amd64"))
 		})
 
+		It("should return first occurrence when multiple PlatformParam parameters exist", func() {
+			tr := &pipelinev1.TaskRun{
+				Spec: pipelinev1.TaskRunSpec{
+					Params: []pipelinev1.Param{
+						{Name: "OTHER_PARAM", Value: *pipelinev1.NewStructuredValues("other_value")},
+						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("linux/amd64")},
+						{Name: "MIDDLE_PARAM", Value: *pipelinev1.NewStructuredValues("middle_value")},
+						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("linux/arm64")},
+						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("linux/s390x")},
+					},
+				},
+			}
+
+			Expect(extractPlatform(tr)).To(Equal("linux/amd64")) // Should return the first occurrence
+		})
+
+		It("should return error when TaskRun has nil parameters", func() {
+			tr := &pipelinev1.TaskRun{
+				Spec: pipelinev1.TaskRunSpec{
+					Params: nil,
+				},
+			}
+
+			Expect(extractPlatform(tr)).Error().To(MatchError(errFailedToDeterminePlatform))
+		})
+
 		It("should return error when PlatformParam parameter is missing", func() {
 			tr := &pipelinev1.TaskRun{
 				Spec: pipelinev1.TaskRunSpec{
@@ -84,6 +111,62 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 
 			_, err := extractPlatform(tr)
 			Expect(err).Should(MatchError(errFailedToDeterminePlatform))
+		})
+
+		DescribeTable("should validate RFC 1035 format and allowed platforms",
+			func(platform string, expectedError error) {
+				tr := &pipelinev1.TaskRun{
+					Spec: pipelinev1.TaskRunSpec{
+						Params: []pipelinev1.Param{
+							{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues(platform)},
+						},
+					},
+				}
+				result, err := extractPlatform(tr)
+
+				if expectedError == nil {
+					Expect(err).ShouldNot(HaveOccurred())
+					Expect(result).Should(Equal(platform))
+				} else {
+					Expect(err).Should(MatchError(expectedError))
+				}
+			},
+			// Valid platforms from allowedPlatforms
+			Entry("valid linux/amd64", "linux/amd64", nil),
+			Entry("valid linux-d160-c4xlarge/arm64", "linux-d160-c4xlarge/arm64", nil),
+			Entry("valid local", "local", nil),
+			Entry("valid localhost", "localhost", nil),
+			// Invalid RFC 1035 format
+			Entry("uppercase first part", "Linux/amd64", errInvalidPlatformFormat),
+			Entry("uppercase second part", "linux/AMD64", errInvalidPlatformFormat),
+			Entry("non-alphabetic first character first part", "9linux/amd64", errInvalidPlatformFormat),
+			Entry("non-alphabetic first character second part", "linux/-amd64", errInvalidPlatformFormat),
+			Entry("ends with hyphen first part", "linux-/amd64", errInvalidPlatformFormat),
+			Entry("ends with hyphen second part", "linux/amd64-", errInvalidPlatformFormat),
+			Entry("only hyphens allowed first part", "linux.test/amd64", errInvalidPlatformFormat),
+			Entry("only hyphens allowed second part", "linux/amd_64", errInvalidPlatformFormat),
+			Entry("empty string", "", errInvalidPlatformFormat),
+			Entry("missing slash (and not a local host)", "linux", errInvalidPlatformFormat),
+			Entry("empty second part", "linux/", errInvalidPlatformFormat),
+			Entry("empty first part", "/amd64", errInvalidPlatformFormat),
+			Entry("too many parts", "linux/amd64/extra", errInvalidPlatformFormat),
+			// Valid format but not in allowed list
+			Entry("unauthorized custom/platform", "koko-hazamar/moshe-ata-lo-kipod", errInvalidPlatform),
+		)
+
+		It("should validate all platforms in allowedPlatforms are properly formatted", func() {
+			for _, platform := range allowedPlatforms {
+				tr := &pipelinev1.TaskRun{
+					Spec: pipelinev1.TaskRunSpec{
+						Params: []pipelinev1.Param{
+							{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues(platform)},
+						},
+					},
+				}
+				result, err := extractPlatform(tr)
+				Expect(err).ShouldNot(HaveOccurred(), "Platform %s from allowedPlatforms should pass validation", platform)
+				Expect(result).Should(Equal(platform))
+			}
 		})
 	})
 
