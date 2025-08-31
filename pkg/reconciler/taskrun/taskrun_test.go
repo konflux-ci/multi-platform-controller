@@ -12,7 +12,6 @@ import (
 	mpcmetrics "github.com/konflux-ci/multi-platform-controller/pkg/metrics"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	dto "github.com/prometheus/client_model/go"
 	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -311,7 +310,8 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 	})
 
 	// This section tests cleanup failure scenarios and verifies that the
-	// CleanupFailures metric is correctly incremented when cleanup tasks fail.
+	// CleanupFailures metric is correctly incremented when cleanup tasks fail,
+	// this test both the happy path and the sad path.
 	Describe("Test Cleanup Failure Metric", func() {
 		var client runtimeclient.Client
 		var reconciler *ReconcileTaskRun
@@ -322,22 +322,71 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 			client, reconciler = setupClientAndReconciler(createHostConfig())
 			Expect(mpcmetrics.RegisterPlatformMetrics(context.Background(), platform, 1)).ShouldNot(HaveOccurred())
 		})
+		// happy path
+		It("should NOT increment CleanupFailures metric when cleanup task succeeds", func(ctx SpecContext) {
+			// Get initial metric value
+			initialFailures := getCounterValue(platform, "cleanup_failures")
+			Expect(initialFailures).Should(Equal(0.0))
 
-		// Helper function to get CleanupFailures metric value
-		getCleanupFailuresMetric := func(platform string) float64 {
-			metricDto := &dto.Metric{}
-			var pmetrics *mpcmetrics.PlatformMetrics
-			mpcmetrics.HandleMetrics(platform, func(metrics *mpcmetrics.PlatformMetrics) {
-				pmetrics = metrics
+			// Create and assign a TaskRun to a host
+			createUserTaskRun(ctx, client, "test-cleanup-success", platform)
+
+			// First reconciliation - should assign host
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-cleanup-success"},
 			})
-			Expect(pmetrics).ShouldNot(BeNil())
-			Expect(pmetrics.CleanupFailures.Write(metricDto)).ShouldNot(HaveOccurred())
-			return metricDto.GetCounter().GetValue()
-		}
+			Expect(err).ShouldNot(HaveOccurred())
 
+			// Complete the TaskRun
+			tr := getUserTaskRun(ctx, client, "test-cleanup-success")
+			tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			tr.Status.SetCondition(&apis.Condition{
+				Type:   apis.ConditionSucceeded,
+				Status: corev1.ConditionTrue,
+				Reason: "Succeeded",
+			})
+			Expect(client.Status().Update(ctx, tr)).Should(Succeed())
+
+			// Second reconciliation - should trigger cleanup
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-cleanup-success"},
+			})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			// Find and mark cleanup task as successful
+			cleanupTasks := &pipelinev1.TaskRunList{}
+			err = client.List(ctx, cleanupTasks, runtimeclient.MatchingLabels{
+				TaskTypeLabel:     TaskTypeClean,
+				UserTaskName:      "test-cleanup-success",
+				UserTaskNamespace: userNamespace,
+			})
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(len(cleanupTasks.Items)).Should(Equal(1))
+
+			cleanupTask := &cleanupTasks.Items[0]
+			cleanupTask.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			cleanupTask.Status.SetCondition(&apis.Condition{
+				Type:   apis.ConditionSucceeded,
+				Status: corev1.ConditionTrue,
+				Reason: "Succeeded",
+			})
+			Expect(client.Status().Update(ctx, cleanupTask)).Should(Succeed())
+
+			// Reconcile the successful cleanup task
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Namespace: cleanupTask.Namespace, Name: cleanupTask.Name},
+			})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			// Verify the CleanupFailures metric did NOT increment
+			Expect(getCounterValue(platform, "cleanup_failures")).Should(Equal(initialFailures))
+		})
+
+		// sad path
 		It("should increment CleanupFailures metric when cleanup task fails", func(ctx SpecContext) {
 			// Get initial metric value
-			initialFailures := getCleanupFailuresMetric(platform)
+			initialFailures := getCounterValue(platform, "cleanup_failures")
+			Expect(initialFailures).Should(Equal(0.0))
 
 			// Create and assign a TaskRun to a host
 			createUserTaskRun(ctx, client, "test-cleanup-failure", platform)
@@ -395,68 +444,9 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 
 			// Verify the CleanupFailures metric incremented
-			newFailures := getCleanupFailuresMetric(platform)
-			Expect(newFailures).Should(Equal(initialFailures + 1))
+			Expect(getCounterValue(platform, "cleanup_failures")).Should(Equal(initialFailures + 1))
 		})
 
-		It("should NOT increment CleanupFailures metric when cleanup task succeeds", func(ctx SpecContext) {
-			// Get initial metric value
-			initialFailures := getCleanupFailuresMetric(platform)
-
-			// Create and assign a TaskRun to a host
-			createUserTaskRun(ctx, client, "test-cleanup-success", platform)
-
-			// First reconciliation - should assign host
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-cleanup-success"},
-			})
-			Expect(err).ShouldNot(HaveOccurred())
-
-			// Complete the TaskRun
-			tr := getUserTaskRun(ctx, client, "test-cleanup-success")
-			tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
-			tr.Status.SetCondition(&apis.Condition{
-				Type:   apis.ConditionSucceeded,
-				Status: corev1.ConditionTrue,
-				Reason: "Succeeded",
-			})
-			Expect(client.Status().Update(ctx, tr)).Should(Succeed())
-
-			// Second reconciliation - should trigger cleanup
-			_, err = reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-cleanup-success"},
-			})
-			Expect(err).ShouldNot(HaveOccurred())
-
-			// Find and mark cleanup task as successful
-			cleanupTasks := &pipelinev1.TaskRunList{}
-			err = client.List(ctx, cleanupTasks, runtimeclient.MatchingLabels{
-				TaskTypeLabel:     TaskTypeClean,
-				UserTaskName:      "test-cleanup-success",
-				UserTaskNamespace: userNamespace,
-			})
-			Expect(err).ShouldNot(HaveOccurred())
-			Expect(len(cleanupTasks.Items)).Should(Equal(1))
-
-			cleanupTask := &cleanupTasks.Items[0]
-			cleanupTask.Status.CompletionTime = &metav1.Time{Time: time.Now()}
-			cleanupTask.Status.SetCondition(&apis.Condition{
-				Type:   apis.ConditionSucceeded,
-				Status: corev1.ConditionTrue,
-				Reason: "Succeeded",
-			})
-			Expect(client.Status().Update(ctx, cleanupTask)).Should(Succeed())
-
-			// Reconcile the successful cleanup task
-			_, err = reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Namespace: cleanupTask.Namespace, Name: cleanupTask.Name},
-			})
-			Expect(err).ShouldNot(HaveOccurred())
-
-			// Verify the CleanupFailures metric did NOT increment
-			newFailures := getCleanupFailuresMetric(platform)
-			Expect(newFailures).Should(Equal(initialFailures))
-		})
 	})
 
 })
