@@ -340,11 +340,6 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 			}
 		}
 
-		// after a successful provision task, we increment the provisioning_successes metric
-		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
-			metrics.ProvisionSuccesses.Inc()
-		})
-
 		// Now we 'bump' the pod, by giving it a label
 		// This forces a reconcile
 		pods := kubecore.PodList{}
@@ -378,7 +373,16 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 			}
 		}
 	}
-	return reconcile.Result{}, r.client.Update(ctx, tr)
+
+	err := updateTaskRun(ctx, r.client, r.apiReader, tr)
+	if err == nil {
+		// after a successful provision task, we increment the provisioning_successes metric
+		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
+			metrics.ProvisionSuccesses.Inc()
+		})
+	}
+
+	return reconcile.Result{}, err
 }
 
 // This creates an secret with the 'error' field set
