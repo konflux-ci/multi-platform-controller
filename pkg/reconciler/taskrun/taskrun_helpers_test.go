@@ -9,15 +9,18 @@ package taskrun
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
+
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	"strings"
-	"time"
 
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
+	mpcmetrics "github.com/konflux-ci/multi-platform-controller/pkg/metrics"
 	. "github.com/onsi/gomega"
+	dto "github.com/prometheus/client_model/go"
 	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -481,4 +484,32 @@ type ErrorClient struct {
 
 func (c *ErrorClient) Update(ctx context.Context, obj runtimeclient.Object, opts ...runtimeclient.UpdateOption) error {
 	return c.Error
+}
+
+// Helper function to get counter metric value
+func getCounterValue(platform string, counter string) float64 {
+	metricDto := &dto.Metric{}
+	var pmetrics *mpcmetrics.PlatformMetrics
+	mpcmetrics.HandleMetrics(platform, func(metrics *mpcmetrics.PlatformMetrics) {
+		pmetrics = metrics
+	})
+	if pmetrics == nil {
+		return -1
+	}
+
+	var err error
+	switch counter {
+	case "cleanup_failures":
+		err = pmetrics.CleanupFailures.Write(metricDto)
+	case "provisioning_failures":
+		err = pmetrics.ProvisionFailures.Write(metricDto)
+	case "provisioning_successes":
+		err = pmetrics.ProvisionSuccesses.Write(metricDto)
+	case "host_allocation_failures":
+		err = pmetrics.HostAllocationFailures.Write(metricDto)
+	}
+	if err != nil {
+		return -1
+	}
+	return metricDto.GetCounter().GetValue()
 }
