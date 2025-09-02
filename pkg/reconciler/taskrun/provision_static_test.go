@@ -289,5 +289,39 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			}
 			Expect(taskExists).Should(BeFalse())
 		})
+		It("should increment Provision Successes metric when provision task succeeds", func(ctx SpecContext) {
+			// Get initial metric value
+			initialSuccesses := getCounterValue("linux/arm64", "provisioning_successes")
+
+			tr := runUserPipeline(ctx, client, reconciler, "test-success")
+			provision := getProvisionTaskRun(ctx, client, tr)
+
+			runSuccessfulProvision(ctx, provision, client, tr, reconciler)
+
+			// Verify the Provision Successes metric incremented
+			Expect(getCounterValue("linux/arm64", "provisioning_successes")).Should(Equal(initialSuccesses + 1))
+		})
+
+		It("should increment Provision Successes metric by one when provision task succeeds after a conflict", func(ctx SpecContext) {
+			// Get initial metric value
+			initialSuccesses := getCounterValue("linux/arm64", "provisioning_successes")
+
+			// Run normal provision setup
+			tr := runUserPipeline(ctx, client, reconciler, "test-success-race")
+			provision := getProvisionTaskRun(ctx, client, tr)
+
+			// Run successful provision with conflict - this will simulate the race condition between the MPC and Tekton
+			runSuccessfulProvisionWithConflict(ctx, provision, client, tr, reconciler)
+
+			// Verify the Provision Successes metric incremented only by one despite the conflict
+			Expect(getCounterValue("linux/arm64", "provisioning_successes")).Should(Equal(initialSuccesses + 1))
+
+			// Verify both external and MPC changes are preserved after conflict resolution
+			updated := &pipelinev1.TaskRun{}
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, updated)).Should(Succeed())
+			Expect(updated.Labels).Should(HaveKeyWithValue("external-label", "external-value"))
+			Expect(updated.Annotations).Should(HaveKeyWithValue("external-annotation", "external-value"))
+			Expect(updated.Finalizers).Should(ContainElement("external-finalizer"))
+		})
 	})
 })
