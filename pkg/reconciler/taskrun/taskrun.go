@@ -374,15 +374,16 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 		}
 	}
 
-	err := UpdateTaskRunWithRetry(ctx, r.client, r.apiReader, tr)
-	if err == nil {
-		// after a successful provision task, we increment the provisioning_successes metric
-		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
-			metrics.ProvisionSuccesses.Inc()
-		})
+	if err := UpdateTaskRunWithRetry(ctx, r.client, r.apiReader, tr); err != nil {
+		return reconcile.Result{}, err
 	}
+	
+	// after a successful provision task, we increment the provisioning_successes metric
+	mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
+		metrics.ProvisionSuccesses.Inc()
+	})
 
-	return reconcile.Result{}, err
+	return reconcile.Result{}, nil
 }
 
 // This creates an secret with the 'error' field set

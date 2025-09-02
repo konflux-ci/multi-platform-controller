@@ -178,7 +178,7 @@ func runSuccessfulProvisionWithConflict(ctx context.Context, provision *pipeline
 	Expect(err).ShouldNot(HaveOccurred())
 
 	secret := getSecret(ctx, client, tr)
-	Expect(secret.Data["error"]).Should(BeEmpty())
+	Expect(secret.Data).ShouldNot(HaveKey("error"))
 }
 
 // getSecret retrieves the secret associated with a given user TaskRun.
