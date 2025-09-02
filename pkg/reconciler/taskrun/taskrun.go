@@ -374,7 +374,7 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 		}
 	}
 
-	err := updateTaskRun(ctx, r.client, r.apiReader, tr)
+	err := UpdateTaskRunWithRetry(ctx, r.client, r.apiReader, tr)
 	if err == nil {
 		// after a successful provision task, we increment the provisioning_successes metric
 		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
@@ -622,7 +622,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 	}
 
 	// Update TaskRun with cleanup changes
-	err = updateTaskRun(ctx, r.client, r.apiReader, tr)
+	err = UpdateTaskRunWithRetry(ctx, r.client, r.apiReader, tr)
 	if err != nil {
 		log.Error(err, "failed to update TaskRun after cleanup")
 		return reconcile.Result{}, fmt.Errorf("failed to update TaskRun: %w", err)
