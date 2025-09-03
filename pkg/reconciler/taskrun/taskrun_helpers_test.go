@@ -554,9 +554,10 @@ func getCounterValue(platform string, counter string) float64 {
 		pmetrics = metrics
 	})
 
-	// if the platform metrics are not found, return 0
+	// if the platform metrics are not found, return -1
 	if pmetrics == nil {
-		return 0
+		fmt.Println("pmetrics is nil")
+		return -1
 	}
 
 	var err error

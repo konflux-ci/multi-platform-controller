@@ -291,10 +291,12 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		})
 
 		It("should increment Provision Successes metric when provision task succeeds", func(ctx SpecContext) {
+			// run a user task successfully
+			tr := runUserPipeline(ctx, client, reconciler, "test-success")
 			// Get initial metric value
 			initialSuccesses := getCounterValue("linux/arm64", "provisioning_successes")
+			Expect(initialSuccesses).ShouldNot(Equal(-1))
 
-			tr := runUserPipeline(ctx, client, reconciler, "test-success")
 			provision := getProvisionTaskRun(ctx, client, tr)
 
 			runSuccessfulProvision(ctx, provision, client, tr, reconciler)
@@ -304,11 +306,12 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		})
 
 		It("should increment Provision Successes metric by one when provision task succeeds after a conflict", func(ctx SpecContext) {
+			// run a user task with a conflict
+			tr := runUserPipeline(ctx, client, reconciler, "test-success-race")
 			// Get initial metric value
 			initialSuccesses := getCounterValue("linux/arm64", "provisioning_successes")
-
+			Expect(initialSuccesses).ShouldNot(Equal(-1))
 			// Run normal provision setup
-			tr := runUserPipeline(ctx, client, reconciler, "test-success-race")
 			provision := getProvisionTaskRun(ctx, client, tr)
 
 			// Run successful provision with conflict - this will simulate the race condition between the MPC and Tekton
