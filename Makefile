@@ -24,7 +24,7 @@ manifests: controller-gen
 
 .PHONY: test
 test: fmt vet ## Run tests.
-	ginkgo --race -p --github-output -coverprofile cover.out -covermode atomic --json-report=test-report.json -v ././cmd/... ././pkg/...
+	ginkgo --race -p --procs=4 --randomize-suites --flake-attempts=3 --github-output -coverprofile cover.out -covermode atomic --json-report=test-report.json -v ././cmd/... ././pkg/...
 
 .PHONY: lint
 lint: lint-go
