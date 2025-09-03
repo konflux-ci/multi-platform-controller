@@ -289,6 +289,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			}
 			Expect(taskExists).Should(BeFalse())
 		})
+
 		It("should increment Provision Successes metric when provision task succeeds", func(ctx SpecContext) {
 			// Get initial metric value
 			initialSuccesses := getCounterValue("linux/arm64", "provisioning_successes")

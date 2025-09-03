@@ -549,11 +549,14 @@ func (c *ErrorClient) Update(ctx context.Context, obj runtimeclient.Object, opts
 func getCounterValue(platform string, counter string) float64 {
 	metricDto := &dto.Metric{}
 	var pmetrics *mpcmetrics.PlatformMetrics
+
 	mpcmetrics.HandleMetrics(platform, func(metrics *mpcmetrics.PlatformMetrics) {
 		pmetrics = metrics
 	})
+
+	// if the platform metrics are not found, return 0
 	if pmetrics == nil {
-		return -1
+		return 0
 	}
 
 	var err error
@@ -567,8 +570,11 @@ func getCounterValue(platform string, counter string) float64 {
 	case "host_allocation_failures":
 		err = pmetrics.HostAllocationFailures.Write(metricDto)
 	}
+
+	// if we cannot get the counter value, return -1
 	if err != nil {
 		return -1
 	}
+
 	return metricDto.GetCounter().GetValue()
 }
