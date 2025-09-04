@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../../deploy/operator/
+- ../../deploy/otp/
+- ./cert-manager/
+- host-config.yaml
+
+namespace: multi-platform-controller
+
+images:
+- name: multi-platform-controller
+  newTag: latest
+- name: multi-platform-otp-server
+  newTag: latest
+
+patches:
+  - target:
+      kind: Deployment
+    path: ./patch_imagepullpolicy.yaml
