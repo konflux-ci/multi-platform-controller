@@ -556,7 +556,6 @@ func getCounterValue(platform string, counter string) float64 {
 
 	// if the platform metrics are not found, return -1
 	if pmetrics == nil {
-		fmt.Println("pmetrics is nil")
 		return -1
 	}
 
