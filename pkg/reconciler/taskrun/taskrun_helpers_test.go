@@ -122,6 +122,65 @@ func runSuccessfulProvision(ctx context.Context, provision *pipelinev1.TaskRun, 
 	Expect(secret.Data["error"]).Should(BeEmpty())
 }
 
+func runSuccessfulProvisionWithConflict(ctx context.Context, provision *pipelinev1.TaskRun, client runtimeclient.Client, tr *pipelinev1.TaskRun, reconciler *ReconcileTaskRun) {
+	provision.Status.CompletionTime = &metav1.Time{Time: time.Now().Add(time.Hour * -2)}
+	provision.Status.SetCondition(&apis.Condition{
+		Type:               apis.ConditionSucceeded,
+		Status:             "True",
+		LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now().Add(time.Hour * -2)}},
+	})
+	Expect(client.Status().Update(ctx, provision)).ShouldNot(HaveOccurred())
+
+	s := v1.Secret{}
+	s.Name = SecretPrefix + tr.Name
+	s.Namespace = tr.Namespace
+	s.Data = map[string][]byte{}
+	s.Data["id_rsa"] = []byte("expected")
+	s.Data["host"] = []byte("host")
+	s.Data["user-dir"] = []byte("buildir")
+	Expect(client.Create(ctx, &s)).ShouldNot(HaveOccurred())
+
+	// Update TaskRun externally to simulate Tekton modification during processing
+	external := &pipelinev1.TaskRun{}
+	Expect(client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}, external)).Should(Succeed())
+	// if the labels or annotations are nil, we need to make them
+	if external.Labels == nil {
+		external.Labels = make(map[string]string)
+	}
+	if external.Annotations == nil {
+		external.Annotations = make(map[string]string)
+	}
+	external.Labels["external-label"] = "external-value"
+	external.Annotations["external-annotation"] = "external-value"
+	external.Finalizers = append(external.Finalizers, "external-finalizer")
+	Expect(client.Update(ctx, external)).Should(Succeed())
+
+	// Create conflicting client that will cause conflict after a succesfull provision
+	conflictingClient := &ConflictingClient{
+		Client:        client,
+		ConflictCount: 1, // Will fail once with conflict, then succeed
+	}
+
+	// Create reconciler with conflicting client
+	conflictingReconciler := &ReconcileTaskRun{
+		client:                   conflictingClient,
+		apiReader:                reconciler.apiReader,
+		scheme:                   reconciler.scheme,
+		eventRecorder:            reconciler.eventRecorder,
+		operatorNamespace:        reconciler.operatorNamespace,
+		configMapResourceVersion: reconciler.configMapResourceVersion,
+		platformConfig:           reconciler.platformConfig,
+		cloudProviders:           reconciler.cloudProviders,
+	}
+
+	// This reconcile will hit the conflict after a succesfull provision but succeed due to UpdateTaskRunWithRetry
+	_, err := conflictingReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: provision.Namespace, Name: provision.Name}})
+	Expect(err).ShouldNot(HaveOccurred())
+
+	secret := getSecret(ctx, client, tr)
+	Expect(secret.Data).ShouldNot(HaveKey("error"))
+}
+
 // getSecret retrieves the secret associated with a given user TaskRun.
 
 func getSecret(ctx context.Context, client runtimeclient.Client, tr *pipelinev1.TaskRun) *v1.Secret {
@@ -490,9 +549,12 @@ func (c *ErrorClient) Update(ctx context.Context, obj runtimeclient.Object, opts
 func getCounterValue(platform string, counter string) float64 {
 	metricDto := &dto.Metric{}
 	var pmetrics *mpcmetrics.PlatformMetrics
+
 	mpcmetrics.HandleMetrics(platform, func(metrics *mpcmetrics.PlatformMetrics) {
 		pmetrics = metrics
 	})
+
+	// if the platform metrics are not found, return -1
 	if pmetrics == nil {
 		return -1
 	}
@@ -508,8 +570,11 @@ func getCounterValue(platform string, counter string) float64 {
 	case "host_allocation_failures":
 		err = pmetrics.HostAllocationFailures.Write(metricDto)
 	}
+
+	// if we cannot get the counter value, return -1
 	if err != nil {
 		return -1
 	}
+
 	return metricDto.GetCounter().GetValue()
 }

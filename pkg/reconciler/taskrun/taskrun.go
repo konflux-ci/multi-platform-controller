@@ -340,11 +340,6 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 			}
 		}
 
-		// after a successful provision task, we increment the provisioning_successes metric
-		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
-			metrics.ProvisionSuccesses.Inc()
-		})
-
 		// Now we 'bump' the pod, by giving it a label
 		// This forces a reconcile
 		pods := kubecore.PodList{}
@@ -378,7 +373,17 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 			}
 		}
 	}
-	return reconcile.Result{}, r.client.Update(ctx, tr)
+
+	if err := UpdateTaskRunWithRetry(ctx, r.client, r.apiReader, tr); err != nil {
+		return reconcile.Result{}, err
+	}
+
+	// after a successful provision task, we increment the provisioning_successes metric
+	mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
+		metrics.ProvisionSuccesses.Inc()
+	})
+
+	return reconcile.Result{}, nil
 }
 
 // This creates an secret with the 'error' field set
@@ -618,7 +623,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 	}
 
 	// Update TaskRun with cleanup changes
-	err = updateTaskRun(ctx, r.client, r.apiReader, tr)
+	err = UpdateTaskRunWithRetry(ctx, r.client, r.apiReader, tr)
 	if err != nil {
 		log.Error(err, "failed to update TaskRun after cleanup")
 		return reconcile.Result{}, fmt.Errorf("failed to update TaskRun: %w", err)
