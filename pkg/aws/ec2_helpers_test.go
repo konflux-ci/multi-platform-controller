@@ -173,7 +173,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 				}
 
 			},
-			Entry("Positive test - IP address", "127.0.0.1", false),
+			Entry("Positive test - IP address", "169.48.19.34", false),
 			Entry("Negative test - no such IP address", "192.168.4.231", true),
 			Entry("Negative test - no such DNS name", "not a DNS name, that's for sure", true),
 			Entry("Negative test - not an IP address", "Not an IP address", true),
