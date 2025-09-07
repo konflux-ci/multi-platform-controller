@@ -7,7 +7,7 @@ toolchain go1.24.6
 require (
 	github.com/IBM-Cloud/power-go-client v1.12.0
 	github.com/IBM/go-sdk-core/v5 v5.21.0
-	github.com/IBM/vpc-go-sdk v0.50.0
+	github.com/IBM/vpc-go-sdk v0.71.1
 	github.com/aws/aws-sdk-go-v2 v1.38.1
 	github.com/aws/aws-sdk-go-v2/config v1.31.2
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.245.2
