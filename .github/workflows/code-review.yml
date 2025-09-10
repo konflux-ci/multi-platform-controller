@@ -20,4 +20,4 @@ jobs:
         with:
           gemini-key: ${{ secrets.GEMINI_API_KEY }}
           post-if-error: false
-          prompt-file: review-prompt.txt
+          prompt-file: .github/workflows/review-prompt.txt
