@@ -88,8 +88,6 @@ const (
 	ParamSudoCommands      = "SUDO_COMMANDS"
 )
 
-var errFailedToDeterminePlatform = errors2.New("failed to determine platform")
-
 type ReconcileTaskRun struct {
 	apiReader                client.Reader
 	client                   client.Client
@@ -446,7 +444,7 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *tektonapi.Tas
 		return reconcile.Result{}, nil
 	}
 
-	targetPlatform, err := extractPlatform(tr)
+	targetPlatform, err := validatePlatform(tr)
 	if err != nil {
 		err := r.createErrorSecret(ctx, tr, "[UNKNOWN]", secretName, err.Error())
 		if err != nil {
@@ -475,15 +473,6 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *tektonapi.Tas
 		}
 	}
 	return res, err
-}
-
-func extractPlatform(tr *tektonapi.TaskRun) (string, error) {
-	for _, p := range tr.Spec.Params {
-		if p.Name == PlatformParam {
-			return p.Value.StringVal, nil
-		}
-	}
-	return "", errFailedToDeterminePlatform
 }
 
 func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektonapi.TaskRun, secretName string, targetPlatform string) (reconcile.Result, error) {
