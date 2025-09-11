@@ -10,18 +10,13 @@ import (
 )
 
 // A helper to create a TaskRun with a platform parameter.
-// It accepts a pointer to a string so we can pass 'nil' to simulate a missing parameter.
-func createTrWithPlatform(platform *string) *pipelinev1.TaskRun {
+func createTrWithPlatform(platform string) *pipelinev1.TaskRun {
 	tr := &pipelinev1.TaskRun{
 		Spec: pipelinev1.TaskRunSpec{
-			Params: []pipelinev1.Param{},
+			Params: []pipelinev1.Param{
+				{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues(platform)},
+			},
 		},
-	}
-	if platform != nil {
-		tr.Spec.Params = append(tr.Spec.Params, pipelinev1.Param{
-			Name:  PlatformParam,
-			Value: *pipelinev1.NewStructuredValues(*platform),
-		})
 	}
 	return tr
 }
@@ -118,7 +113,7 @@ var _ = Describe("Platform Validation Tests", func() {
 		When("the TaskRun contains a valid platform parameter", func() {
 			DescribeTable("it should return the platform and no error",
 				func(platformValue string) {
-					tr := createTrWithPlatform(&platformValue)
+					tr := createTrWithPlatform(platformValue)
 					platform, err := validatePlatform(tr)
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(platform).Should(Equal(platformValue))
@@ -129,15 +124,21 @@ var _ = Describe("Platform Validation Tests", func() {
 		})
 
 		When("the TaskRun contains an invalid or missing platform parameter", func() {
-			DescribeTable("it should return the corresponding error",
-				func(platformValue *string, expectedError error) {
-					tr := createTrWithPlatform(platformValue)
-					_, err := validatePlatform(tr)
-					Expect(err).Should(MatchError(expectedError))
-				},
-				Entry("when the parameter is missing", nil, errMissingPlatformParameter),
-				Entry("when the parameter format is invalid", &[]string{"koko_hazamar/moshe_ata_lo_kipod"}[0], errInvalidPlatformFormat),
-			)
+			It("should return error when platform parameter is missing", func() {
+				tr := &pipelinev1.TaskRun{
+					Spec: pipelinev1.TaskRunSpec{
+						Params: []pipelinev1.Param{},
+					},
+				}
+				_, err := validatePlatform(tr)
+				Expect(err).Should(MatchError(errMissingPlatformParameter))
+			})
+
+			It("should return error when platform parameter format is invalid", func() {
+				tr := createTrWithPlatform("koko_hazamar/moshe_ata_lo_kipod")
+				_, err := validatePlatform(tr)
+				Expect(err).Should(MatchError(errInvalidPlatformFormat))
+			})
 		})
 	})
 })

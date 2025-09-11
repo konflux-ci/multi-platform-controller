@@ -1,16 +1,16 @@
 package taskrun
 
 import (
+	"errors"
 	"strings"
 
-	errors2 "github.com/pkg/errors"
 	tektonapi "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 var (
-	errInvalidPlatformFormat    = errors2.New("platform must be in format 'label/label' where each label follows Kubernetes RFC 1035 label name format")
-	errMissingPlatformParameter = errors2.New("PLATFORM parameter not found in TaskRun parameters")
+	errInvalidPlatformFormat    = errors.New("platform must be in format 'label/label' where each label follows Kubernetes RFC 1035 label name format")
+	errMissingPlatformParameter = errors.New("PLATFORM parameter not found in TaskRun parameters")
 )
 
 // validatePlatformFormat validates a platform string according to the controller's rules
