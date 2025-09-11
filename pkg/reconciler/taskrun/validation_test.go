@@ -119,9 +119,7 @@ var _ = Describe("Platform Validation Tests", func() {
 			DescribeTable("it should return the platform and no error",
 				func(platformValue string) {
 					tr := createTrWithPlatform(&platformValue)
-					platform, err := validatePlatform(tr)
-					Expect(err).ShouldNot(HaveOccurred())
-					Expect(platform).Should(Equal(platformValue))
+					Expect(validatePlatform(tr)).To(Equal(platformValue))
 				},
 				Entry("for a standard platform", "linux/amd64"),
 				Entry("for the 'linux/x86_64' exception", "linux/x86_64"),
@@ -132,8 +130,7 @@ var _ = Describe("Platform Validation Tests", func() {
 			DescribeTable("it should return the corresponding error",
 				func(platformValue *string, expectedError error) {
 					tr := createTrWithPlatform(platformValue)
-					_, err := validatePlatform(tr)
-					Expect(err).Should(MatchError(expectedError))
+					Expect(validatePlatform(tr)).Error().To(MatchError(expectedError))
 				},
 				Entry("when the parameter is missing", nil, errMissingPlatformParameter),
 				Entry("when the parameter format is invalid", &[]string{"koko_hazamar/moshe_ata_lo_kipod"}[0], errInvalidPlatformFormat),
