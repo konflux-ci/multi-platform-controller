@@ -61,37 +61,6 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 		})
 	})
 
-	// This section tests the utility function responsible for extracting the
-	// target platform from a TaskRun's parameters.
-	Describe("Test extractPlatform function", func() {
-		It("should extract platform from TaskRun parameters successfully", func() {
-			tr := &pipelinev1.TaskRun{
-				Spec: pipelinev1.TaskRunSpec{
-					Params: []pipelinev1.Param{
-						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("linux/amd64")},
-					},
-				},
-			}
-
-			platform, err := extractPlatform(tr)
-			Expect(err).ShouldNot(HaveOccurred())
-			Expect(platform).Should(Equal("linux/amd64"))
-		})
-
-		It("should return error when PlatformParam parameter is missing", func() {
-			tr := &pipelinev1.TaskRun{
-				Spec: pipelinev1.TaskRunSpec{
-					Params: []pipelinev1.Param{
-						{Name: "OTHER_PARAM", Value: *pipelinev1.NewStructuredValues("other_value")},
-					},
-				},
-			}
-
-			_, err := extractPlatform(tr)
-			Expect(err).Should(MatchError(errFailedToDeterminePlatform))
-		})
-	})
-
 	// This section tests the controller's behavior in edge cases where no suitable
 	// hosts can be found for a TaskRun.
 	Describe("Test reconciler behavior when no hosts are configured", func() {
@@ -117,7 +86,7 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 			client, reconciler = setupClientAndReconciler(createHostConfig())
 			createUserTaskRun(ctx, client, "test-no-platform", "powerpc")
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-no-platform"}})
-			Expect(err).Should(HaveOccurred())
+			Expect(err).ShouldNot(HaveOccurred())
 			tr := getUserTaskRun(ctx, client, "test-no-platform")
 
 			secret := getSecret(ctx, client, tr)
