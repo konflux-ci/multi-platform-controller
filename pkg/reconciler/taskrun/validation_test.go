@@ -27,17 +27,36 @@ var _ = Describe("Platform Validation Tests", func() {
 	// target platform from a TaskRun's parameters.
 	Describe("Test extractPlatform function", func() {
 		It("should extract platform from TaskRun parameters successfully", func() {
+			tr := createTrWithPlatform("linux/amd64")
+			Expect(extractPlatform(tr)).To(Equal("linux/amd64"))
+		})
+
+		It("should extract platform from TaskRun with multiple parameters", func() {
 			tr := &pipelinev1.TaskRun{
 				Spec: pipelinev1.TaskRunSpec{
 					Params: []pipelinev1.Param{
-						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("linux/amd64")},
+						{Name: "OTHER_PARAM", Value: *pipelinev1.NewStructuredValues("other_value")},
+						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("linux/arm64")},
+						{Name: "ANOTHER_PARAM", Value: *pipelinev1.NewStructuredValues("another_value")},
 					},
 				},
 			}
+			Expect(extractPlatform(tr)).To(Equal("linux/arm64"))
+		})
 
-			platform, err := extractPlatform(tr)
-			Expect(err).ShouldNot(HaveOccurred())
-			Expect(platform).Should(Equal("linux/amd64"))
+		It("should return first occurrence when multiple PlatformParam parameters exist", func() {
+			tr := &pipelinev1.TaskRun{
+				Spec: pipelinev1.TaskRunSpec{
+					Params: []pipelinev1.Param{
+						{Name: "OTHER_PARAM", Value: *pipelinev1.NewStructuredValues("other_value")},
+						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("linux/amd64")},
+						{Name: "MIDDLE_PARAM", Value: *pipelinev1.NewStructuredValues("middle_value")},
+						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("linux/arm64")},
+						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("linux/s390x")},
+					},
+				},
+			}
+			Expect(extractPlatform(tr)).To(Equal("linux/amd64")) // Should return the first occurrence
 		})
 
 		It("should return error when PlatformParam parameter is missing", func() {
@@ -114,9 +133,7 @@ var _ = Describe("Platform Validation Tests", func() {
 			DescribeTable("it should return the platform and no error",
 				func(platformValue string) {
 					tr := createTrWithPlatform(platformValue)
-					platform, err := validatePlatform(tr)
-					Expect(err).ShouldNot(HaveOccurred())
-					Expect(platform).Should(Equal(platformValue))
+					Expect(validatePlatform(tr)).To(Equal(platformValue))
 				},
 				Entry("for a standard platform", "linux/amd64"),
 				Entry("for the 'linux/x86_64' exception", "linux/x86_64"),
@@ -130,14 +147,12 @@ var _ = Describe("Platform Validation Tests", func() {
 						Params: []pipelinev1.Param{},
 					},
 				}
-				_, err := validatePlatform(tr)
-				Expect(err).Should(MatchError(errMissingPlatformParameter))
+				Expect(validatePlatform(tr)).Error().To(MatchError(errMissingPlatformParameter))
 			})
 
 			It("should return error when platform parameter format is invalid", func() {
 				tr := createTrWithPlatform("koko_hazamar/moshe_ata_lo_kipod")
-				_, err := validatePlatform(tr)
-				Expect(err).Should(MatchError(errInvalidPlatformFormat))
+				Expect(validatePlatform(tr)).Error().To(MatchError(errInvalidPlatformFormat))
 			})
 		})
 	})
