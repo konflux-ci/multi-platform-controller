@@ -16,10 +16,17 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5
         with:
-          go-version-file: './go.mod'
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@3cfe3a4abbb849e10058ce4af15d205b6da42804 # v4
+          go-version-file: './hack/tools/golang-ci/go.mod'
+      - name: Determine golang-ci version
+        id: golangci_version
+        run: |
+          echo "version=$(go mod edit -json hack/tools/golang-ci/go.mod | \
+            jq -r '.Require | map(select(.Path == "github.com/golangci/golangci-lint/v2"))[].Version')" \
+            >> $GITHUB_OUTPUT
+      - name: Lint with golang-ci
+        uses: golangci/golangci-lint-action@v7
         with:
+          version: ${{ steps.golangci_version.outputs.version }}
           args: "--timeout=10m --build-tags='normal periodic' --output.sarif.path=out/go-lint.sarif"
       - name: Upload sarif report
         uses: github/codeql-action/upload-sarif@v3
