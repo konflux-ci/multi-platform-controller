@@ -21,14 +21,15 @@ import (
 
 // pingIPAddress tries to resolve the IP address ip. An error is returned if ipAddress couldn't be reached.
 func pingIPAddress(ipAddress string) error {
-	server, _ := net.ResolveTCPAddr("tcp", ipAddress+":22")
+	server, err := net.ResolveTCPAddr("tcp", ipAddress+":22")
+	if err != nil {
+		return err
+	}
 	conn, err := net.DialTCP("tcp", nil, server)
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
-
-	return nil
+	return conn.Close()
 }
 
 // validateIPAddress returns the IP address of the EC2 instance ec after determining that the address
