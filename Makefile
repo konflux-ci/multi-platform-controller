@@ -8,6 +8,7 @@ GOBIN=$(shell go env GOBIN)
 endif
 
 GOLANGCI_LINT ?= go run -modfile $(shell realpath ./hack/tools/golang-ci/go.mod) github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+GINKGO ?= go run github.com/onsi/ginkgo/v2/ginkgo
 
 .EXPORT_ALL_VARIABLES:
 
@@ -24,7 +25,7 @@ manifests: controller-gen
 
 .PHONY: test
 test: fmt vet ## Run tests.
-	ginkgo --race -p --github-output -coverprofile cover.out -covermode atomic --json-report=test-report.json -v ././cmd/... ././pkg/...
+	$(GINKGO) --race -p --github-output -coverprofile cover.out -covermode atomic --json-report=test-report.json -v ././cmd/... ././pkg/...
 
 .PHONY: lint
 lint: lint-go

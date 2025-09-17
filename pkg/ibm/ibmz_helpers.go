@@ -40,7 +40,7 @@ func createInstanceName(instanceTag string) (string, error) {
 	// strength doesn't matter here
 	md5EncodedBinary := md5.New().Sum(binary) //#nosec
 	md5EncodedString := base64.URLEncoding.EncodeToString(md5EncodedBinary)[0:20]
-	instanceId := strings.Replace(strings.ToLower(md5EncodedString), "_", "-", -1)
+	instanceId := strings.ReplaceAll(strings.ToLower(md5EncodedString), "_", "-")
 	return fmt.Sprintf("%s-%sx", instanceTag, instanceId), nil
 }
 
@@ -52,15 +52,20 @@ func checkIfIpIsLive(ctx context.Context, ip string) error {
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info(fmt.Sprintf("checking if IP address %s is live", ip))
 
-	server, _ := net.ResolveTCPAddr("tcp", ip+":22")
+	server, err := net.ResolveTCPAddr("tcp", ip+":22")
+	if err != nil {
+		log.Error(err, "failed to resolve ip address")
+	}
 	conn, err := net.DialTimeout(server.Network(), server.String(), 5*time.Second)
 	if err != nil {
 		log.Info("WARN: failed to connect to IBM host", "ip", ip)
 		return err
 	}
-	defer conn.Close()
+	if err := conn.Close(); err != nil {
+		log.Error(err, "failed to close connection")
+		return err
+	}
 	return nil
-
 }
 
 func ptr[V any](s V) *V {

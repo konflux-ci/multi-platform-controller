@@ -88,8 +88,6 @@ const (
 	ParamSudoCommands      = "SUDO_COMMANDS"
 )
 
-var errFailedToDeterminePlatform = errors2.New("failed to determine platform")
-
 type ReconcileTaskRun struct {
 	apiReader                client.Reader
 	client                   client.Client
@@ -340,11 +338,6 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 			}
 		}
 
-		// after a successful provision task, we increment the provisioning_successes metric
-		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
-			metrics.ProvisionSuccesses.Inc()
-		})
-
 		// Now we 'bump' the pod, by giving it a label
 		// This forces a reconcile
 		pods := kubecore.PodList{}
@@ -378,7 +371,17 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 			}
 		}
 	}
-	return reconcile.Result{}, r.client.Update(ctx, tr)
+
+	if err := UpdateTaskRunWithRetry(ctx, r.client, r.apiReader, tr); err != nil {
+		return reconcile.Result{}, err
+	}
+
+	// after a successful provision task, we increment the provisioning_successes metric
+	mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
+		metrics.ProvisionSuccesses.Inc()
+	})
+
+	return reconcile.Result{}, nil
 }
 
 // This creates an secret with the 'error' field set
@@ -441,7 +444,7 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *tektonapi.Tas
 		return reconcile.Result{}, nil
 	}
 
-	targetPlatform, err := extractPlatform(tr)
+	targetPlatform, err := validatePlatform(tr)
 	if err != nil {
 		err := r.createErrorSecret(ctx, tr, "[UNKNOWN]", secretName, err.Error())
 		if err != nil {
@@ -470,15 +473,6 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *tektonapi.Tas
 		}
 	}
 	return res, err
-}
-
-func extractPlatform(tr *tektonapi.TaskRun) (string, error) {
-	for _, p := range tr.Spec.Params {
-		if p.Name == PlatformParam {
-			return p.Value.StringVal, nil
-		}
-	}
-	return "", errFailedToDeterminePlatform
 }
 
 func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektonapi.TaskRun, secretName string, targetPlatform string) (reconcile.Result, error) {
@@ -618,7 +612,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 	}
 
 	// Update TaskRun with cleanup changes
-	err = updateTaskRun(ctx, r.client, r.apiReader, tr)
+	err = UpdateTaskRunWithRetry(ctx, r.client, r.apiReader, tr)
 	if err != nil {
 		log.Error(err, "failed to update TaskRun after cleanup")
 		return reconcile.Result{}, fmt.Errorf("failed to update TaskRun: %w", err)
