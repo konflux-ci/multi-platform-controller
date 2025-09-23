@@ -32,6 +32,11 @@ var _ = Describe("Backend_Probe CheckAvailability unit tests", func() {
 			Expect(probe.CheckAvailability(ctx)).Should(Succeed())
 		})
 
+		It("should pass with one successes and one failure", func(ctx context.Context) {
+			probe = setupProbeWithCounts(1, 1)
+			Expect(probe.CheckAvailability(ctx)).Should(Succeed())
+		})
+
 		It("should pass with many successes and no failures", func(ctx context.Context) {
 			probe = setupProbeWithCounts(20, 0)
 			Expect(probe.CheckAvailability(ctx)).Should(Succeed())
@@ -50,16 +55,17 @@ var _ = Describe("Backend_Probe CheckAvailability unit tests", func() {
 		})
 
 		It("should fail with a failure rate clearly above the threshold", func(ctx context.Context) {
-			probe = setupProbeWithCounts(10, 9) // success/failures ratio - 0.9
+			probe = setupProbeWithCounts(10, 90) // success/failures ratio - 0.9
 			Expect(probe.CheckAvailability(ctx)).Should(HaveOccurred())
 		})
 	})
 
 	When("testing errorThreshold boundary conditions", func() {
 
-		baseSuccesses := 100
+		totalRuns := 100
 		// A count of failures that should result in a ratio == errorThreshold
-		failuresAtEdge := int(float64(baseSuccesses) * errorThreshold)
+		failuresAtEdge := int(float64(totalRuns) * errorThreshold)
+		baseSuccesses := totalRuns - failuresAtEdge
 
 		// Below are calculations written with the assumption that errorThreshold will never be less than 0.1, because
 		// it's a less realistic situation in production. It also feels like a threshold that's way too accurate
