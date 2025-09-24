@@ -2,8 +2,9 @@ package main
 
 import (
 	"flag"
-	mpcmetrics "github.com/konflux-ci/multi-platform-controller/pkg/metrics"
 	"os"
+
+	mpcmetrics "github.com/konflux-ci/multi-platform-controller/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/konflux-ci/multi-platform-controller/pkg/controller"
 	k8scontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+
 	//+kubebuilder:scaffold:imports
 	"github.com/go-logr/logr"
 )
