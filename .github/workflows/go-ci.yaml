@@ -53,14 +53,10 @@ jobs:
             exit 1
           fi
       - name: Check format
+        env:
+          FMT_ARGS: --diff
         run: |
           make fmt
-          if [[ ! -z $(git status -s) ]]
-          then
-            echo "not all golang files properly gofmt'ed:"
-            git --no-pager diff
-            exit 1
-          fi
   trigger_unit_test_workflow:
     runs-on: ubuntu-latest
     steps: 
