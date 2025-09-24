@@ -1,0 +1,16 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  labels:
+    app.kubernetes.io/name: multi-platform-controller
+    app.kubernetes.io/managed-by: kustomize
+  name: mpc-otp-server
+  namespace: system
+spec:
+  dnsNames:
+  - multi-platform-otp-server.multi-platform-controller.svc
+  - multi-platform-otp-server.multi-platform-controller.svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: selfsigned-issuer
+  secretName: otp-tls-secrets
