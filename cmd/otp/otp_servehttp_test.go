@@ -4,17 +4,19 @@ package main
 import (
 	"bytes"
 	"crypto"
-	"github.com/go-logr/logr"
-	"github.com/go-logr/stdr"
-	"github.com/pkg/errors"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 
+	"github.com/go-logr/logr"
+	"github.com/go-logr/stdr"
+	"github.com/pkg/errors"
+
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"golang.org/x/crypto/ssh"

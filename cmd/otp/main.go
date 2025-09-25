@@ -4,14 +4,15 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"log"
+	"net/http"
+	"time"
+
 	"github.com/go-logr/logr"
 	zap2 "go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"k8s.io/klog/v2"
-	"log"
-	"net/http"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	"time"
 )
 
 var (

@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"time"
+
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	"github.com/konflux-ci/multi-platform-controller/pkg/reconciler/taskrun"
 	v1 "k8s.io/api/core/v1"

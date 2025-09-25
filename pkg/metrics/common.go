@@ -3,10 +3,11 @@ package mpcmetrics
 import (
 	"context"
 	"fmt"
-	"github.com/go-logr/logr"
-	"github.com/prometheus/client_golang/prometheus"
 	"sync"
 	"time"
+
+	"github.com/go-logr/logr"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
