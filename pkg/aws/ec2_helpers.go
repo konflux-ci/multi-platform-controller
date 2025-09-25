@@ -170,7 +170,7 @@ func (ec AWSEc2DynamicConfig) findInstancesWithoutTaskRuns(log logr.Logger, rese
 			err := cloud.ValidateTaskRunID(taskRunID)
 			if err != nil {
 				msg := fmt.Sprintf("WARN: invalid TaskRun ID - %s; appending to no TaskRun list anyway...", err.Error())
-				log.Info(msg, *instance.InstanceId)
+				log.Info(msg, "instanceID", *instance.InstanceId)
 				instancesWithoutTaskRuns = append(instancesWithoutTaskRuns, *instance.InstanceId)
 				continue
 			}

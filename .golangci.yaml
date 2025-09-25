@@ -10,6 +10,7 @@ linters:
     - ginkgolinter
     - govet
     - ineffassign
+    - loggercheck
     - misspell
     - prealloc
     - sloglint
