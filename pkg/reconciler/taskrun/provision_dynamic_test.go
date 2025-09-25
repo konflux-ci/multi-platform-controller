@@ -6,8 +6,9 @@
 package taskrun
 
 import (
-	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
 	"time"
+
+	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

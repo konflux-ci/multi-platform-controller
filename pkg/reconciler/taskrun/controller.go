@@ -1,7 +1,7 @@
 package taskrun
 
 import (
-	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 )

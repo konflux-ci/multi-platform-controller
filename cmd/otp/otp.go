@@ -2,11 +2,12 @@ package main
 
 import (
 	"crypto/rand"
-	"github.com/go-logr/logr"
 	"io"
 	"math/big"
 	"net/http"
 	"sync"
+
+	"github.com/go-logr/logr"
 )
 
 var mutex = sync.Mutex{}
