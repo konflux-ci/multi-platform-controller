@@ -24,7 +24,7 @@ jobs:
             jq -r '.Require | map(select(.Path == "github.com/golangci/golangci-lint/v2"))[].Version')" \
             >> $GITHUB_OUTPUT
       - name: Lint with golang-ci
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v8
         with:
           version: ${{ steps.golangci_version.outputs.version }}
           args: "--timeout=10m --build-tags='normal periodic' --output.sarif.path=out/go-lint.sarif"
