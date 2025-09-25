@@ -32,7 +32,7 @@ lint: lint-go
 
 .PHONY: lint-go
 lint-go:
-	$(GOLANGCI_LINT) run ./...
+	$(GOLANGCI_LINT) run $(LINT_ARGS) ./...
 
 .PHONY: build
 build: fmt vet clean manifests
