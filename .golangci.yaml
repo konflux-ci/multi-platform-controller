@@ -3,6 +3,7 @@ linters:
   enable:
     - asciicheck
     - bidichk
+    - contextcheck
     - copyloopvar
     - errcheck
     - errchkjson

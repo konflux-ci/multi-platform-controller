@@ -39,7 +39,7 @@ func NewManager(cfg *rest.Config, managerOptions ctrl.Options, controllerOptions
 	// so we are going to wait on the CRDs existing before moving forward.
 	apiextensionsClient := apiextensionsclient.NewForConfigOrDie(cfg)
 	if err := wait.PollUntilContextTimeout(context.Background(), time.Second*5, time.Minute*5, true, func(ctx context.Context) (done bool, err error) {
-		_, err = apiextensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), "taskruns.tekton.dev", metav1.GetOptions{})
+		_, err = apiextensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, "taskruns.tekton.dev", metav1.GetOptions{})
 		if err != nil {
 			controllerLog.Info(fmt.Sprintf("get of taskrun CRD failed with: %s", err.Error()))
 			return false, nil
