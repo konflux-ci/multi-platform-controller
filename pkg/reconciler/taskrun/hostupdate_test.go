@@ -45,7 +45,6 @@ func hostDataFromTRSpec(updateTR v1.TaskRun) map[string]string {
 	specParams := updateTR.Spec.Params
 	for _, specParam := range specParams {
 		switch key := specParam.Name; key {
-
 		case "HOST":
 			newHostData["address"] = specParam.Value.StringVal
 		case "USER":

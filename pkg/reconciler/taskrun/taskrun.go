@@ -2,6 +2,7 @@ package taskrun
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime"
 	"strconv"
@@ -18,7 +19,7 @@ import (
 	errors2 "github.com/pkg/errors"
 	tektonapi "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	kubecore "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	k8sRuntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -128,7 +129,7 @@ func (r *ReconcileTaskRun) Reconcile(ctx context.Context, request reconcile.Requ
 
 	tr := tektonapi.TaskRun{}
 	if err := r.apiReader.Get(ctx, request.NamespacedName, &tr); err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			// gone, no error
 			return ctrl.Result{}, nil
 		} else {
@@ -281,7 +282,7 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 		mpcmetrics.CountAvailabilityError(targetPlatform)
 		message := fmt.Sprintf("provision task for host %s for user task %s/%s failed", assigned, userNamespace, userTaskName)
 		r.eventRecorder.Event(tr, "Error", "ProvisioningFailed", message)
-		log.Error(fmt.Errorf("provision failed"), message)
+		log.Error(errors.New("provision failed"), message)
 		if assigned != "" {
 			userTr := tektonapi.TaskRun{}
 			err := r.client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: userTaskName}, &userTr)
@@ -318,11 +319,11 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 		secret := kubecore.Secret{}
 		err := r.client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: secretName}, &secret)
 		if err != nil {
-			if errors.IsNotFound(err) {
+			if k8serrors.IsNotFound(err) {
 				userTr := tektonapi.TaskRun{}
 				err = r.client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: userTaskName}, &userTr)
 				if err != nil {
-					if !errors.IsNotFound(err) {
+					if !k8serrors.IsNotFound(err) {
 						//if the task run is not found then this is just old
 						return reconcile.Result{}, err
 					}
@@ -331,7 +332,6 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 					if err != nil {
 						return reconcile.Result{}, err
 					}
-
 				}
 			} else {
 				return reconcile.Result{}, err
@@ -421,7 +421,7 @@ func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, tr *tektonapi.
 	}
 	err = r.client.Create(ctx, &secret)
 	if err != nil {
-		if errors.IsAlreadyExists(err) {
+		if k8serrors.IsAlreadyExists(err) {
 			//already exists, ignore
 			return nil
 		}
@@ -463,7 +463,7 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *tektonapi.Tas
 	}
 
 	res, err := r.handleHostAllocation(ctx, tr, secretName, targetPlatform)
-	if err != nil && !errors.IsConflict(err) {
+	if err != nil && !k8serrors.IsConflict(err) {
 		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
 			metrics.HostAllocationFailures.Inc()
 		})
@@ -482,7 +482,7 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektona
 	secret := kubecore.Secret{}
 	err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: secretName}, &secret)
 	if err != nil {
-		if !errors.IsNotFound(err) {
+		if !k8serrors.IsNotFound(err) {
 			return reconcile.Result{}, err
 		}
 	} else {
@@ -591,7 +591,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 		return reconcile.Result{}, fmt.Errorf("failed to read configuration: %w", err)
 	}
 	if config == nil {
-		log.Error(fmt.Errorf("no configuration found"), "no config for platform", "platform", platform)
+		log.Error(errors.New("no configuration found"), "no config for platform", "platform", platform)
 		return reconcile.Result{}, nil
 	}
 
@@ -632,7 +632,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 	secret := kubecore.Secret{}
 	err = r.client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: secretName}, &secret)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			log.Info("secret not found, already cleaned up")
 		} else {
 			log.Error(err, "error checking secret existence")
@@ -707,7 +707,6 @@ func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, platform stri
 }
 
 func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform string, targetNamespace string) (PlatformConfig, error) {
-
 	cm := kubecore.ConfigMap{}
 	err := r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: HostConfig}, &cm)
 	if err != nil {
@@ -737,7 +736,7 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 			if len(parts) >= 2 {
 				additionalInstanceTags[parts[0]] = parts[1]
 			} else {
-				log.Error(fmt.Errorf("invalid tag format"), "tag must be key=value", "tag", tag)
+				log.Error(errors.New("invalid tag format"), "tag must be key=value", "tag", tag)
 			}
 		}
 	}
@@ -755,7 +754,6 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 		for _, platform := range strings.Split(dynamic, ",") {
 			platformConfigName := strings.ReplaceAll(platform, "/", "-")
 			if platform == targetPlatform {
-
 				typeName := cm.Data["dynamic."+platformConfigName+".type"]
 				allocfunc := r.cloudProviders[typeName]
 				if allocfunc == nil {
@@ -805,7 +803,6 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 		for _, platform := range strings.Split(dynamicPool, ",") {
 			platformConfigName := strings.ReplaceAll(platform, "/", "-")
 			if platform == targetPlatform {
-
 				typeName := cm.Data["dynamic."+platformConfigName+".type"]
 				allocfunc := r.cloudProviders[typeName]
 				if allocfunc == nil {
@@ -884,7 +881,6 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 		default:
 			log.Info("unknown key", "key", key)
 		}
-
 	}
 	// calculate platform capacity
 	platformCapacity := 0
@@ -959,7 +955,7 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 	}
 
 	err = r.client.Create(ctx, &provision)
-	if errors.IsAlreadyExists(err) {
+	if k8serrors.IsAlreadyExists(err) {
 		log.Info("provision task already exists, continuing")
 		return nil // Not an error
 	}
@@ -987,7 +983,7 @@ func UpdateTaskRunWithRetry(ctx context.Context, cli client.Client, apiReader cl
 
 	// if no error or a not a conflict error happened
 	// we need to return here
-	if err == nil || !errors.IsConflict(err) {
+	if err == nil || !k8serrors.IsConflict(err) {
 		return err
 	}
 

@@ -25,7 +25,6 @@ const (
 )
 
 func main() {
-
 	klog.InitFlags(flag.CommandLine)
 
 	flag.Parse()
