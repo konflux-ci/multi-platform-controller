@@ -8,6 +8,7 @@ package taskrun
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -23,7 +24,7 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -196,7 +197,7 @@ func assertNoSecret(ctx context.Context, client runtimeclient.Client, tr *pipeli
 	name := SecretPrefix + tr.Name
 	secret := v1.Secret{}
 	err := client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: name}, &secret)
-	Expect(errors.IsNotFound(err)).Should(BeTrue())
+	Expect(k8serrors.IsNotFound(err)).Should(BeTrue())
 }
 
 // runUserPipeline encapsulates the common flow of creating a user TaskRun
@@ -438,7 +439,7 @@ func (m *MockCloud) TerminateInstance(kubeClient runtimeclient.Client, ctx conte
 
 func (m *MockCloud) GetInstanceAddress(kubeClient runtimeclient.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
 	if m.FailGetAddress {
-		return "", fmt.Errorf("failed")
+		return "", errors.New("failed")
 	} else if m.TimeoutGetAddress {
 		return "", nil
 	}
@@ -454,7 +455,7 @@ func (m *MockCloud) GetInstanceAddress(kubeClient runtimeclient.Client, ctx cont
 
 func (m *MockCloud) GetState(kubeClient runtimeclient.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (cloud.VMState, error) {
 	if m.FailGetState {
-		return "", fmt.Errorf("failed")
+		return "", errors.New("failed")
 	}
 
 	instance, ok := m.Instances[instanceId]
@@ -471,7 +472,7 @@ func (m *MockCloud) GetState(kubeClient runtimeclient.Client, ctx context.Contex
 // a speedier return.
 func (m *MockCloud) CleanUpVms(ctx context.Context, kubeClient runtimeclient.Client, existingTaskRuns map[string][]string) error {
 	if m.FailCleanUpVMs {
-		return fmt.Errorf("failed")
+		return errors.New("failed")
 	}
 
 	var instancesToDelete []string
@@ -506,7 +507,7 @@ func (c *ConflictingClient) Update(ctx context.Context, obj runtimeclient.Object
 	c.callCount++
 	if c.callCount <= c.ConflictCount {
 		// hardcoded gvk is not perfect, but I dunno how to avoid that :(
-		return errors.NewConflict(schema.GroupResource{Group: "tekton.dev", Resource: "taskruns"}, "test", fmt.Errorf("conflict"))
+		return k8serrors.NewConflict(schema.GroupResource{Group: "tekton.dev", Resource: "taskruns"}, "test", errors.New("conflict"))
 	}
 	return c.Client.Update(ctx, obj, opts...)
 }
@@ -530,7 +531,7 @@ type ConflictingStatusWriter struct {
 func (c *ConflictingStatusWriter) Update(ctx context.Context, obj runtimeclient.Object, opts ...runtimeclient.SubResourceUpdateOption) error {
 	*c.callCount++
 	if *c.callCount <= c.ConflictCount {
-		return errors.NewConflict(schema.GroupResource{Group: "tekton.dev", Resource: "taskruns"}, "test", fmt.Errorf("conflict"))
+		return k8serrors.NewConflict(schema.GroupResource{Group: "tekton.dev", Resource: "taskruns"}, "test", errors.New("conflict"))
 	}
 	return c.client.Status().Update(ctx, obj, opts...)
 }

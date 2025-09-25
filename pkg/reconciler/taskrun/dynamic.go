@@ -2,6 +2,7 @@ package taskrun
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -45,7 +46,7 @@ func (r DynamicResolver) Deallocate(taskRun *ReconcileTaskRun, ctx context.Conte
 func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	if tr.Annotations[FailedHosts] != "" {
-		return reconcile.Result{}, fmt.Errorf("failed to provision host")
+		return reconcile.Result{}, errors.New("failed to provision host")
 	}
 
 	if tr.Annotations == nil {
@@ -56,7 +57,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 		startTime, err := strconv.ParseInt(allocStart, 10, 64)
 		if err == nil {
 			if startTime+r.timeout < time.Now().Unix() {
-				err = fmt.Errorf("timed out waiting for instance address")
+				err = errors.New("timed out waiting for instance address")
 				log.Error(err, "timed out waiting for instance address")
 				//ugh, try and unassign
 				terr := r.TerminateInstance(taskRun.client, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))

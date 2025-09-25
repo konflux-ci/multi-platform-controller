@@ -2,7 +2,7 @@ package mpcmetrics
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"sync/atomic"
 )
 
@@ -36,7 +36,7 @@ func (q *BackendProbe) CheckAvailability(_ context.Context) error {
 	case successes+failures <= 1:
 		return nil
 	case failures/(successes+failures) > errorThreshold:
-		return fmt.Errorf("failure threshold high")
+		return errors.New("failure threshold high")
 	default:
 		return nil
 	}

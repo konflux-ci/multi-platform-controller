@@ -32,7 +32,7 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 
 	if len(hp.hosts) == 0 {
 		//no hosts configured
-		return reconcile.Result{}, fmt.Errorf("no hosts configured")
+		return reconcile.Result{}, errors.New("no hosts configured")
 	}
 	failedString := tr.Annotations[FailedHosts]
 	failed := strings.Split(failedString, ",")

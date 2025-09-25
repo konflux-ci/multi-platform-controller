@@ -1,7 +1,6 @@
 package taskrun
 
 import (
-	"fmt"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -121,7 +120,7 @@ var _ = Describe("Platform Validation Tests", func() {
 				Entry("because it contains an underscore", "linux/amd_64"),
 				Entry("because a part starts with a hyphen", "-linux/amd64"),
 				Entry("because a part ends with a hyphen", "linux/amd64-"),
-				Entry("because a part is longer than 63 chars", fmt.Sprintf("linux/%s", longLabel)),
+				Entry("because a part is longer than 63 chars", "linux/"+longLabel),
 			)
 		})
 	})

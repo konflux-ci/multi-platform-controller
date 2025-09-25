@@ -13,6 +13,7 @@ linters:
     - loggercheck
     - misspell
     - prealloc
+    - perfsprint
     - sloglint
     - staticcheck
     - unused

@@ -6,7 +6,7 @@ package taskrun
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"time"
 
 	mpcmetrics "github.com/konflux-ci/multi-platform-controller/pkg/metrics"
@@ -252,7 +252,7 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 			// Create a client that returns non-conflict errors
 			errorClient := &ErrorClient{
 				Client: client,
-				Error:  fmt.Errorf("some other error"),
+				Error:  errors.New("some other error"),
 			}
 
 			tr.Labels["error-label"] = "error-value"

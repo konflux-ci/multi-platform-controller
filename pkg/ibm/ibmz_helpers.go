@@ -268,9 +268,9 @@ func (iz IBMZDynamicConfig) assignIPToInstance(instance *vpcv1.Instance, vpcServ
 	// undesirable state before looking for a floating IP in the region
 	switch *instance.Status {
 	case vpcv1.InstanceStatusDeletingConst:
-		return "", fmt.Errorf("instance was deleted")
+		return "", errors.New("instance was deleted")
 	case vpcv1.InstanceStatusFailedConst:
-		return "", fmt.Errorf("instance failed")
+		return "", errors.New("instance failed")
 	case vpcv1.InstanceStatusPendingConst:
 		return "", nil
 	case vpcv1.InstanceStatusRestartingConst:
@@ -278,9 +278,9 @@ func (iz IBMZDynamicConfig) assignIPToInstance(instance *vpcv1.Instance, vpcServ
 	case vpcv1.InstanceStatusStartingConst:
 		return "", nil
 	case vpcv1.InstanceStatusStoppedConst:
-		return "", fmt.Errorf("instance was stopped")
+		return "", errors.New("instance was stopped")
 	case vpcv1.InstanceStatusStoppingConst:
-		return "", fmt.Errorf("instance was stopping")
+		return "", errors.New("instance was stopping")
 	}
 
 	// Try to find an unattached floating IP address next

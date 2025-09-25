@@ -142,7 +142,7 @@ func (a DynamicHostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *
 	delete(tr.Labels, WaitingForPlatformLabel)
 	// Counter intuitively we don't need the instance id
 	// It will be picked up on the list call
-	log.Info(fmt.Sprintf("launching instance %s", name))
+	log.Info("launching instance " + name)
 	taskRunID := fmt.Sprintf("%s:%s", tr.Namespace, tr.Name)
 	inst, err := a.cloudProvider.LaunchInstance(r.client, ctx, taskRunID, a.instanceTag, a.additionalInstanceTags)
 	if err != nil {

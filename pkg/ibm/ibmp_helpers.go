@@ -112,7 +112,7 @@ func (pw IBMPowerDynamicConfig) listInstances(ctx context.Context, service *core
 // for more information on CRN formatting.
 func (pw IBMPowerDynamicConfig) parseCRN() (string, error) {
 	if !strings.HasPrefix(pw.CRN, "crn:") {
-		return "", fmt.Errorf("invalid CRN: must start with 'crn:'")
+		return "", errors.New("invalid CRN: must start with 'crn:'")
 	}
 
 	crnSegments := strings.Split(pw.CRN, ":")
@@ -164,11 +164,11 @@ func (pw IBMPowerDynamicConfig) launchInstance(ctx context.Context, service *cor
 	// Set body content and headers
 	name, ok := additionalInfo["name"]
 	if !ok {
-		return "", fmt.Errorf("failed to find the server instance's name")
+		return "", errors.New("failed to find the server instance's name")
 	}
 	taskRunTag, ok := additionalInfo[cloud.TaskRunTagKey]
 	if !ok {
-		return "", fmt.Errorf("failed to find the server instance's full TaskRun ID")
+		return "", errors.New("failed to find the server instance's full TaskRun ID")
 	}
 
 	network := strings.Split(pw.Network, ",")
