@@ -58,12 +58,12 @@ var _ = Describe("Test Dynamic Pool Host Provisioning", func() {
 			Status:             "True",
 			LastTransitionTime: apis.VolatileTime{Inner: metav1.Time{Time: time.Now().Add(time.Hour * -2)}},
 		})
-		Expect(client.Status().Update(ctx, tr)).ShouldNot(HaveOccurred())
+		Expect(client.Status().Update(ctx, tr)).Should(Succeed())
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
 		Expect(err).ShouldNot(HaveOccurred())
 
-		Expect(len(cloudImpl.Instances)).Should(Equal(1))
+		Expect(cloudImpl.Instances).Should(HaveLen(1))
 	})
 
 	When("when provisioning fails", func() {
@@ -76,7 +76,7 @@ var _ = Describe("Test Dynamic Pool Host Provisioning", func() {
 			// Start with one running instance in the pool
 			_, err := cloudImpl.LaunchInstance(nil, ctx, "default:preexisting-task", "multi-platform-controller", nil)
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(len(cloudImpl.Instances)).Should(Equal(1))
+			Expect(cloudImpl.Instances).Should(HaveLen(1))
 
 			// Start a user task. It should be assigned the single pre-existing instance.
 			userTask := runUserPipeline(ctx, client, reconciler, "test-dyn-pool-fail-1")
@@ -105,7 +105,7 @@ var _ = Describe("Test Dynamic Pool Host Provisioning", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 
 			// A new instance should have been created. The user task will be requeued while it starts.
-			Expect(len(cloudImpl.Instances)).Should(Equal(2)) // The old failed one plus the new one
+			Expect(cloudImpl.Instances).Should(HaveLen(2)) // The old failed one plus the new one
 			finalUserTask := getUserTaskRun(ctx, client, "test-dyn-pool-fail-1")
 			// It won't be assigned a host yet, because the new instance is "starting up"
 			Expect(finalUserTask.Labels[AssignedHost]).Should(BeEmpty())
@@ -121,7 +121,7 @@ var _ = Describe("Test Dynamic Pool Host Provisioning", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 			_, err = cloudImpl.LaunchInstance(nil, ctx, "default:preexisting-2", "multi-platform-controller", nil)
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(len(cloudImpl.Instances)).Should(Equal(2))
+			Expect(cloudImpl.Instances).Should(HaveLen(2))
 
 			// Start a user task. It will be assigned one of the instances.
 			userTask := runUserPipeline(ctx, client, reconciler, "test-dyn-pool-all-fail")

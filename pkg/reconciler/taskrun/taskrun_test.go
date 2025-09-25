@@ -31,7 +31,7 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 			configIface, err := reconciler.readConfiguration(ctx, "linux/arm64", userNamespace)
 			config := configIface.(HostPool)
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(len(config.hosts)).Should(Equal(2))
+			Expect(config.hosts).Should(HaveLen(2))
 			Expect(config.hosts["host1"].Platform).Should(Equal("linux/arm64"))
 		})
 
@@ -330,7 +330,7 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 				UserTaskNamespace: userNamespace,
 			})
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(len(cleanupTasks.Items)).Should(Equal(1))
+			Expect(cleanupTasks.Items).Should(HaveLen(1))
 
 			cleanupTask := &cleanupTasks.Items[0]
 			cleanupTask.Status.CompletionTime = &metav1.Time{Time: time.Now()}
@@ -393,7 +393,7 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 				UserTaskNamespace: userNamespace,
 			})
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(len(cleanupTasks.Items)).Should(Equal(1))
+			Expect(cleanupTasks.Items).Should(HaveLen(1))
 
 			cleanupTask := &cleanupTasks.Items[0]
 

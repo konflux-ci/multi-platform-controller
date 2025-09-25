@@ -295,7 +295,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			tr := runUserPipeline(ctx, client, reconciler, "test-success")
 			// Get initial metric value
 			initialSuccesses := getCounterValue("linux/arm64", "provisioning_successes")
-			Expect(initialSuccesses).ShouldNot(Equal(-1))
+			Expect(initialSuccesses).ShouldNot(Equal(-1.0))
 
 			provision := getProvisionTaskRun(ctx, client, tr)
 
@@ -310,7 +310,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			tr := runUserPipeline(ctx, client, reconciler, "test-success-race")
 			// Get initial metric value
 			initialSuccesses := getCounterValue("linux/arm64", "provisioning_successes")
-			Expect(initialSuccesses).ShouldNot(Equal(-1))
+			Expect(initialSuccesses).ShouldNot(Equal(-1.0))
 			// Run normal provision setup
 			provision := getProvisionTaskRun(ctx, client, tr)
 

@@ -6,6 +6,7 @@ linters:
     - copyloopvar
     - errcheck
     - errchkjson
+    - ginkgolinter
     - govet
     - ineffassign
     - misspell
