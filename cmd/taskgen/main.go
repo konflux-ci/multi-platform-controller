@@ -84,7 +84,6 @@ func streamFileYamlToTektonObj(path string, obj runtime.Object) runtime.Object {
 }
 
 func convertToSsh(task *tektonapi.Task) {
-
 	builderImage := ""
 	syncVolumes := map[string]bool{}
 	for _, i := range task.Spec.Volumes {

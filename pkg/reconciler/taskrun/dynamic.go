@@ -27,7 +27,6 @@ type DynamicResolver struct {
 }
 
 func (r DynamicResolver) Deallocate(taskRun *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string, selectedHost string) error {
-
 	log := logr.FromContextOrDiscard(ctx)
 	instance := tr.Annotations[CloudInstanceId]
 	log.Info(fmt.Sprintf("terminating cloud instance %s for TaskRun %s", instance, tr.Name))
@@ -44,7 +43,6 @@ func (r DynamicResolver) Deallocate(taskRun *ReconcileTaskRun, ctx context.Conte
 }
 
 func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
-
 	log := logr.FromContextOrDiscard(ctx)
 	if tr.Annotations[FailedHosts] != "" {
 		return reconcile.Result{}, fmt.Errorf("failed to provision host")
@@ -230,7 +228,6 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 	}
 
 	return reconcile.Result{RequeueAfter: 2 * time.Minute}, nil
-
 }
 
 // Tries to remove the instance information from the task and returns a non-nil error if it was unable to.

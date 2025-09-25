@@ -63,7 +63,6 @@ func (a DynamicHostPool) buildHostPool(r *ReconcileTaskRun, ctx context.Context,
 }
 
 func (a DynamicHostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string, selectedHost string) error {
-
 	hostPool, oldInstanceCount, err := a.buildHostPool(r, ctx, a.instanceTag)
 	if err != nil {
 		return err
@@ -103,7 +102,6 @@ func (a DynamicHostPool) isHostIdle(r *ReconcileTaskRun, ctx context.Context, se
 }
 
 func (a DynamicHostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
-
 	log := logr.FromContextOrDiscard(ctx)
 	hostPool, oldInstanceCount, err := a.buildHostPool(r, ctx, a.instanceTag)
 	if err != nil {

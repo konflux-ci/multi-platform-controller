@@ -249,7 +249,6 @@ func assignNewlyAllocatedIP(instance *vpcv1.Instance, vpcService *vpcv1.VpcV1) (
 // assignIPToInstance finds an available IP address and assigns it to the Virtual Private Cloud instance and
 // its network interface. The string version of the IP address (an empty string if none was found) is returned.
 func (iz IBMZDynamicConfig) assignIPToInstance(instance *vpcv1.Instance, vpcService *vpcv1.VpcV1) (string, error) {
-
 	if iz.PrivateIP {
 		for _, i := range instance.NetworkInterfaces {
 			if i.PrimaryIP != nil && i.PrimaryIP.Address != nil && *i.PrimaryIP.Address != "0.0.0.0" {

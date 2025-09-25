@@ -331,7 +331,6 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 					if err != nil {
 						return reconcile.Result{}, err
 					}
-
 				}
 			} else {
 				return reconcile.Result{}, err
@@ -707,7 +706,6 @@ func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, platform stri
 }
 
 func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform string, targetNamespace string) (PlatformConfig, error) {
-
 	cm := kubecore.ConfigMap{}
 	err := r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: HostConfig}, &cm)
 	if err != nil {
@@ -755,7 +753,6 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 		for _, platform := range strings.Split(dynamic, ",") {
 			platformConfigName := strings.ReplaceAll(platform, "/", "-")
 			if platform == targetPlatform {
-
 				typeName := cm.Data["dynamic."+platformConfigName+".type"]
 				allocfunc := r.cloudProviders[typeName]
 				if allocfunc == nil {
@@ -805,7 +802,6 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 		for _, platform := range strings.Split(dynamicPool, ",") {
 			platformConfigName := strings.ReplaceAll(platform, "/", "-")
 			if platform == targetPlatform {
-
 				typeName := cm.Data["dynamic."+platformConfigName+".type"]
 				allocfunc := r.cloudProviders[typeName]
 				if allocfunc == nil {
@@ -884,7 +880,6 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 		default:
 			log.Info("unknown key", "key", key)
 		}
-
 	}
 	// calculate platform capacity
 	platformCapacity := 0

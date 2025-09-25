@@ -212,7 +212,6 @@ func (r SecretCredentialsProvider) Retrieve(ctx context.Context) (aws.Credential
 			AccessKeyID:     os.Getenv("MULTI_ARCH_ACCESS_KEY"),
 			SecretAccessKey: os.Getenv("MULTI_ARCH_SECRET_KEY"),
 		}, nil
-
 	}
 
 	// Connect to Kubernetes to get credentials info

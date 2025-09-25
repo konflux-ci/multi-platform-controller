@@ -128,7 +128,6 @@ func (iz IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context
 	}
 
 	return cloud.InstanceIdentifier(*vpcInstance.ID), nil
-
 }
 
 // CountInstances returns the number of System Z virtual server instances whose names start with instanceTag.

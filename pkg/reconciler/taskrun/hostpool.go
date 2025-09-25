@@ -63,7 +63,6 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 	platformHostsExists := false
 	allPlatformHostsFailed := true
 	for k, v := range hp.hosts {
-
 		if v.Platform != hp.targetPlatform {
 			log.Info("ignoring host with non-matching platform", "host", k, "targetPlatform", hp.targetPlatform, "hostPlatform", v.Platform)
 			continue
@@ -140,7 +139,6 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 			return reconcile.Result{}, err
 		}
 		return reconcile.Result{}, fmt.Errorf("failed to provision host: %v", err)
-
 	}
 	return reconcile.Result{}, nil
 }
@@ -199,5 +197,4 @@ func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.T
 		return err
 	}
 	return nil
-
 }

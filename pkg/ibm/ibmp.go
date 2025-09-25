@@ -93,7 +93,6 @@ func (pw IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx con
 		err = fmt.Errorf("failed to create a Power Systems instance: %w", err)
 	}
 	return instance, err
-
 }
 
 // CountInstances returns the number of Power Systems VM instances on the pw cloud whose names start
@@ -188,7 +187,6 @@ func (pw IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx cont
 		}
 		newVmInstance := cloud.CloudVMInstance{InstanceId: identifier, Address: ip, StartTime: createdAt}
 		vmInstances = append(vmInstances, newVmInstance)
-
 	}
 	log.Info("Finished listing Power Systems instances.", "count", len(vmInstances))
 	return vmInstances, nil
