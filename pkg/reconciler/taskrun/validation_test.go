@@ -5,6 +5,7 @@
 package taskrun
 
 import (
+	"fmt"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -241,7 +242,7 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 	})
 
 	// This spec only tests the IP format validation side of validateIP, since validateIP calls on
-	// ec2_helpers.PingIPAddress and it's pinging capabilities are already test-covered in ec2_helpers_test.go
+	// ec2_helpers.PingIPAddress and it's pinging capabilities are already test-covered in ec2_helpers_test.go.
 	Describe("The validateIP function", func() {
 
 		When("validating invalid IP formats", func() {
