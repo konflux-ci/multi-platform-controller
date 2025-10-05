@@ -15,7 +15,7 @@ GINKGO ?= go run github.com/onsi/ginkgo/v2/ginkgo
 default: build
 
 fmt: ## Run go fmt against code.
-	go fmt ./cmd/... ./pkg/...
+	$(GOLANGCI_LINT) fmt $(FMT_ARGS) ./...
 
 vet: ## Run go vet against code.
 	go vet ./cmd/... ./pkg/...
@@ -32,7 +32,7 @@ lint: lint-go
 
 .PHONY: lint-go
 lint-go:
-	$(GOLANGCI_LINT) run ./...
+	$(GOLANGCI_LINT) run $(LINT_ARGS) ./...
 
 .PHONY: build
 build: fmt vet clean manifests

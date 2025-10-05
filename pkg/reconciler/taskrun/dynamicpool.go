@@ -63,7 +63,6 @@ func (a DynamicHostPool) buildHostPool(r *ReconcileTaskRun, ctx context.Context,
 }
 
 func (a DynamicHostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string, selectedHost string) error {
-
 	hostPool, oldInstanceCount, err := a.buildHostPool(r, ctx, a.instanceTag)
 	if err != nil {
 		return err
@@ -103,7 +102,6 @@ func (a DynamicHostPool) isHostIdle(r *ReconcileTaskRun, ctx context.Context, se
 }
 
 func (a DynamicHostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
-
 	log := logr.FromContextOrDiscard(ctx)
 	hostPool, oldInstanceCount, err := a.buildHostPool(r, ctx, a.instanceTag)
 	if err != nil {
@@ -144,7 +142,7 @@ func (a DynamicHostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *
 	delete(tr.Labels, WaitingForPlatformLabel)
 	// Counter intuitively we don't need the instance id
 	// It will be picked up on the list call
-	log.Info(fmt.Sprintf("launching instance %s", name))
+	log.Info("launching instance " + name)
 	taskRunID := fmt.Sprintf("%s:%s", tr.Namespace, tr.Name)
 	inst, err := a.cloudProvider.LaunchInstance(r.client, ctx, taskRunID, a.instanceTag, a.additionalInstanceTags)
 	if err != nil {

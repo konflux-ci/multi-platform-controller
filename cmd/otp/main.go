@@ -4,14 +4,15 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"log"
+	"net/http"
+	"time"
+
 	"github.com/go-logr/logr"
 	zap2 "go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"k8s.io/klog/v2"
-	"log"
-	"net/http"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	"time"
 )
 
 var (
@@ -24,7 +25,6 @@ const (
 )
 
 func main() {
-
 	klog.InitFlags(flag.CommandLine)
 
 	flag.Parse()
@@ -58,6 +58,10 @@ func main() {
 		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: time.Second * 3,
 	}
-	defer server.Close()
+	defer func() {
+		if err := server.Close(); err != nil {
+			logger.Error(err, "failed to shutdown server")
+		}
+	}()
 	log.Fatal(server.ListenAndServeTLS("", ""))
 }

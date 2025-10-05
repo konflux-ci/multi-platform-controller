@@ -2,11 +2,12 @@ package main
 
 import (
 	"crypto/rand"
-	"github.com/go-logr/logr"
 	"io"
 	"math/big"
 	"net/http"
 	"sync"
+
+	"github.com/go-logr/logr"
 )
 
 var mutex = sync.Mutex{}
@@ -59,7 +60,6 @@ func NewOtp(logger *logr.Logger) *otp {
 }
 
 func (s *otp) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-
 	body, err := io.ReadAll(request.Body)
 	if err != nil {
 		s.logger.Error(err, "failed to read request body")

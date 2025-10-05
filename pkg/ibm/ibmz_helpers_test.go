@@ -2,9 +2,10 @@ package ibm
 
 import (
 	"fmt"
+	"strings"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"strings"
 
 	"github.com/konflux-ci/multi-platform-controller/testing/utils"
 )

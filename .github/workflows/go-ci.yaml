@@ -12,23 +12,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v4
       - name: Install Go
-        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5
+        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v5
         with:
-          go-version-file: './go.mod'
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@3cfe3a4abbb849e10058ce4af15d205b6da42804 # v4
+          go-version-file: './hack/tools/golang-ci/go.mod'
+      - name: Determine golang-ci version
+        id: golangci_version
+        run: |
+          echo "version=$(go mod edit -json hack/tools/golang-ci/go.mod | \
+            jq -r '.Require | map(select(.Path == "github.com/golangci/golangci-lint/v2"))[].Version')" \
+            >> $GITHUB_OUTPUT
+      - name: Lint with golang-ci
+        uses: golangci/golangci-lint-action@v8
         with:
-          args: "--timeout=10m --build-tags='normal periodic'"
+          version: ${{ steps.golangci_version.outputs.version }}
+          args: "--timeout=10m --build-tags='normal periodic' --output.sarif.path=out/go-lint.sarif"
+      - name: Upload sarif report
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: out/go-lint.sarif
   go:
     name: Check sources
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v4
       - name: Install Go
-        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5
+        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v5
         with:
           go-version-file: './go.mod'
       - name: Check go mod status
@@ -41,19 +53,15 @@ jobs:
             exit 1
           fi
       - name: Check format
+        env:
+          FMT_ARGS: --diff
         run: |
           make fmt
-          if [[ ! -z $(git status -s) ]]
-          then
-            echo "not all golang files properly gofmt'ed:"
-            git --no-pager diff
-            exit 1
-          fi
   trigger_unit_test_workflow:
     runs-on: ubuntu-latest
     steps: 
       - name: Check out code
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v4
       - name: Trigger mpc-test-ci workflow
         uses: peter-evans/repository-dispatch@v3
         with:
@@ -67,8 +75,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
-      - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v4
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v5
         with:
           go-version-file: './go.mod'
       # https://github.com/securego/gosec/blob/12be14859bc7d4b956b71bef0b443694aa519d8a/README.md#integrating-with-code-scanning

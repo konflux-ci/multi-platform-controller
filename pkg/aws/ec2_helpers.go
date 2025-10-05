@@ -26,9 +26,7 @@ func PingIPAddress(ipAddress string) error {
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
-
-	return nil
+	return conn.Close()
 }
 
 // validateIPAddress returns the IP address of the EC2 instance ec after determining that the address
@@ -169,7 +167,7 @@ func (ec AWSEc2DynamicConfig) findInstancesWithoutTaskRuns(log logr.Logger, rese
 			err := cloud.ValidateTaskRunID(taskRunID)
 			if err != nil {
 				msg := fmt.Sprintf("WARN: invalid TaskRun ID - %s; appending to no TaskRun list anyway...", err.Error())
-				log.Info(msg, *instance.InstanceId)
+				log.Info(msg, "instanceID", *instance.InstanceId)
 				instancesWithoutTaskRuns = append(instancesWithoutTaskRuns, *instance.InstanceId)
 				continue
 			}
@@ -211,7 +209,6 @@ func (r SecretCredentialsProvider) Retrieve(ctx context.Context) (aws.Credential
 			AccessKeyID:     os.Getenv("MULTI_ARCH_ACCESS_KEY"),
 			SecretAccessKey: os.Getenv("MULTI_ARCH_SECRET_KEY"),
 		}, nil
-
 	}
 
 	// Connect to Kubernetes to get credentials info

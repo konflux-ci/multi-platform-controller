@@ -167,7 +167,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 				err := PingIPAddress(testInstanceIP)
 
 				if !shouldFail {
-					Expect(err).Should(BeNil())
+					Expect(err).ShouldNot(HaveOccurred())
 				} else {
 					Expect(err).Should(HaveOccurred())
 				}

@@ -2,7 +2,7 @@ package mpcmetrics
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"sync/atomic"
 )
 
@@ -24,20 +24,22 @@ func (q *BackendProbe) CheckAvailability(_ context.Context) error {
 	// if we split the loads and the stores into two separate operations, we
 	// could miss some success and failure events, so instead load and store
 	// atomically in one operation
-	successes := q.successes.Swap(0)
-	failures := q.failures.Swap(0)
-	if successes == 0 {
-		//ok, let's consider > 1 error and 0 success not a good sign...
-		if failures > 1 {
-			return fmt.Errorf("failure threshold high")
-		}
-	} else {
-		//non-zero successes here, let's check the error to success rate
-		if float64(failures)/float64(successes) > errorThreshold {
-			return fmt.Errorf("failure threshold high")
-		}
+	successes := float64(q.successes.Swap(0))
+	failures := float64(q.failures.Swap(0))
+
+	switch {
+	// if success+failures == 0: nothing happened; we need to handle it
+	//    separately to avoid division by 0.
+	// if success+failures == 1:
+	//   failures == 1: we don't have enough data to fire an alarm
+	//   successes == 1: everything is good
+	case successes+failures <= 1:
+		return nil
+	case failures/(successes+failures) > errorThreshold:
+		return errors.New("failure threshold high")
+	default:
+		return nil
 	}
-	return nil
 }
 
 func (q *BackendProbe) Success() {

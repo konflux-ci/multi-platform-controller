@@ -128,7 +128,6 @@ func (iz IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context
 	}
 
 	return cloud.InstanceIdentifier(*vpcInstance.ID), nil
-
 }
 
 // CountInstances returns the number of System Z virtual server instances whose names start with instanceTag.
@@ -230,7 +229,7 @@ func (iz IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx con
 // TerminateInstance tries to delete a specific System Z virtual server instance for 10 minutes or until the instance is deleted.
 func (iz IBMZDynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
 	log := logr.FromContextOrDiscard(ctx)
-	vpcService, err := iz.createAuthenticatedVpcService(context.Background(), kubeClient)
+	vpcService, err := iz.createAuthenticatedVpcService(ctx, kubeClient)
 	if err != nil {
 		return fmt.Errorf("failed to create an authenticated VPC service: %w", err)
 	}

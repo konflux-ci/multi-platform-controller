@@ -5,7 +5,6 @@
 package taskrun
 
 import (
-	"fmt"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"

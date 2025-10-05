@@ -40,7 +40,7 @@ func createInstanceName(instanceTag string) (string, error) {
 	// strength doesn't matter here
 	md5EncodedBinary := md5.New().Sum(binary) //#nosec
 	md5EncodedString := base64.URLEncoding.EncodeToString(md5EncodedBinary)[0:20]
-	instanceId := strings.Replace(strings.ToLower(md5EncodedString), "_", "-", -1)
+	instanceId := strings.ReplaceAll(strings.ToLower(md5EncodedString), "_", "-")
 	return fmt.Sprintf("%s-%sx", instanceTag, instanceId), nil
 }
 
@@ -52,15 +52,20 @@ func checkIfIpIsLive(ctx context.Context, ip string) error {
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info(fmt.Sprintf("checking if IP address %s is live", ip))
 
-	server, _ := net.ResolveTCPAddr("tcp", ip+":22")
+	server, err := net.ResolveTCPAddr("tcp", ip+":22")
+	if err != nil {
+		log.Error(err, "failed to resolve ip address")
+	}
 	conn, err := net.DialTimeout(server.Network(), server.String(), 5*time.Second)
 	if err != nil {
 		log.Info("WARN: failed to connect to IBM host", "ip", ip)
 		return err
 	}
-	defer conn.Close()
+	if err := conn.Close(); err != nil {
+		log.Error(err, "failed to close connection")
+		return err
+	}
 	return nil
-
 }
 
 func ptr[V any](s V) *V {
@@ -244,7 +249,6 @@ func assignNewlyAllocatedIP(instance *vpcv1.Instance, vpcService *vpcv1.VpcV1) (
 // assignIPToInstance finds an available IP address and assigns it to the Virtual Private Cloud instance and
 // its network interface. The string version of the IP address (an empty string if none was found) is returned.
 func (iz IBMZDynamicConfig) assignIPToInstance(instance *vpcv1.Instance, vpcService *vpcv1.VpcV1) (string, error) {
-
 	if iz.PrivateIP {
 		for _, i := range instance.NetworkInterfaces {
 			if i.PrimaryIP != nil && i.PrimaryIP.Address != nil && *i.PrimaryIP.Address != "0.0.0.0" {
@@ -264,9 +268,9 @@ func (iz IBMZDynamicConfig) assignIPToInstance(instance *vpcv1.Instance, vpcServ
 	// undesirable state before looking for a floating IP in the region
 	switch *instance.Status {
 	case vpcv1.InstanceStatusDeletingConst:
-		return "", fmt.Errorf("instance was deleted")
+		return "", errors.New("instance was deleted")
 	case vpcv1.InstanceStatusFailedConst:
-		return "", fmt.Errorf("instance failed")
+		return "", errors.New("instance failed")
 	case vpcv1.InstanceStatusPendingConst:
 		return "", nil
 	case vpcv1.InstanceStatusRestartingConst:
@@ -274,9 +278,9 @@ func (iz IBMZDynamicConfig) assignIPToInstance(instance *vpcv1.Instance, vpcServ
 	case vpcv1.InstanceStatusStartingConst:
 		return "", nil
 	case vpcv1.InstanceStatusStoppedConst:
-		return "", fmt.Errorf("instance was stopped")
+		return "", errors.New("instance was stopped")
 	case vpcv1.InstanceStatusStoppingConst:
-		return "", fmt.Errorf("instance was stopping")
+		return "", errors.New("instance was stopping")
 	}
 
 	// Try to find an unattached floating IP address next

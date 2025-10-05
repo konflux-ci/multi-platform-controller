@@ -16,6 +16,10 @@ package main
 import (
 	"bytes"
 	"flag"
+	"os"
+	"path/filepath"
+	"strings"
+
 	tektonapi "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -23,10 +27,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/cli-runtime/pkg/printers"
 	"k8s.io/klog/v2"
-	"os"
-	"path/filepath"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	"strings"
 )
 
 func main() {
@@ -83,7 +84,6 @@ func streamFileYamlToTektonObj(path string, obj runtime.Object) runtime.Object {
 }
 
 func convertToSsh(task *tektonapi.Task) {
-
 	builderImage := ""
 	syncVolumes := map[string]bool{}
 	for _, i := range task.Spec.Volumes {

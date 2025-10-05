@@ -117,7 +117,7 @@ func (ec AWSEc2DynamicConfig) LaunchInstance(kubeClient client.Client, ctx conte
 		//TODO: clarify comment -> hard coded 10m timeout
 		return cloud.InstanceIdentifier(*runInstancesOutput.Instances[0].InstanceId), nil
 	}
-	return "", fmt.Errorf("no EC2 instances were created")
+	return "", errors.New("no EC2 instances were created")
 }
 
 // CountInstances returns the number of EC2 instances whose names start with instanceTag.
