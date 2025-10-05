@@ -24,7 +24,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
-	"k8s.io/utils/strings/slices"
 	"knative.dev/pkg/apis"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -79,7 +78,6 @@ const (
 	DynamicPoolPlatforms   = "dynamic-pool-platforms"
 	DefaultInstanceTag     = "instance-tag"
 	AdditionalInstanceTags = "additional-instance-tags"
-	AllowedNamespaces      = "allowed-namespaces"
 	ParamNamespace         = "NAMESPACE"
 	ParamTaskrunName       = "TASKRUN_NAME"
 	ParamSecretName        = "SECRET_NAME"
@@ -715,8 +713,8 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 	}
 	log := logr.FromContextOrDiscard(ctx)
 	if r.configMapResourceVersion != cm.ResourceVersion {
-		//if the config map has changes then dump the cached config
-		//metrics are fine, as they don't depend on the config anyway
+		//if the validatedConfig map has changes then dump the cached validatedConfig
+		//metrics are fine, as they don't depend on the validatedConfig anyway
 		r.configMapResourceVersion = cm.ResourceVersion
 		r.platformConfig = map[string]PlatformConfig{}
 	}
@@ -726,173 +724,105 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 		return existing, nil
 	}
 
-	var additionalInstanceTags map[string]string
-	if val, ok := cm.Data[AdditionalInstanceTags]; !ok {
-		additionalInstanceTags = map[string]string{}
-	} else {
-		additionalTagsArray := strings.Split(val, ",")
-		additionalInstanceTags = make(map[string]string, len(additionalTagsArray))
-		for _, tag := range additionalTagsArray {
-			parts := strings.Split(tag, "=")
-			if len(parts) >= 2 {
-				additionalInstanceTags[parts[0]] = parts[1]
-			} else {
-				log.Error(fmt.Errorf("invalid tag format"), "tag must be key=value", "tag", tag)
-			}
-		}
+	// Parse and validate the entire configuration using the new function
+	validatedConfig, err := ParseAndValidate(ctx, r.client, cm.Data, r.operatorNamespace)
+	if err != nil {
+		log.Error(err, "failed to parse and validate host configuration", "configData", cm.Data, "targetPlatform", targetPlatform)
+		return nil, fmt.Errorf("failed to parse host configuration: %w", err)
 	}
 
-	localPlatforms := cm.Data[LocalPlatforms]
-	if localPlatforms != "" {
-		local := strings.Split(localPlatforms, ",")
-		if slices.Contains(local, targetPlatform) {
+	// Check for local platforms first
+	for _, platform := range validatedConfig.LocalPlatforms {
+		if platform == targetPlatform {
 			return Local{}, nil
 		}
 	}
 
-	dynamic := cm.Data[DynamicPlatforms]
-	if dynamic != "" {
-		for _, platform := range strings.Split(dynamic, ",") {
-			platformConfigName := strings.ReplaceAll(platform, "/", "-")
-			if platform == targetPlatform {
-
-				typeName := cm.Data["dynamic."+platformConfigName+".type"]
-				allocfunc := r.cloudProviders[typeName]
-				if allocfunc == nil {
-					return nil, errors2.New("unknown dynamic provisioning type " + typeName)
-				}
-				maxInstances, err := strconv.Atoi(cm.Data["dynamic."+platformConfigName+".max-instances"])
-				if err != nil {
-					return nil, err
-				}
-				instanceTag := cm.Data["dynamic."+platformConfigName+".instance-tag"]
-				if instanceTag == "" {
-					instanceTag = cm.Data[DefaultInstanceTag]
-				}
-				timeoutSeconds := cm.Data["dynamic."+platformConfigName+".allocation-timeout"]
-				timeout := int64(600) //default to 10 minutes
-				if timeoutSeconds != "" {
-					timeoutInt, err := strconv.Atoi(timeoutSeconds)
-					if err != nil {
-						log.Error(err, "unable to parse allocation timeout")
-					} else {
-						timeout = int64(timeoutInt)
-					}
-				}
-				ret := DynamicResolver{
-					CloudProvider:          allocfunc(platformConfigName, cm.Data, r.operatorNamespace),
-					sshSecret:              cm.Data["dynamic."+platformConfigName+".ssh-secret"],
-					platform:               platform,
-					maxInstances:           maxInstances,
-					instanceTag:            instanceTag,
-					timeout:                timeout,
-					sudoCommands:           cm.Data["dynamic."+platformConfigName+".sudo-commands"],
-					additionalInstanceTags: additionalInstanceTags,
-					eventRecorder:          r.eventRecorder,
-				}
-				r.platformConfig[targetPlatform] = ret
-				err = mpcmetrics.RegisterPlatformMetrics(ctx, targetPlatform, maxInstances)
-				if err != nil {
-					return nil, err
-				}
-				return ret, nil
-			}
+	// Check for dynamic platforms
+	if dynamicConfig, exists := validatedConfig.DynamicPlatforms[targetPlatform]; exists {
+		platformConfigName := strings.ReplaceAll(targetPlatform, "/", "-")
+		allocfunc := r.cloudProviders[dynamicConfig.Type]
+		if allocfunc == nil {
+			return nil, errors2.New("unknown dynamic provisioning type " + dynamicConfig.Type)
 		}
+
+		instanceTag := dynamicConfig.InstanceTag
+		if instanceTag == "" {
+			instanceTag = validatedConfig.DefaultInstanceTag
+		}
+
+		timeout := dynamicConfig.AllocationTimeout
+
+		ret := DynamicResolver{
+			CloudProvider:          allocfunc(platformConfigName, cm.Data, r.operatorNamespace),
+			sshSecret:              dynamicConfig.SSHSecret,
+			platform:               targetPlatform,
+			maxInstances:           dynamicConfig.MaxInstances,
+			instanceTag:            instanceTag,
+			timeout:                timeout,
+			sudoCommands:           dynamicConfig.SudoCommands,
+			additionalInstanceTags: validatedConfig.AdditionalInstanceTags,
+			eventRecorder:          r.eventRecorder,
+		}
+		r.platformConfig[targetPlatform] = ret
+		err = mpcmetrics.RegisterPlatformMetrics(ctx, targetPlatform, dynamicConfig.MaxInstances)
+		if err != nil {
+			return nil, err
+		}
+		return ret, nil
 	}
 
-	dynamicPool := cm.Data[DynamicPoolPlatforms]
-	if dynamicPool != "" {
-		for _, platform := range strings.Split(dynamicPool, ",") {
-			platformConfigName := strings.ReplaceAll(platform, "/", "-")
-			if platform == targetPlatform {
-
-				typeName := cm.Data["dynamic."+platformConfigName+".type"]
-				allocfunc := r.cloudProviders[typeName]
-				if allocfunc == nil {
-					return nil, errors2.New("unknown dynamic provisioning type " + typeName)
-				}
-				maxInstances, err := strconv.Atoi(cm.Data["dynamic."+platformConfigName+".max-instances"])
-				if err != nil {
-					return nil, err
-				}
-				concurrency, err := strconv.Atoi(cm.Data["dynamic."+platformConfigName+".concurrency"])
-				if err != nil {
-					return nil, err
-				}
-				maxAge, err := strconv.Atoi(cm.Data["dynamic."+platformConfigName+".max-age"]) // Minutes
-				if err != nil {
-					return nil, err
-				}
-
-				instanceTag := cm.Data["dynamic."+platformConfigName+".instance-tag"]
-				if instanceTag == "" {
-					instanceTag = cm.Data["instance-tag"]
-				}
-				ret := DynamicHostPool{
-					cloudProvider:          allocfunc(platformConfigName, cm.Data, r.operatorNamespace),
-					sshSecret:              cm.Data["dynamic."+platformConfigName+".ssh-secret"],
-					platform:               platform,
-					maxInstances:           maxInstances,
-					maxAge:                 time.Minute * time.Duration(maxAge),
-					concurrency:            concurrency,
-					instanceTag:            instanceTag,
-					additionalInstanceTags: additionalInstanceTags,
-				}
-				r.platformConfig[targetPlatform] = ret
-				err = mpcmetrics.RegisterPlatformMetrics(ctx, targetPlatform, maxInstances)
-				if err != nil {
-					return nil, err
-				}
-				return ret, nil
-			}
+	// Check for dynamic pool platforms
+	if poolConfig, exists := validatedConfig.DynamicPoolPlatforms[targetPlatform]; exists {
+		platformConfigName := strings.ReplaceAll(targetPlatform, "/", "-")
+		allocfunc := r.cloudProviders[poolConfig.Type]
+		if allocfunc == nil {
+			return nil, errors2.New("unknown dynamic provisioning type " + poolConfig.Type)
 		}
+
+		instanceTag := poolConfig.InstanceTag
+		if instanceTag == "" {
+			instanceTag = validatedConfig.DefaultInstanceTag
+		}
+
+		ret := DynamicHostPool{
+			cloudProvider:          allocfunc(platformConfigName, cm.Data, r.operatorNamespace),
+			sshSecret:              poolConfig.SSHSecret,
+			platform:               targetPlatform,
+			maxInstances:           poolConfig.MaxInstances,
+			maxAge:                 time.Minute * time.Duration(poolConfig.MaxAge),
+			concurrency:            poolConfig.Concurrency,
+			instanceTag:            instanceTag,
+			additionalInstanceTags: validatedConfig.AdditionalInstanceTags,
+		}
+		r.platformConfig[targetPlatform] = ret
+		err = mpcmetrics.RegisterPlatformMetrics(ctx, targetPlatform, poolConfig.MaxInstances)
+		if err != nil {
+			return nil, err
+		}
+		return ret, nil
 	}
 
+	// Check for static platforms - build HostPool for static hosts
 	ret := HostPool{hosts: map[string]*Host{}, targetPlatform: targetPlatform}
-	for k, v := range cm.Data {
-		if !strings.HasPrefix(k, "host.") {
-			continue
-		}
-		k = k[len("host."):]
-		pos := strings.LastIndex(k, ".")
-		if pos == -1 {
-			continue
-		}
-		name := k[0:pos]
-		key := k[pos+1:]
-		host := ret.hosts[name]
-		if host == nil {
-			host = &Host{}
-			ret.hosts[name] = host
-			host.Name = name
-		}
-		switch key {
-		case "address":
-			host.Address = v
-		case "user":
-			host.User = v
-		case "platform":
-			host.Platform = v
-		case "secret":
-			host.Secret = v
-		case "concurrency":
-			atoi, err := strconv.Atoi(v)
-			if err != nil {
-				return nil, err
-			}
-			host.Concurrency = atoi
-		default:
-			log.Info("unknown key", "key", key)
-		}
-
-	}
-	// calculate platform capacity
 	platformCapacity := 0
-	for _, host := range ret.hosts {
-		if host.Platform == targetPlatform {
-			platformCapacity += host.Concurrency
+
+	// Convert static host configs to Host structs for the matching platform
+	for hostName, staticConfig := range validatedConfig.StaticPlatforms {
+		if staticConfig.Platform == targetPlatform {
+			host := &Host{
+				Name:        hostName,
+				Address:     staticConfig.Address,
+				User:        staticConfig.User,
+				Platform:    staticConfig.Platform,
+				Secret:      staticConfig.Secret,
+				Concurrency: staticConfig.Concurrency,
+			}
+			ret.hosts[hostName] = host
+			platformCapacity += staticConfig.Concurrency
 		}
 	}
+
 	r.platformConfig[targetPlatform] = ret
 	err = mpcmetrics.RegisterPlatformMetrics(ctx, targetPlatform, platformCapacity)
 	if err != nil {

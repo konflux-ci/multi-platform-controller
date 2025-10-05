@@ -36,7 +36,7 @@ var _ = Describe("Test Dynamic Pool Host Provisioning", func() {
 	// it gets assigned an instance from the pool, the provisioner succeeds,
 	// and after completion, the instance is returned to the pool (not terminated).
 	It("should allocate a cloud host with dynamic pool correctly", func(ctx SpecContext) {
-		tr := runUserPipeline(ctx, client, reconciler, "test-dyn-pool")
+		tr := runDynamicPoolPipeline(ctx, client, reconciler, "test-dyn-pool", "linux/arm64")
 		provision := getProvisionTaskRun(ctx, client, tr)
 		params := map[string]string{}
 		for _, i := range provision.Spec.Params {
@@ -78,7 +78,7 @@ var _ = Describe("Test Dynamic Pool Host Provisioning", func() {
 			Expect(len(cloudImpl.Instances)).Should(Equal(1))
 
 			// Start a user task. It should be assigned the single pre-existing instance.
-			userTask := runUserPipeline(ctx, client, reconciler, "test-dyn-pool-fail-1")
+			userTask := runDynamicPoolPipeline(ctx, client, reconciler, "test-dyn-pool-fail-1", "linux/arm64")
 			initialHost := userTask.Labels[AssignedHost]
 			Expect(initialHost).Should(Equal("preexisting-task"))
 
@@ -123,7 +123,7 @@ var _ = Describe("Test Dynamic Pool Host Provisioning", func() {
 			Expect(len(cloudImpl.Instances)).Should(Equal(2))
 
 			// Start a user task. It will be assigned one of the instances.
-			userTask := runUserPipeline(ctx, client, reconciler, "test-dyn-pool-all-fail")
+			userTask := runDynamicPoolPipeline(ctx, client, reconciler, "test-dyn-pool-all-fail", "linux/arm64")
 			host1 := userTask.Labels[AssignedHost]
 
 			// Fail the first provision task

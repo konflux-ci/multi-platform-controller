@@ -59,7 +59,7 @@ func setupClientAndReconciler(objs []runtimeclient.Object) (runtimeclient.Client
 		scheme:            scheme,
 		eventRecorder:     &record.FakeRecorder{},
 		operatorNamespace: systemNamespace,
-		cloudProviders:    map[string]func(platform string, config map[string]string, systemnamespace string) cloud.CloudProvider{"mock": MockCloudSetup},
+		cloudProviders:    map[string]func(platform string, config map[string]string, systemnamespace string) cloud.CloudProvider{"mock": MockCloudSetup, "aws": MockCloudSetup},
 		platformConfig:    map[string]PlatformConfig{},
 	}
 	return client, reconciler
@@ -199,11 +199,59 @@ func assertNoSecret(ctx context.Context, client runtimeclient.Client, tr *pipeli
 	Expect(errors.IsNotFound(err)).Should(BeTrue())
 }
 
-// runUserPipeline encapsulates the common flow of creating a user TaskRun
-// and reconciling it until a provisioner TaskRun is created or a host is assigned.
-// This helper is used in happy-path scenarios to reduce boilerplate.
-func runUserPipeline(ctx context.Context, client runtimeclient.Client, reconciler *ReconcileTaskRun, name string) *pipelinev1.TaskRun {
-	createUserTaskRun(ctx, client, name, "linux/arm64")
+// runStaticHostPoolPipeline handles the flow for static host pool allocation (HostPool)
+// Static hosts assign immediately after one reconcile
+func runStaticHostPoolPipeline(ctx context.Context, client runtimeclient.Client, reconciler *ReconcileTaskRun, name string, platform string) *pipelinev1.TaskRun {
+	createUserTaskRun(ctx, client, name, platform)
+	// Static hosts assign immediately after one reconcile
+	_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
+	Expect(err).ShouldNot(HaveOccurred())
+	tr := getUserTaskRun(ctx, client, name)
+	Expect(tr.Labels[AssignedHost]).ShouldNot(BeEmpty())
+	return tr
+}
+
+// runLocalHostPipeline handles the flow for local host allocation
+// Local hosts assign immediately to "localhost" after one reconcile
+func runLocalHostPipeline(ctx context.Context, client runtimeclient.Client, reconciler *ReconcileTaskRun, name string, platform string) *pipelinev1.TaskRun {
+	createUserTaskRun(ctx, client, name, platform)
+	// Local hosts assign immediately after one reconcile
+	_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
+	Expect(err).ShouldNot(HaveOccurred())
+	tr := getUserTaskRun(ctx, client, name)
+	Expect(tr.Labels[AssignedHost]).Should(Equal("localhost"))
+	return tr
+}
+
+// runDynamicHostPipeline handles the flow for dynamic host allocation (DynamicResolver)
+// Dynamic hosts need cloud instance allocation before host assignment
+func runDynamicHostPipeline(ctx context.Context, client runtimeclient.Client, reconciler *ReconcileTaskRun, name string, platform string) *pipelinev1.TaskRun {
+	createUserTaskRun(ctx, client, name, platform)
+	// Multiple reconcile calls are needed because the allocation process is asynchronous:
+	// 1st call: Detects TaskRun and initiates host allocation
+	// 2nd call: Processes allocation result (may launch cloud instance)
+	// 3rd call: Assigns host once instance is ready
+	_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
+	Expect(err).ShouldNot(HaveOccurred())
+	_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
+	Expect(err).ShouldNot(HaveOccurred())
+	_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
+	Expect(err).ShouldNot(HaveOccurred())
+	tr := getUserTaskRun(ctx, client, name)
+	if tr.Labels[AssignedHost] == "" {
+		Expect(tr.Annotations[CloudInstanceId]).ShouldNot(BeEmpty())
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
+		Expect(err).ShouldNot(HaveOccurred())
+		tr = getUserTaskRun(ctx, client, name)
+	}
+	Expect(tr.Labels[AssignedHost]).ShouldNot(BeEmpty())
+	return tr
+}
+
+// runDynamicPoolPipeline handles the flow for dynamic pool allocation (DynamicHostPool)
+// Dynamic pools work similarly to dynamic hosts but from a pre-warmed pool
+func runDynamicPoolPipeline(ctx context.Context, client runtimeclient.Client, reconciler *ReconcileTaskRun, name string, platform string) *pipelinev1.TaskRun {
+	createUserTaskRun(ctx, client, name, platform)
 	// Multiple reconcile calls are needed because the allocation process is asynchronous:
 	// 1st call: Detects TaskRun and initiates host allocation
 	// 2nd call: Processes allocation result (may launch cloud instance)
@@ -280,11 +328,25 @@ func createUserTaskRun(ctx context.Context, client runtimeclient.Client, name st
 // objects (ConfigMap, Secret) to represent a static host pool configuration.
 func createHostConfig() []runtimeclient.Object {
 	cm := createHostConfigMap()
-	sec := v1.Secret{}
-	sec.Name = "awskeys"
-	sec.Namespace = systemNamespace
-	sec.Labels = map[string]string{MultiPlatformSecretLabel: "true"}
-	return []runtimeclient.Object{&cm, &sec}
+
+	// Create SSH secrets for the static hosts
+	sec1 := v1.Secret{}
+	sec1.Name = "ibm-s390x-host-secret"
+	sec1.Namespace = systemNamespace
+	sec1.Labels = map[string]string{MultiPlatformSecretLabel: "true"}
+
+	sec2 := v1.Secret{}
+	sec2.Name = "ibm-ppc64le-host-secret"
+	sec2.Namespace = systemNamespace
+	sec2.Labels = map[string]string{MultiPlatformSecretLabel: "true"}
+
+	// Keep the AWS secret for other tests
+	awsSec := v1.Secret{}
+	awsSec.Name = "awskeys"
+	awsSec.Namespace = systemNamespace
+	awsSec.Labels = map[string]string{MultiPlatformSecretLabel: "true"}
+
+	return []runtimeclient.Object{&cm, &sec1, &sec2, &awsSec}
 }
 
 // createHostConfigMap creates the ConfigMap for a static host pool.
@@ -295,16 +357,16 @@ func createHostConfigMap() v1.ConfigMap {
 	cm.Labels = map[string]string{ConfigMapLabel: "hosts"}
 	cm.Data = map[string]string{
 		"allowed-namespaces":     "default,system-.*",
-		"host.host1.address":     "ec2-12-345-67-890.compute-1.amazonaws.com",
-		"host.host1.secret":      "awskeys",
+		"host.host1.address":     "127.0.0.1",
+		"host.host1.secret":      "ibm-s390x-host-secret",
 		"host.host1.concurrency": "4",
-		"host.host1.user":        "ec2-user",
-		"host.host1.platform":    "linux/arm64",
-		"host.host2.address":     "ec2-09-876-543-210.compute-1.amazonaws.com",
-		"host.host2.secret":      "awskeys",
+		"host.host1.user":        "root",
+		"host.host1.platform":    "linux/s390x",
+		"host.host2.address":     "127.0.0.1",
+		"host.host2.secret":      "ibm-s390x-host-secret",
 		"host.host2.concurrency": "4",
-		"host.host2.user":        "ec2-user",
-		"host.host2.platform":    "linux/arm64",
+		"host.host2.user":        "root",
+		"host.host2.platform":    "linux/s390x",
 	}
 	return cm
 }
@@ -318,7 +380,7 @@ func createDynamicHostConfig() []runtimeclient.Object {
 	cm.Data = map[string]string{
 		"additional-instance-tags":               "foo=bar,key=value",
 		"dynamic-platforms":                      "linux/arm64",
-		"dynamic.linux-arm64.type":               "mock",
+		"dynamic.linux-arm64.type":               "aws",
 		"dynamic.linux-arm64.region":             "us-east-1",
 		"dynamic.linux-arm64.ami":                "ami-03d6a5256a46c9feb",
 		"dynamic.linux-arm64.instance-type":      "t4g.medium",
@@ -344,7 +406,7 @@ func createDynamicPoolHostConfig() []runtimeclient.Object {
 	cm.Data = map[string]string{
 		"additional-instance-tags":          "foo=bar,key=value",
 		"dynamic-pool-platforms":            "linux/arm64",
-		"dynamic.linux-arm64.type":          "mock",
+		"dynamic.linux-arm64.type":          "aws",
 		"dynamic.linux-arm64.region":        "us-east-1",
 		"dynamic.linux-arm64.ami":           "ami-03d6a5256a46c9feb",
 		"dynamic.linux-arm64.instance-type": "t4g.medium",

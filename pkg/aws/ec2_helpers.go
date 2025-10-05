@@ -19,8 +19,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// pingIPAddress tries to resolve the IP address ip. An error is returned if ipAddress couldn't be reached.
-func pingIPAddress(ipAddress string) error {
+// PingIPAddress tries to resolve the IP address ip. An error is returned if ipAddress couldn't be reached.
+func PingIPAddress(ipAddress string) error {
 	server, _ := net.ResolveTCPAddr("tcp", ipAddress+":22")
 	conn, err := net.DialTCP("tcp", nil, server)
 	if err != nil {
@@ -43,7 +43,7 @@ func (ec AWSEc2DynamicConfig) validateIPAddress(ctx context.Context, instance *t
 	}
 
 	if ip != "" {
-		err = pingIPAddress(ip)
+		err = PingIPAddress(ip)
 	}
 	if err != nil {
 		log := logr.FromContextOrDiscard(ctx)
@@ -53,8 +53,8 @@ func (ec AWSEc2DynamicConfig) validateIPAddress(ctx context.Context, instance *t
 	return ip, err
 }
 
-// createClient uses AWS credentials and an EC2 configuration to create and return an EC2 client.
-func (ec AWSEc2DynamicConfig) createClient(kubeClient client.Client, ctx context.Context) (*ec2.Client, error) {
+// CreateClient uses AWS credentials and an EC2 configuration to create and return an EC2 client.
+func (ec AWSEc2DynamicConfig) CreateClient(kubeClient client.Client, ctx context.Context) (*ec2.Client, error) {
 	secretCredentials := SecretCredentialsProvider{Name: ec.Secret, Namespace: ec.SystemNamespace, Client: kubeClient}
 	cfg, err := config.LoadDefaultConfig(ctx,
 		config.WithCredentialsProvider(secretCredentials),

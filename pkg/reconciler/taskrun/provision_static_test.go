@@ -32,7 +32,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 	// It tests the basic happy-path of allocating a host from the static pool
 	// and verifies that the created provisioner TaskRun has the correct parameters.
 	It("should allocate a host correctly", func(ctx SpecContext) {
-		tr := runUserPipeline(ctx, client, reconciler, "test-static-alloc")
+		tr := runStaticHostPoolPipeline(ctx, client, reconciler, "test-static-alloc", "linux/s390x")
 		provision := getProvisionTaskRun(ctx, client, tr)
 		params := map[string]string{}
 		for _, i := range provision.Spec.Params {
@@ -41,8 +41,8 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		Expect(params["SECRET_NAME"]).Should(Equal("multi-platform-ssh-test-static-alloc"))
 		Expect(params["TASKRUN_NAME"]).Should(Equal("test-static-alloc"))
 		Expect(params["NAMESPACE"]).Should(Equal(userNamespace))
-		Expect(params["USER"]).Should(Equal("ec2-user"))
-		Expect(params["HOST"]).Should(BeElementOf("ec2-09-876-543-210.compute-1.amazonaws.com", "ec2-12-345-67-890.compute-1.amazonaws.com"))
+		Expect(params["USER"]).Should(Equal("root"))
+		Expect(params["HOST"]).Should(Equal("127.0.0.1"))
 	})
 
 	// It tests the scenario where all available host slots are occupied.
@@ -53,18 +53,18 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		// Saturate the host pool by running tasks until all concurrency slots are used.
 		runs := []*pipelinev1.TaskRun{}
 		for i := 0; i < 8; i++ {
-			tr := runUserPipeline(ctx, client, reconciler, fmt.Sprintf("test-%d", i))
+			tr := runStaticHostPoolPipeline(ctx, client, reconciler, fmt.Sprintf("test-%d", i), "linux/s390x")
 			provision := getProvisionTaskRun(ctx, client, tr)
 			runSuccessfulProvision(ctx, provision, client, tr, reconciler)
 			runs = append(runs, tr)
 		}
 		// Create one more TaskRun, which should now be forced to wait.
 		name := fmt.Sprintf("test-%d", 9)
-		createUserTaskRun(ctx, client, name, "linux/arm64")
+		createUserTaskRun(ctx, client, name, "linux/s390x")
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
 		Expect(err).ShouldNot(HaveOccurred())
 		tr := getUserTaskRun(ctx, client, name)
-		Expect(tr.Labels[WaitingForPlatformLabel]).Should(Equal("linux-arm64"))
+		Expect(tr.Labels[WaitingForPlatformLabel]).Should(Equal("linux-s390x"))
 		metricDto := &dto.Metric{}
 		var pmetrics *mpcmetrics.PlatformMetrics
 		mpcmetrics.HandleMetrics(tr.Labels[TargetPlatformLabel], func(metrics *mpcmetrics.PlatformMetrics) {
@@ -115,7 +115,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		// allocate a different host from the pool.
 		It("should mark the host as failed and attempt to re-allocate", func(ctx SpecContext) {
 			// Create the initial user task that needs a host.
-			userTask := runUserPipeline(ctx, client, reconciler, "test-single-failure")
+			userTask := runStaticHostPoolPipeline(ctx, client, reconciler, "test-single-failure", "linux/s390x")
 			Expect(userTask.Labels[AssignedHost]).NotTo(BeEmpty(), "A host should have been assigned initially")
 			initialHost := userTask.Labels[AssignedHost]
 
@@ -162,7 +162,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		// tried and failed, the user TaskRun is ultimately marked as failed
 		// and an error is written to its secret.
 		It("should fail the task run after all hosts have been tried", func(ctx SpecContext) {
-			tr := runUserPipeline(ctx, client, reconciler, "test-all-fail")
+			tr := runStaticHostPoolPipeline(ctx, client, reconciler, "test-all-fail", "linux/s390x")
 			provision1 := getProvisionTaskRun(ctx, client, tr)
 			host1 := provision1.Labels[AssignedHost]
 
@@ -218,7 +218,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		// never created. The test ensures the controller handles this by creating
 		// an error secret for the user TaskRun.
 		It("should create an error secret if the provision task succeeds but does not create a secret", func(ctx SpecContext) {
-			tr := runUserPipeline(ctx, client, reconciler, "test-no-secret")
+			tr := runStaticHostPoolPipeline(ctx, client, reconciler, "test-no-secret", "linux/s390x")
 			provision := getProvisionTaskRun(ctx, client, tr)
 
 			provision.Status.CompletionTime = &metav1.Time{Time: time.Now()}
@@ -240,7 +240,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		// the test verifies that all related resources (secrets, provisioner TaskRuns)
 		// are properly deleted afterward.
 		It("should successfully provision and clean up", func(ctx SpecContext) {
-			tr := runUserPipeline(ctx, client, reconciler, "test-success")
+			tr := runStaticHostPoolPipeline(ctx, client, reconciler, "test-success", "linux/s390x")
 			provision := getProvisionTaskRun(ctx, client, tr)
 
 			runSuccessfulProvision(ctx, provision, client, tr, reconciler)
@@ -292,9 +292,9 @@ var _ = Describe("Test Static Host Provisioning", func() {
 
 		It("should increment Provision Successes metric when provision task succeeds", func(ctx SpecContext) {
 			// run a user task successfully
-			tr := runUserPipeline(ctx, client, reconciler, "test-success")
+			tr := runStaticHostPoolPipeline(ctx, client, reconciler, "test-success", "linux/s390x")
 			// Get initial metric value
-			initialSuccesses := getCounterValue("linux/arm64", "provisioning_successes")
+			initialSuccesses := getCounterValue("linux/s390x", "provisioning_successes")
 			Expect(initialSuccesses).ShouldNot(Equal(-1))
 
 			provision := getProvisionTaskRun(ctx, client, tr)
@@ -302,14 +302,14 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			runSuccessfulProvision(ctx, provision, client, tr, reconciler)
 
 			// Verify the Provision Successes metric incremented
-			Expect(getCounterValue("linux/arm64", "provisioning_successes")).Should(Equal(initialSuccesses + 1))
+			Expect(getCounterValue("linux/s390x", "provisioning_successes")).Should(Equal(initialSuccesses + 1))
 		})
 
 		It("should increment Provision Successes metric by one when provision task succeeds after a conflict", func(ctx SpecContext) {
 			// run a user task with a conflict
-			tr := runUserPipeline(ctx, client, reconciler, "test-success-race")
+			tr := runStaticHostPoolPipeline(ctx, client, reconciler, "test-success-race", "linux/s390x")
 			// Get initial metric value
-			initialSuccesses := getCounterValue("linux/arm64", "provisioning_successes")
+			initialSuccesses := getCounterValue("linux/s390x", "provisioning_successes")
 			Expect(initialSuccesses).ShouldNot(Equal(-1))
 			// Run normal provision setup
 			provision := getProvisionTaskRun(ctx, client, tr)
@@ -318,7 +318,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			runSuccessfulProvisionWithConflict(ctx, provision, client, tr, reconciler)
 
 			// Verify the Provision Successes metric incremented only by one despite the conflict
-			Expect(getCounterValue("linux/arm64", "provisioning_successes")).Should(Equal(initialSuccesses + 1))
+			Expect(getCounterValue("linux/s390x", "provisioning_successes")).Should(Equal(initialSuccesses + 1))
 
 			// Verify both external and MPC changes are preserved after conflict resolution
 			updated := &pipelinev1.TaskRun{}

@@ -28,11 +28,12 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 	Describe("Test Config Map Parsing", func() {
 		It("should parse the static host ConfigMap correctly", func(ctx SpecContext) {
 			_, reconciler := setupClientAndReconciler(createHostConfig())
-			configIface, err := reconciler.readConfiguration(ctx, "linux/arm64", userNamespace)
+			configIface, err := reconciler.readConfiguration(ctx, "linux/s390x", userNamespace)
 			config := configIface.(HostPool)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(len(config.hosts)).Should(Equal(2))
-			Expect(config.hosts["host1"].Platform).Should(Equal("linux/arm64"))
+			Expect(config.hosts["host1"].Platform).Should(Equal("linux/s390x"))
+			Expect(config.hosts["host2"].Platform).Should(Equal("linux/s390x"))
 		})
 
 		It("should parse the local host ConfigMap correctly", func(ctx SpecContext) {
@@ -91,6 +92,101 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 
 			secret := getSecret(ctx, client, tr)
 			Expect(secret.Data["error"]).ShouldNot(BeEmpty())
+		})
+	})
+
+	// This section simulates a race condition where the host-config ConfigMap is deleted after a TaskRun has been
+	// provisioned but before it can be deallocated. A robust controller should fail the reconcile loop but leave the
+	// TaskRun's finalizer and labels intact to allow for a retry.
+	When("a completed TaskRun is being deallocated", func() {
+		var (
+			client     runtimeclient.Client
+			reconciler *ReconcileTaskRun
+			tr         *pipelinev1.TaskRun
+			secretName string
+		)
+
+		BeforeEach(func(ctx SpecContext) {
+			client, reconciler = setupClientAndReconciler(createHostConfig())
+			// Create a TaskRun that looks like it has finished its work and now needs cleanup.
+			// It has the necessary labels and finalizer from a successful allocation.
+			taskName := "test-dealloc-config-disappears"
+			secretName = SecretPrefix + taskName
+			tr = &pipelinev1.TaskRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      taskName,
+					Namespace: userNamespace,
+					Labels: map[string]string{
+						AssignedHost:        "host1",
+						TargetPlatformLabel: platformLabel("linux/s390x"),
+					},
+					Finalizers: []string{PipelineFinalizer},
+				},
+				Spec: pipelinev1.TaskRunSpec{
+					Params: []pipelinev1.Param{
+						{Name: PlatformParam, Value: *pipelinev1.NewStructuredValues("linux/s390x")},
+					},
+				},
+			}
+			// Mark it as completed successfully to trigger the deallocation path
+			tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			tr.Status.SetCondition(&apis.Condition{
+				Type:   apis.ConditionSucceeded,
+				Status: "True",
+			})
+			// Set up the Status.TaskSpec to include the multi-platform secret volume reference
+			// This is required for the reconciler to process this as a user task
+			tr.Status.TaskSpec = &pipelinev1.TaskSpec{
+				Volumes: []corev1.Volume{
+					{
+						Name: "ssh-secret",
+						VolumeSource: corev1.VolumeSource{
+							Secret: &corev1.SecretVolumeSource{
+								SecretName: secretName,
+							},
+						},
+					},
+				},
+			}
+			Expect(client.Create(ctx, tr)).Should(Succeed())
+
+			// We also need its corresponding secret to exist, as the reconciler will try to clean it up.
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      secretName,
+					Namespace: userNamespace,
+				},
+				Data: map[string][]byte{"host": []byte("host1")},
+			}
+			Expect(client.Create(ctx, secret)).Should(Succeed())
+		})
+
+		It("should fail gracefully and not remove the finalizer if the host config is missing", func(ctx SpecContext) {
+			By("Simulating the host-config ConfigMap being deleted mid-flight")
+			cmToDelete := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      HostConfig,
+					Namespace: systemNamespace,
+				},
+			}
+			Expect(client.Delete(ctx, cmToDelete)).Should(Succeed())
+
+			By("Running the reconciler, which should now fail to read the configuration")
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: tr.Name, Namespace: tr.Namespace}})
+			Expect(err).Should(HaveOccurred(), "Reconciler should return an error when config is missing for deallocation")
+
+			By("Verifying the TaskRun's state has NOT changed (finalizer and labels are preserved)")
+			updatedTr := &pipelinev1.TaskRun{}
+			Expect(client.Get(ctx, types.NamespacedName{Name: tr.Name, Namespace: tr.Namespace}, updatedTr)).Should(Succeed())
+
+			// The finalizer MUST remain to prevent the object from being deleted by Kubernetes.
+			Expect(updatedTr.Finalizers).Should(ContainElement(PipelineFinalizer), "The finalizer must be preserved on failure")
+			Expect(updatedTr.Labels[AssignedHost]).Should(Equal("host1"), "The assigned host label must be preserved on failure")
+
+			By("Verifying the secret was NOT deleted, because the deallocation logic failed early")
+			leftoverSecret := &corev1.Secret{}
+			err = client.Get(ctx, types.NamespacedName{Name: secretName, Namespace: userNamespace}, leftoverSecret)
+			Expect(err).ShouldNot(HaveOccurred(), "The secret should not be deleted if deallocation fails")
 		})
 	})
 
@@ -287,9 +383,9 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 		var platform string
 
 		BeforeEach(func() {
-			platform = "linux/arm64"
+			platform = "linux/s390x"
 			client, reconciler = setupClientAndReconciler(createHostConfig())
-			Expect(mpcmetrics.RegisterPlatformMetrics(context.Background(), platform, 1)).ShouldNot(HaveOccurred())
+			Expect(mpcmetrics.RegisterPlatformMetrics(context.Background(), platform, 8)).ShouldNot(HaveOccurred())
 		})
 		// happy path
 		It("should NOT increment CleanupFailures metric when cleanup task succeeds", func(ctx SpecContext) {

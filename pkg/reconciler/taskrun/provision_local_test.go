@@ -31,7 +31,7 @@ var _ = Describe("Test Local Host Provisioning", func() {
 	// host "localhost" is correctly generated, and that all resources are
 	// cleaned up after the user TaskRun completes.
 	It("should allocate a local host correctly", func(ctx SpecContext) {
-		tr := runUserPipeline(ctx, client, reconciler, "test-local")
+		tr := runLocalHostPipeline(ctx, client, reconciler, "test-local", "linux/arm64")
 		ExpectNoProvisionTaskRun(ctx, client, tr)
 		secret := getSecret(ctx, client, tr)
 		Expect(secret.Data["error"]).Should(BeEmpty())

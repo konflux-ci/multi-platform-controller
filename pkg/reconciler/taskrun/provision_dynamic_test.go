@@ -50,7 +50,7 @@ var _ = Describe("Test Dynamic Host Provisioning", func() {
 		// 5. The user TaskRun completes.
 		// 6. The cloud instance is terminated as part of cleanup.
 		It("should allocate a cloud host correctly", func(ctx SpecContext) {
-			tr := runUserPipeline(ctx, client, reconciler, "test-dynamic-alloc")
+			tr := runDynamicHostPipeline(ctx, client, reconciler, "test-dynamic-alloc", "linux/arm64")
 			provision := getProvisionTaskRun(ctx, client, tr)
 			params := map[string]string{}
 			for _, i := range provision.Spec.Params {

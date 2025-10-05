@@ -164,7 +164,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 		DescribeTable("Testing the ability to ping a remote AWS ec2 instance via SSH",
 			func(testInstanceIP string, shouldFail bool) {
 
-				err := pingIPAddress(testInstanceIP)
+				err := PingIPAddress(testInstanceIP)
 
 				if !shouldFail {
 					Expect(err).Should(BeNil())
