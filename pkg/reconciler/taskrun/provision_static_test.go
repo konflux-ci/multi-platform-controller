@@ -295,7 +295,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			tr := runStaticHostPoolPipeline(ctx, client, reconciler, "test-success", "linux/s390x")
 			// Get initial metric value
 			initialSuccesses := getCounterValue("linux/s390x", "provisioning_successes")
-			Expect(initialSuccesses).ShouldNot(Equal(-1))
+			Expect(initialSuccesses).ShouldNot(BeEquivalentTo(-1))
 
 			provision := getProvisionTaskRun(ctx, client, tr)
 
@@ -310,7 +310,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			tr := runStaticHostPoolPipeline(ctx, client, reconciler, "test-success-race", "linux/s390x")
 			// Get initial metric value
 			initialSuccesses := getCounterValue("linux/s390x", "provisioning_successes")
-			Expect(initialSuccesses).ShouldNot(Equal(-1))
+			Expect(initialSuccesses).ShouldNot(BeEquivalentTo(-1))
 			// Run normal provision setup
 			provision := getProvisionTaskRun(ctx, client, tr)
 

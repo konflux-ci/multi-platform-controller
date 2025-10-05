@@ -5,7 +5,6 @@
 package taskrun
 
 import (
-	"fmt"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -131,7 +130,7 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 					Entry("because it contains an underscore", "linux/amd_64"),
 					Entry("because a part starts with a hyphen", "-linux/amd64"),
 					Entry("because a part ends with a hyphen", "linux/amd64-"),
-					Entry("because a part is longer than 63 chars", fmt.Sprintf("linux/%s", longLabel)),
+					Entry("because a part is longer than 63 chars", "linux/"+longLabel),
 				)
 			})
 		})
@@ -386,7 +385,7 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 		When("validating invalid key or value formats", func() {
 			DescribeTable("it should return error when key or value formats are invalid",
 				func(key, value string) {
-					Expect(Expect(validateDynamicInstanceTag(key, value)).Should(HaveOccurred()))
+					Expect(validateDynamicInstanceTag(key, value)).Should(HaveOccurred())
 				},
 				Entry("with matching arm64 platform and instance type", "invalid-format", "prod-arm64-m2xlarge"),
 				Entry("with multi-part instance type in correct order", "linux-m2xlarge-arm64", "invalid-format"),

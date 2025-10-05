@@ -726,9 +726,10 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 				s390xCount := 0
 				ppc64leCount := 0
 				for _, host := range config.StaticPlatforms {
-					if host.Platform == "linux/s390x" {
+					switch host.Platform {
+					case "linux/s390x":
 						s390xCount++
-					} else if host.Platform == "linux/ppc64le" {
+					case "linux/ppc64le":
 						ppc64leCount++
 					}
 				}

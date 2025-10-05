@@ -31,7 +31,7 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 			configIface, err := reconciler.readConfiguration(ctx, "linux/s390x", userNamespace)
 			config := configIface.(HostPool)
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(len(config.hosts)).Should(Equal(2))
+			Expect(config.hosts).Should(HaveLen(2))
 			Expect(config.hosts["host1"].Platform).Should(Equal("linux/s390x"))
 			Expect(config.hosts["host2"].Platform).Should(Equal("linux/s390x"))
 		})

@@ -1,7 +1,6 @@
 package taskrun
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -9,12 +8,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	// alias for clarity, otherwise it'll look like aws.ActuallyWeThoughtAboutThisOne()
 	ec2Helpers "github.com/konflux-ci/multi-platform-controller/pkg/aws"
 	tektonapi "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var (
@@ -22,13 +19,6 @@ var (
 	errMissingPlatformParameter = errors.New("PLATFORM parameter not found in TaskRun parameters")
 	errInvalidNumericValue      = errors.New("value must be a valid integer between 1 and 100")
 	errInvalidIPFormat          = errors.New("value must be a valid IP address in dotted decimal notation")
-
-	// AWS resource validation errors - standardized to avoid exposing resource details in logs
-	errAWSClientCreation    = errors.New("failed to create AWS EC2 client")
-	errSecurityGroupInvalid = errors.New("security group not found or inaccessible")
-	errSubnetInvalid        = errors.New("subnet not found or inaccessible")
-	errKeyPairInvalid       = errors.New("key pair not found or inaccessible")
-	errAMIInvalid           = errors.New("AMI not found or not available")
 
 	// IBM resource validation errors
 	errIBMHostSecretEmpty            = errors.New("host secret value cannot be empty")
@@ -41,9 +31,6 @@ var (
 	maxStaticConcurrency = 8
 	// Maximum pool host age in minutes (24 hours)
 	maxPoolHostAge = 1440
-
-	// Cache flag for validated AWS resources to avoid repeated validation
-	mpcAWSResourcesValidated = false
 )
 
 // validatePlatformFormat validates a platform string according to the controller's rules
@@ -169,7 +156,7 @@ func validateMaxAllocationTimeout(value string) (int, error) {
 // Example: "192.168.1.1" becomes "***.***.***.1"
 func obfuscateIP(ip string) string {
 	parts := strings.Split(ip, ".")
-	return fmt.Sprintf("***.***.***.%s", parts[3])
+	return "***.***.***." + parts[3]
 }
 
 // validateIP validates that a string represents a valid and reachable IP address
@@ -310,7 +297,7 @@ func parseDynamicHostInstanceTypValue(value string) (platform, instanceType stri
 	// We need at least 2 parts - a prefix and a platform
 	// If there are only 2 parts, it's a simple value (e.g., "prod-arm64") with no instance type
 	if len(parts) < 2 {
-		return "", "", fmt.Errorf("invalid value format: must be '<prefix>-<platform>' or '<prefix>-<platform>-<instance_type>'")
+		return "", "", errors.New("invalid value format: must be '<prefix>-<platform>' or '<prefix>-<platform>-<instance_type>'")
 	}
 
 	// Platform is always the second part (index 1)
@@ -331,130 +318,4 @@ func parseDynamicHostInstanceTypValue(value string) (platform, instanceType stri
 	instanceType = strings.Join(instanceParts, "-")
 
 	return platform, instanceType, nil
-}
-
-// AWSResourceValidationConfig holds configuration for AWS resource validation
-type AWSResourceValidationConfig struct {
-	Region          string
-	AMI             string
-	SecurityGroupId string
-	SubnetId        string
-	KeyName         string
-	AWSSecret       string
-	SystemNamespace string
-}
-
-// validateAWSResources validates AWS resources exist in the specified account/region
-// Validates security groups, subnets, and key pairs once (with caching), AMIs always validated
-// Returns error if any required resources are not found or cannot be accessed
-func validateAWSResources(ctx context.Context, kubeClient client.Client, config AWSResourceValidationConfig) error {
-	// Create AWS EC2 configuration so we can utilize
-	awsConfig := ec2Helpers.AWSEc2DynamicConfig{
-		Region:          config.Region,
-		Secret:          config.AWSSecret,
-		SystemNamespace: config.SystemNamespace,
-	}
-
-	// Create EC2 client once and reuse for all validations
-	ec2Client, err := awsConfig.CreateClient(kubeClient, ctx)
-	if err != nil {
-		return errAWSClientCreation
-	}
-
-	// Validate one-time resources (security groups, subnets, key pairs) only if not already validated
-	if !mpcAWSResourcesValidated {
-		// Validate security group (one-time validation)
-		if config.SecurityGroupId != "" {
-			if err := validateSecurityGroup(ctx, ec2Client, config.SecurityGroupId); err != nil {
-				return err
-			}
-		}
-
-		// Validate subnet (one-time validation)
-		if config.SubnetId != "" {
-			if err := validateSubnet(ctx, ec2Client, config.SubnetId); err != nil {
-				return err
-			}
-		}
-
-		// Validate key pair (one-time validation)
-		if config.KeyName != "" {
-			if err := validateKeyPair(ctx, ec2Client, config.KeyName); err != nil {
-				return err
-			}
-		}
-
-		// Mark these resources as validated
-		mpcAWSResourcesValidated = true
-	}
-
-	// Always validate AMI (no caching)
-	if config.AMI != "" {
-		if err := validateAMI(ctx, ec2Client, config.AMI); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// validateSecurityGroup validates that a security group exists
-func validateSecurityGroup(ctx context.Context, ec2Client *ec2.Client, securityGroupId string) error {
-	input := &ec2.DescribeSecurityGroupsInput{
-		GroupIds: []string{securityGroupId},
-	}
-
-	result, err := ec2Client.DescribeSecurityGroups(ctx, input)
-	if err != nil || len(result.SecurityGroups) == 0 {
-		return errSecurityGroupInvalid
-	}
-
-	return nil
-}
-
-// validateSubnet validates that a subnet exists
-func validateSubnet(ctx context.Context, ec2Client *ec2.Client, subnetId string) error {
-	input := &ec2.DescribeSubnetsInput{
-		SubnetIds: []string{subnetId},
-	}
-
-	result, err := ec2Client.DescribeSubnets(ctx, input)
-	if err != nil || len(result.Subnets) == 0 {
-		return errSubnetInvalid
-	}
-
-	return nil
-}
-
-// validateKeyPair validates that a key pair exists
-func validateKeyPair(ctx context.Context, ec2Client *ec2.Client, keyName string) error {
-	input := &ec2.DescribeKeyPairsInput{
-		KeyNames: []string{keyName},
-	}
-
-	result, err := ec2Client.DescribeKeyPairs(ctx, input)
-	if err != nil || len(result.KeyPairs) == 0 {
-		return errKeyPairInvalid
-	}
-
-	return nil
-}
-
-// validateAMI validates that an AMI exists and is available
-func validateAMI(ctx context.Context, ec2Client *ec2.Client, amiId string) error {
-	input := &ec2.DescribeImagesInput{
-		ImageIds: []string{amiId},
-	}
-
-	result, err := ec2Client.DescribeImages(ctx, input)
-	if err != nil || len(result.Images) == 0 {
-		return errAMIInvalid
-	}
-
-	// Check if AMI is available
-	if string(result.Images[0].State) != "available" {
-		return errAMIInvalid
-	}
-
-	return nil
 }
