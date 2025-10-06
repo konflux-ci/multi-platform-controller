@@ -117,10 +117,13 @@ func extractPlatform(tr *tektonapi.TaskRun) (string, error) {
 // Returns:
 // - int: The validated integer value
 // - error: errInvalidNumericValue if value is invalid or out of range
-func validateNumericValue(value string, maxValue int) (int, error) {
+func parseNonZeroPositiveNumber(value string, maxValue int) (int, error) {
 	num, err := strconv.Atoi(value)
-	if err != nil || num != max(0, min(num, maxValue)) {
-        return fmt.Errorf("value must be a valid integer between 1 and %d", maxValue)
+	if err != nil {
+		return -1, errors.Join(errInvalidNumericValue, err)
+	}
+	if num < 0 || num > maxValue {
+		return -1, errInvalidNumericValue
 	}
 	return num, nil
 }
