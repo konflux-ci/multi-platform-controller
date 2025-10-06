@@ -169,12 +169,12 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 	})
 
 	// This section verifies validation of the numeric values that appear in host configurations.
-	Describe("The validateNumericValue function", func() {
+	Describe("The validateNonZeroPositiveNumber function", func() {
 
 		When("validating numeric values within valid range", func() {
 			DescribeTable("it should return the parsed integer value",
 				func(value string, maxValue int, expected int) {
-					Expect(validateNumericValue(value, maxValue)).Should(Equal(expected))
+					Expect(validateNonZeroPositiveNumber(value, maxValue)).Should(Equal(expected))
 				},
 				Entry("with minimum value 0", "0", 100, 0),
 				Entry("with mid-range value", "50", 100, 50),
@@ -186,7 +186,7 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 		When("validating numeric values outside valid range or invalid format", func() {
 			DescribeTable("it should return an error",
 				func(value string, maxValue int) {
-					_, err := validateNumericValue(value, maxValue)
+					_, err := validateNonZeroPositiveNumber(value, maxValue)
 					Expect(err).Should(MatchError(errInvalidNumericValue))
 				},
 				Entry("with negative value", "-1", 100),
