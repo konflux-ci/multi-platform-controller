@@ -105,7 +105,7 @@ func extractPlatform(tr *tektonapi.TaskRun) (string, error) {
 	return "", errMissingPlatformParameter
 }
 
-// validateNumericValue validates a string represents a valid integer within the specified range
+// validateNonZeroPositiveNumber validates a string represents a valid integer within the specified range
 // Validation rules:
 // - Must be a valid integer parseable by strconv.Atoi
 // - Must be between 1 and maxValue inclusive
@@ -116,8 +116,8 @@ func extractPlatform(tr *tektonapi.TaskRun) (string, error) {
 //
 // Returns:
 // - int: The validated integer value
-// - error: errInvalidNumericValue if value is invalid or out of range
-func parseNonZeroPositiveNumber(value string, maxValue int) (int, error) {
+// - error: If value is invalid or out of range
+func validateNonZeroPositiveNumber(value string, maxValue int) (int, error) {
 	num, err := strconv.Atoi(value)
 	if err != nil {
 		return -1, errors.Join(errInvalidNumericValue, err)
@@ -136,9 +136,9 @@ func parseNonZeroPositiveNumber(value string, maxValue int) (int, error) {
 //
 // Returns:
 // - int: The validated integer value
-// - error: errInvalidNumericValue if value is invalid or out of range
+// - error: If value is invalid or out of range
 func validateMaxInstances(value string) (int, error) {
-	return validateNumericValue(value, maxInstancesValue)
+	return validateNonZeroPositiveNumber(value, maxInstancesValue)
 }
 
 // validateMaxAllocationTimeout validates a string represents a valid allocation timeout value
@@ -149,9 +149,9 @@ func validateMaxInstances(value string) (int, error) {
 //
 // Returns:
 // - int: The validated integer value
-// - error: errInvalidNumericValue if value is invalid or out of range
+// - error: If value is invalid or out of range
 func validateMaxAllocationTimeout(value string) (int, error) {
-	return validateNumericValue(value, maxAllocationTimeout)
+	return validateNonZeroPositiveNumber(value, maxAllocationTimeout)
 }
 
 // obfuscateIP takes an IP address and returns it with the first three octets replaced with asterisks
