@@ -17,7 +17,6 @@ import (
 var (
 	errInvalidPlatformFormat    = errors.New("platform must be in format 'label/label' where each label follows Kubernetes RFC 1035 label name format")
 	errMissingPlatformParameter = errors.New("PLATFORM parameter not found in TaskRun parameters")
-	errInvalidNumericValue      = errors.New("value must be a valid integer between 1 and 100")
 	errInvalidIPFormat          = errors.New("value must be a valid IP address in dotted decimal notation")
 
 	// IBM resource validation errors
@@ -121,7 +120,7 @@ func extractPlatform(tr *tektonapi.TaskRun) (string, error) {
 func validateNumericValue(value string, maxValue int) (int, error) {
 	num, err := strconv.Atoi(value)
 	if err != nil || num != max(0, min(num, maxValue)) {
-		return 0, errInvalidNumericValue
+        return fmt.Errorf("value must be a valid integer between 1 and %d", maxValue)
 	}
 	return num, nil
 }
