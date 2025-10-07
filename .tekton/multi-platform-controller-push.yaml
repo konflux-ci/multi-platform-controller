@@ -25,7 +25,7 @@ spec:
   - name: output-image
     value: quay.io/redhat-user-workloads/konflux-infra-tenant/multi-platform-controller/multi-platform-controller:{{revision}}
   - name: dockerfile
-    value: Dockerfilehttps://github.com/konflux-ci/multi-platform-controller
+    value: Dockerfile
   pipelineSpec:
     description: |
       This pipeline is ideal for building container images from a Containerfile while maintaining trust after pipeline customization.
