@@ -14,7 +14,7 @@ metadata:
     appstudio.openshift.io/component: multi-platform-controller-otp-service
     pipelines.appstudio.openshift.io/type: build
   name: multi-platform-controller-otp-service-on-push
-  namespace: rhtap-build-tenant
+  namespace: konflux-infra-tenant
 spec:
   params:
   - name: git-url
@@ -22,7 +22,7 @@ spec:
   - name: revision
     value: '{{revision}}'
   - name: output-image
-    value: quay.io/redhat-user-workloads/rhtap-build-tenant/multi-platform-controller/multi-platform-controller-otp-service:{{revision}}
+    value: quay.io/redhat-user-workloads/konflux-infra-tenant/multi-platform-controller/multi-platform-controller-otp-service:{{revision}}
   - name: dockerfile
     value: Dockerfile.otp
   pipelineSpec:

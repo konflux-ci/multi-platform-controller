@@ -15,7 +15,7 @@ metadata:
     appstudio.openshift.io/component: multi-platform-controller-otp-service
     pipelines.appstudio.openshift.io/type: build
   name: multi-platform-controller-otp-service-on-pull-request
-  namespace: rhtap-build-tenant
+  namespace: konflux-infra-tenant
 spec:
   params:
   - name: git-url
