@@ -43,9 +43,6 @@ jobs:
         uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v5
         with:
           go-version-file: "./go.mod"
-      - name: Install ginkgo
-        run: |
-            echo "[MPC] installing Ginkgo"
             GINKGO_VERSION=$(go list -m -f '{{.Version}}' github.com/onsi/ginkgo/v2)
             echo "Detected ginkgo version: $GINKGO_VERSION"
             go install github.com/onsi/ginkgo/v2/ginkgo@$GINKGO_VERSION
