@@ -26,6 +26,10 @@ spec:
     value: quay.io/redhat-user-workloads/konflux-infra-tenant/multi-platform-controller/multi-platform-controller-otp-service:{{revision}}
   - name: dockerfile
     value: Dockerfile.otp
+  - name: build-platforms
+    value:
+      - linux/x86_64
+      - linux/arm64
   pipelineSpec:
     description: |
       This pipeline is ideal for building container images from a Containerfile while maintaining trust after pipeline customization.
@@ -100,6 +104,11 @@ spec:
         VMs
       name: privileged-nested
       type: string
+    - default:
+        - linux/x86_64
+      description: List of platforms to build the container images on. The available set of values is determined by the configuration of the multi-platform-controller.
+      name: build-platforms
+      type: array
     results:
     - description: ""
       name: IMAGE_URL
@@ -186,7 +195,12 @@ spec:
         workspace: git-auth
       - name: netrc
         workspace: netrc
-    - name: build-container
+    - matrix:
+        params:
+          - name: PLATFORM
+            value:
+              - $(params.build-platforms)
+        name: build-images
       params:
       - name: IMAGE
         value: $(params.output-image)
@@ -209,6 +223,8 @@ spec:
         value: $(params.build-args-file)
       - name: PRIVILEGED_NESTED
         value: $(params.privileged-nested)
+      - name: IMAGE_APPEND_PLATFORM
+        value: 'true'
       - name: SOURCE_URL
         value: $(tasks.clone-repository.results.url)
       - name: BUILDAH_FORMAT
@@ -222,9 +238,9 @@ spec:
       taskRef:
         params:
         - name: name
-          value: buildah-oci-ta
+          value: buildah-remote-oci-ta
         - name: bundle
-          value: quay.io/konflux-ci/tekton-catalog/task-buildah-oci-ta:0.5@sha256:38d08ea58511a67f8754dc025feebdec8ae342fb4e25bc67a3726ec84f7cb7d1
+          value: quay.io/konflux-ci/tekton-catalog/task-buildah-remote-oci-ta:0.5@sha256:3edfeb18f3aee5aad808726348596f76431c8f6bbc14509d2eaee3f801822ea3
         - name: kind
           value: task
         resolver: bundles
@@ -245,11 +261,11 @@ spec:
         value: $(params.build-image-index)
       - name: IMAGES
         value:
-        - $(tasks.build-container.results.IMAGE_URL)@$(tasks.build-container.results.IMAGE_DIGEST)
+        - $(tasks.build-images.results.IMAGE_URL)@$(tasks.build-images.results.IMAGE_DIGEST)
       - name: BUILDAH_FORMAT
         value: $(params.buildah-format)
       runAfter:
-      - build-container
+      - build-images
       taskRef:
         params:
         - name: name
