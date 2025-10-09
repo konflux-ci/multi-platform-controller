@@ -200,7 +200,7 @@ spec:
           - name: PLATFORM
             value:
               - $(params.build-platforms)
-        name: build-images
+      name: build-images
       params:
       - name: IMAGE
         value: $(params.output-image)
