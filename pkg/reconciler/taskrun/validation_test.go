@@ -324,7 +324,7 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 		When("parsing invalid config key strings", func() {
 			DescribeTable("it should return an error",
 				func(value string) {
-					_, _, err := parseDynamicHostInstanceTypValue(value)
+					_, _, err := parseDynamicHostInstanceTypeValue(value)
 					Expect(err).Should(HaveOccurred())
 				},
 				Entry("with too few parts", "m2xlargeamd64"),
@@ -334,12 +334,12 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 	})
 
 	// This section tests parsing of dynamic host instance type configuration values for AWS EC2.
-	Describe("The parseDynamicHostInstanceTypValue function", func() {
+	Describe("The parseDynamicHostInstanceTypeValue function", func() {
 
 		When("parsing valid config value strings", func() {
 			DescribeTable("it should extract platform and instance type correctly",
 				func(value, expectedPlatform, expectedInstanceType string) {
-					platform, instanceType, _ := parseDynamicHostInstanceTypValue(value)
+					platform, instanceType, _ := parseDynamicHostInstanceTypeValue(value)
 					Expect(platform).Should(Equal(expectedPlatform))
 					Expect(instanceType).Should(Equal(expectedInstanceType))
 				},
@@ -352,7 +352,7 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 		When("parsing invalid config value strings", func() {
 			DescribeTable("it should return an error",
 				func(value string) {
-					_, _, err := parseDynamicHostInstanceTypValue(value)
+					_, _, err := parseDynamicHostInstanceTypeValue(value)
 					Expect(err).Should(HaveOccurred())
 				},
 				Entry("with too few parts", "prodarm64"),

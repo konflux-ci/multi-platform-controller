@@ -167,7 +167,6 @@ func obfuscateIP(ip string) string {
 	return "***.***.***." + parts[3]
 }
 
-
 // validateIBMHostSecret validates IBM host secret configuration key-value pairs
 // Validation rules:
 // - Secret value cannot be empty
@@ -210,7 +209,7 @@ func validateDynamicInstanceTag(key, value string) error {
 		return err
 	}
 
-	valuePlatform, valueInstanceType, err := parseDynamicHostInstanceTypValue(value)
+	valuePlatform, valueInstanceType, err := parseDynamicHostInstanceTypeValue(value)
 	if err != nil {
 		return err
 	}
