@@ -221,7 +221,7 @@ func validateIBMHostSecret(key, value string) error {
 //   - a descriptive error if the validation fails or if the inputs are malformed, and nil if
 //     the validation succeeds.
 func validateDynamicInstanceTag(key, value string) error {
-	// Parse and normalize the platform and instance type from the key, then from the key.
+	// Parse and normalize the platform and instance type from the key, then from the value.
 	keyPlatform, keyInstanceType, err := parseDynamicHostInstanceTypeKey(key)
 	if err != nil {
 		return err
