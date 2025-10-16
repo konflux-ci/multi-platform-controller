@@ -167,30 +167,6 @@ func obfuscateIP(ip string) string {
 	return "***.***.***." + parts[3]
 }
 
-// TODO: comment-out when it's time for KFLUXINFRA-2328
-//validateIP validates that a string represents a valid and reachable IP address
-// Uses Go's standard net.ParseIP function to validate IP format and attempts to connect to port 22.
-// This function assumes IPv4 addresses are being validated.
-// Validation rules:
-// - Must be a valid IPv4 address in dotted decimal notation (e.g., "192.168.1.1")
-// - Must be reachable on port 22 (SSH)
-//
-// Returns:
-// - nil if value is a valid and reachable IP address
-// - errInvalidIPFormat if value is not a valid IP address
-// - dynamic error if IP is valid but host is unreachable (includes obfuscated IP)
-//func validateIP(value string) error {
-//	ip := net.ParseIP(value)
-//	if ip != nil {
-//		// IP format is valid, now check reachability
-//		if err := ec2Helpers.PingIPAddress(value); err != nil {
-//			obfuscatedIP := obfuscateIP(value)
-//			return fmt.Errorf("IP address is valid but host %s is unreachable", obfuscatedIP)
-//		}
-//		return nil
-//	}
-//	return errInvalidIPFormat
-//}
 
 // validateIBMHostSecret validates IBM host secret configuration key-value pairs
 // Validation rules:
@@ -218,7 +194,7 @@ func validateIBMHostSecret(key, value string) error {
 }
 
 // validateDynamicInstanceTag validates dynamic AWS host instance-tag configuration
-// - Key format: "<host type>.<whatever>-<instance-type>-<platform>" (e.g., "dynamic.linux-m2xlarge-arm64")
+// - Key format: "<whatever>-<instance-type>-<platform>" (e.g., "linux-m2xlarge-arm64")
 // - Value format: "<whatever>-<platform>-<instance-type>" (e.g., "prod-arm64-m2xlarge")
 // - Platform must match between key and value (arm64/amd64)
 // - Instance type must match between key and value
@@ -290,7 +266,7 @@ func parseDynamicHostInstanceTypeKey(platformConfigName string) (platform, insta
 	return platform, instanceType, nil
 }
 
-// parseDynamicHostInstanceTypValue extracts the platform and instance type from the config value string
+// parseDynamicHostInstanceTypeValue extracts the platform and instance type from the config value string
 // This function parses the config value format and normalizes multi-part instance types.
 //
 // Parameters:
@@ -300,7 +276,7 @@ func parseDynamicHostInstanceTypeKey(platformConfigName string) (platform, insta
 // - string: The extracted platform
 // - string: The normalized instance type
 // - error: Parsing error if value format is invalid
-func parseDynamicHostInstanceTypValue(value string) (platform, instanceType string, err error) {
+func parseDynamicHostInstanceTypeValue(value string) (platform, instanceType string, err error) {
 	parts := strings.Split(value, "-")
 
 	// We need at least 2 parts - a prefix and a platform
