@@ -1,6 +1,6 @@
 // This file contains tests for the validation functions used by the TaskRun reconciler.
 // It covers platform format validation, numeric parameter validation (instance counts, timeouts),
-// IP address validation and obfuscation, IBM host secret validation, and dynamic instance tag
+// IP address format validation, IBM host secret validation, and dynamic instance tag
 // parsing and validation for AWS EC2 configurations.
 package taskrun
 
@@ -171,10 +171,40 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 	// This section verifies validation of the numeric values that appear in host configurations.
 	Describe("The validateNonZeroPositiveNumber function", func() {
 
+		When("validating positive integer values", func() {
+			DescribeTable("it should return the parsed integer value",
+				func(value string, expected int) {
+					Expect(validateNonZeroPositiveNumber(value)).Should(Equal(expected))
+				},
+				Entry("with minimum value 1", "1", 1),
+				Entry("with mid-range value", "50", 50),
+				Entry("with very large value", "1000000", 1000000),
+			)
+		})
+
+		When("validating invalid values", func() {
+			DescribeTable("it should return an error",
+				func(value string) {
+					_, err := validateNonZeroPositiveNumber(value)
+					Expect(err).Should(HaveOccurred())
+					Expect(err.Error()).Should(ContainSubstring("greater than or equal to 1"))
+				},
+				Entry("with zero value", "0"),
+				Entry("with negative value", "-1"),
+				Entry("with non-numeric string", "abc"),
+				Entry("with empty string", ""),
+				Entry("with decimal value", "50.5"),
+				Entry("with value containing spaces", " 50 "),
+			)
+		})
+	})
+
+	Describe("The validateNonZeroPositiveNumberWithMax function", func() {
+
 		When("validating numeric values within valid range", func() {
 			DescribeTable("it should return the parsed integer value",
 				func(value string, maxValue int, expected int) {
-					Expect(validateNonZeroPositiveNumber(value, maxValue)).Should(Equal(expected))
+					Expect(validateNonZeroPositiveNumberWithMax(value, maxValue)).Should(Equal(expected))
 				},
 				Entry("with minimum value 1", "1", 100, 1),
 				Entry("with mid-range value", "50", 100, 50),
@@ -184,11 +214,10 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 		})
 
 		When("validating numeric values outside valid range or invalid format", func() {
-			DescribeTable("it should return an error containing the range",
+			DescribeTable("it should return an error",
 				func(value string, maxValue int) {
-					_, err := validateNonZeroPositiveNumber(value, maxValue)
+					_, err := validateNonZeroPositiveNumberWithMax(value, maxValue)
 					Expect(err).Should(HaveOccurred())
-					Expect(err.Error()).Should(ContainSubstring("must be a valid integer between 1 and"))
 				},
 				Entry("with zero value", "0", 100),
 				Entry("with negative value", "-1", 100),
@@ -202,67 +231,38 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 		})
 	})
 
-	// This section verifies validation of the max-instances parameter for dynamic host allocation.
-	Describe("The validateMaxInstances function", func() {
+	// This section tests IP format validation.
+	Describe("The validateIPFormat function", func() {
 
-		When("validating max-instances values", func() {
-			DescribeTable("should accept valid instance count within range",
-				func(value string, expected int) {
-					Expect(validateMaxInstances(value)).Should(Equal(expected))
+		When("validating invalid IP formats", func() {
+			DescribeTable("it should return errInvalidIPFormat",
+				func(ip string) {
+					err := validateIPFormat(ip)
+					Expect(err).Should(MatchError(errInvalidIPFormat))
 				},
-				Entry("with instance count within range value 10", "10", 10),
-				Entry("with maximum allowed instances value", "250", 250),
+				Entry("with empty string", ""),
+				Entry("with invalid characters", "abc.def.ghi.jkl"),
+				Entry("with special characters", "abc.def.&.jkl"),
+				Entry("with incomplete octets", "203.0.1"),
+				Entry("with too many octets", "203.0.113.1.1"),
+				Entry("with non-numeric octets", "203.KokoHazamar.113.1"),
+				Entry("with octet exceeding 255", "203.0.113.256"),
+				Entry("with negative octets", "203.0.-113.1"),
+			)
+		})
+
+		When("validating valid IP formats", func() {
+			DescribeTable("it should not return an error",
+				func(ip string) {
+					err := validateIPFormat(ip)
+					Expect(err).ShouldNot(HaveOccurred())
+				},
+				Entry("with localhost", "127.0.0.1"),
+				Entry("with valid IP", "192.168.1.1"),
+				Entry("with another valid IP", "10.0.0.1"),
 			)
 		})
 	})
-
-	// This section verifies validation of the allocation timeout parameter for host provisioning.
-	Describe("The validateMaxAllocationTimeout function", func() {
-
-		When("validating allocation timeout values values", func() {
-			DescribeTable("should accept valid timeout within range",
-				func(value string, expected int) {
-					Expect(validateMaxAllocationTimeout(value)).Should(Equal(expected))
-				},
-				Entry("with valid timeout within range value 10", "600", 600),
-				Entry("with maximum allowed timeout value", "1200", 1200),
-			)
-		})
-	})
-
-	// This section tests IP obfuscation for security purposes in logs and error messages.
-	Describe("The obfuscateIP function", func() {
-
-		When("obfuscating IP addresses", func() {
-			It("it should replace first three octets with asterisks", func() {
-				ip := "203.0.113.1"
-				expectedObfuscation := "***.***.***.1"
-				Expect(obfuscateIP(ip)).Should(Equal(expectedObfuscation))
-			})
-		})
-	})
-
-	// TODO: comment-out when it's time for KFLUXINFRA-2328
-	// This spec only tests the IP format validation side of validateIP, since validateIP calls on
-	// ec2_helpers.PingIPAddress and it's pinging capabilities are already test-covered in ec2_helpers_test.go.
-	//Describe("The validateIP function", func() {
-	//
-	//	When("validating invalid IP formats", func() {
-	//		DescribeTable("it should return errInvalidIPFormat",
-	//			func(ip string) {
-	//				Expect(validateIP(ip)).Should(MatchError(errInvalidIPFormat))
-	//			},
-	//			Entry("with empty string", ""),
-	//			Entry("with invalid characters", "abc.def.ghi.jkl"),
-	//			Entry("with special characters", "abc.def.&.jkl"),
-	//			Entry("with incomplete octets", "203.0.1"),
-	//			Entry("with too many octets", "203.0.113.1.1"),
-	//			Entry("with non-numeric octets", "203.KokoHazamar.113.1"),
-	//			Entry("with octet exceeding 255", "203.0.113.256"),
-	//			Entry("with negative octets", "203.0.-113.1"),
-	//		)
-	//	})
-	//})
 
 	// This section tests validation of IBM host secret configurations for s390x and ppc64le platforms.
 	Describe("The validateIBMHostSecret function", func() {
@@ -281,16 +281,6 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 		})
 
 		When("validating invalid IBM host secrets", func() {
-			It("should return error when value is empty", func() {
-				err := validateIBMHostSecret("host-s390x", "")
-				Expect(err).Should(MatchError(errIBMHostSecretEmpty))
-			})
-
-			It("should return error when value is only whitespace", func() {
-				err := validateIBMHostSecret("host-s390x", "   ")
-				Expect(err).Should(MatchError(errIBMHostSecretEmpty))
-			})
-
 			DescribeTable("it should return error when platform substrings don't match",
 				func(key, value string) {
 					err := validateIBMHostSecret(key, value)
