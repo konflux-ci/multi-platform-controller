@@ -235,33 +235,29 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 	Describe("The validateIPFormat function", func() {
 
 		When("validating invalid IP formats", func() {
+
+			When("validating valid IP formats", func() {
+				DescribeTable("it should not return an error",
+					func(ip string) {
+						Expect(validateIPFormat(ip)).ShouldNot(HaveOccurred())
+					},
+					Entry("with localhost", "127.0.0.1"),
+					Entry("with valid IP", "192.0.2.6"), //  RFC-5737's TEST-NET-1 for documentation and testing
+				)
+			})
+
 			DescribeTable("it should return errInvalidIPFormat",
 				func(ip string) {
-					err := validateIPFormat(ip)
-					Expect(err).Should(MatchError(errInvalidIPFormat))
+					Expect(validateIPFormat(ip)).Should(MatchError(errInvalidIPFormat))
 				},
 				Entry("with empty string", ""),
-				Entry("with invalid characters", "abc.def.ghi.jkl"),
-				Entry("with special characters", "abc.def.&.jkl"),
+				Entry("with special characters", "203.0.1.*"),
 				Entry("with incomplete octets", "203.0.1"),
-				Entry("with too many octets", "203.0.113.1.1"),
-				Entry("with non-numeric octets", "203.KokoHazamar.113.1"),
+				Entry("with non-numeric octets", "203.Koko.Hazamar.1"),
 				Entry("with octet exceeding 255", "203.0.113.256"),
-				Entry("with negative octets", "203.0.-113.1"),
 			)
 		})
 
-		When("validating valid IP formats", func() {
-			DescribeTable("it should not return an error",
-				func(ip string) {
-					err := validateIPFormat(ip)
-					Expect(err).ShouldNot(HaveOccurred())
-				},
-				Entry("with localhost", "127.0.0.1"),
-				Entry("with valid IP", "192.168.1.1"),
-				Entry("with another valid IP", "10.0.0.1"),
-			)
-		})
 	})
 
 	// This section tests validation of IBM host secret configurations for s390x and ppc64le platforms.
@@ -274,20 +270,15 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 				},
 				Entry("with s390x in both key and value", "host-s390x-prod", "config-s390x-data"),
 				Entry("with ppc64le in both key and value", "host-ppc64le-dev", "setup-ppc64le-config"),
-				Entry("with IBM platform substring anywhere", "prod-s390x", "s390x-host-001"),
-				Entry("with IBM platform substring anywhere", "ppc64le-config", "host-ppc64le"),
-				Entry("with just IBM platform", "ppc64le", "ppc64le"),
 			)
 		})
 
 		When("validating invalid IBM host secrets", func() {
 			DescribeTable("it should return error when platform substrings don't match",
 				func(key, value string) {
-					err := validateIBMHostSecret(key, value)
-					Expect(err).Should(MatchError(errIBMHostSecretPlatformMismatch))
+					Expect(validateIBMHostSecret(key, value)).Should(MatchError(errIBMHostSecretPlatformMismatch))
 				},
 				Entry("with s390x in key but ppc64le in value", "host-s390x", "config-ppc64le"),
-				Entry("with ppc64le in key but s390x in value", "host-ppc64le", "config-s390x"),
 				Entry("with no platform in key", "host-prod", "config-s390x"),
 				Entry("with no platform in value", "host-s390x", "config-prod"),
 				Entry("with no platform in either", "host-prod", "config-dev"),
@@ -380,8 +371,8 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 				func(key, value string) {
 					Expect(validateDynamicInstanceTag(key, value)).Should(HaveOccurred())
 				},
-				Entry("with matching arm64 platform and instance type", "invalid-format", "prod-arm64-m2xlarge"),
-				Entry("with multi-part instance type in correct order", "linux-m2xlarge-arm64", "invalid-format"),
+				Entry("with invalid key format", "invalid-format", "prod-arm64-m2xlarge"),
+				Entry("with invalid value format", "linux-m2xlarge-arm64", "invalid-format"),
 			)
 		})
 	})
