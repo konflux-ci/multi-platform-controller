@@ -40,8 +40,8 @@ spec:
           imagePullPolicy: Always
           args:
             - "--v=4"
-            - "--zap-log-level=4"
-            - "--zap-devel=true"
+            - "--zap-log-level=info"
+            - "--zap-encoder=console"
             - "--health-probe-bind-address=:8081"
             - "--metrics-secure=true"
           resources:
