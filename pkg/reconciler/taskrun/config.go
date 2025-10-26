@@ -302,7 +302,7 @@ func parseDynamicPoolPlatformConfig(data map[string]string, platform string) (Dy
 		if err != nil {
 			return DynamicPoolPlatformConfig{}, fmt.Errorf("dynamic pool platform '%s': invalid max-age '%s': %w", platform, maxAgeStr, err)
 		}
-		poolConfig.MaxAge = maxAge
+		poolConfig.MaxAge = int64(maxAge)
 	} else {
 		return DynamicPoolPlatformConfig{}, fmt.Errorf("dynamic pool platform '%s': max-age field is required", platform)
 	}
@@ -409,7 +409,7 @@ type DynamicPoolPlatformConfig struct {
 	Type         string `mapstructure:"type"`
 	MaxInstances int    `mapstructure:"max-instances"`
 	Concurrency  int    `mapstructure:"concurrency"`
-	MaxAge       int    `mapstructure:"max-age"` // in minutes
+	MaxAge       int64  `mapstructure:"max-age"` // in minutes
 	InstanceTag  string `mapstructure:"instance-tag,omitempty"`
 	SSHSecret    string `mapstructure:"ssh-secret"`
 }

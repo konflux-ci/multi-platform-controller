@@ -368,7 +368,7 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 				poolConfig, err := parseDynamicPoolPlatformConfig(data, "linux/amd64")
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(poolConfig.Concurrency).Should(Equal(4))
-				Expect(poolConfig.MaxAge).Should(Equal(60))
+				Expect(poolConfig.MaxAge).Should(Equal(int64(60)))
 			})
 
 			DescribeTable("should parse valid concurrency values",
@@ -389,7 +389,7 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 			)
 
 			DescribeTable("should parse valid max-age values",
-				func(ctx SpecContext, value string, expected int) {
+				func(ctx SpecContext, value string, expected int64) {
 					data := map[string]string{
 						"dynamic.linux-amd64.type":          "aws",
 						"dynamic.linux-amd64.max-instances": "10",
@@ -401,8 +401,8 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(poolConfig.MaxAge).Should(Equal(expected))
 				},
-				Entry("for minimum max-age", "1", 1),
-				Entry("for maximum max-age (24 hours)", "1440", 1440),
+				Entry("for minimum max-age", "1", int64(1)),
+				Entry("for maximum max-age (24 hours)", "1440", int64(1440)),
 			)
 		})
 
