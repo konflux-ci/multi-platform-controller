@@ -67,7 +67,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}  
           repository: ${{ github.event.pull_request.head.repo.full_name }}  
-          event-type: trigger-mpc-test-with-sealights-ci
+          event-type: trigger-mpc-test
           client-payload: '{"target-branch": "${{ github.event.pull_request.head.ref }}"}'
         continue-on-error: true
   security_scan:
