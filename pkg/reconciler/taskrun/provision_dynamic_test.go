@@ -12,6 +12,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"knative.dev/pkg/apis"
@@ -36,7 +37,7 @@ var _ = Describe("Test Dynamic Host Provisioning", func() {
 		// It verifies that the dynamic host configuration, including additional
 		// instance tags, is parsed correctly from the main ConfigMap.
 		It("the ConfigMap should be parsed correctly", func(ctx SpecContext) {
-			configIface, err := reconciler.readConfiguration(ctx, "linux/arm64", userNamespace)
+			configIface, err := reconciler.getPlatformConfig(ctx, "linux/arm64", userNamespace)
 			config := configIface.(DynamicResolver)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("foo", "bar"))
@@ -161,6 +162,72 @@ var _ = Describe("Test Dynamic Host Provisioning", func() {
 
 			Expect(cloudImpl.Instances).ShouldNot(HaveKey(cloud.InstanceIdentifier("multi-platform-builder-test-mid-fail")))
 			Expect(cloudImpl.Running).Should(Equal(0))
+		})
+	})
+
+	// Tests for buildDynamicResolver function - only the sad paths since happy paths are thoroughly tested elsewhere
+	When("testing buildDynamicResolver error paths", func() {
+		It("should use default instance tag when platform config doesn't specify one", func(ctx SpecContext) {
+			cm := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      HostConfig,
+					Namespace: systemNamespace,
+					Labels:    map[string]string{ConfigMapLabel: "hosts"},
+				},
+				Data: map[string]string{
+					"instance-tag":                           "global-default-tag",
+					"dynamic-platforms":                      "linux/arm64",
+					"dynamic.linux-arm64.type":               "aws",
+					"dynamic.linux-arm64.max-instances":      "2",
+					"dynamic.linux-arm64.ssh-secret":         "arm64-secret",
+					"dynamic.linux-arm64.allocation-timeout": "300",
+					// Note: NO instance-tag field for this platform
+				},
+			}
+			sec := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "arm64-secret",
+					Namespace: systemNamespace,
+					Labels:    map[string]string{MultiPlatformSecretLabel: "true"},
+				},
+			}
+
+			_, reconciler := setupClientAndReconciler([]runtimeclient.Object{cm, sec})
+			configIface, err := reconciler.getPlatformConfig(ctx, "linux/arm64", userNamespace)
+			Expect(err).ShouldNot(HaveOccurred())
+			config := configIface.(DynamicResolver)
+			Expect(config.instanceTag).Should(Equal("global-default-tag"))
+		})
+
+		It("should use empty string when neither platform nor default instance tag is specified", func(ctx SpecContext) {
+			cm := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      HostConfig,
+					Namespace: systemNamespace,
+					Labels:    map[string]string{ConfigMapLabel: "hosts"},
+				},
+				Data: map[string]string{
+					"dynamic-platforms":                      "linux/arm64",
+					"dynamic.linux-arm64.type":               "aws",
+					"dynamic.linux-arm64.max-instances":      "2",
+					"dynamic.linux-arm64.ssh-secret":         "arm64-secret",
+					"dynamic.linux-arm64.allocation-timeout": "300",
+					// Note: NO instance-tag field for this platform AND no global default
+				},
+			}
+			sec := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "arm64-secret",
+					Namespace: systemNamespace,
+					Labels:    map[string]string{MultiPlatformSecretLabel: "true"},
+				},
+			}
+
+			_, reconciler := setupClientAndReconciler([]runtimeclient.Object{cm, sec})
+			configIface, err := reconciler.getPlatformConfig(ctx, "linux/arm64", userNamespace)
+			Expect(err).ShouldNot(HaveOccurred())
+			config := configIface.(DynamicResolver)
+			Expect(config.instanceTag).Should(BeEmpty())
 		})
 	})
 })

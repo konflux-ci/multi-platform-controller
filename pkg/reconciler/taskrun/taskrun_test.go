@@ -28,36 +28,83 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 	Describe("Test Config Map Parsing", func() {
 		It("should parse the static host ConfigMap correctly", func(ctx SpecContext) {
 			_, reconciler := setupClientAndReconciler(createHostConfig())
-			configIface, err := reconciler.readConfiguration(ctx, "linux/arm64", userNamespace)
+			configIface, err := reconciler.getPlatformConfig(ctx, "linux/arm64", userNamespace)
+			Expect(err).ShouldNot(HaveOccurred()) // this is here because the next line needs to not cause ginkgo to panic when the test breaks
 			config := configIface.(HostPool)
-			Expect(err).ShouldNot(HaveOccurred())
 			Expect(config.hosts).Should(HaveLen(2))
 			Expect(config.hosts["host1"].Platform).Should(Equal("linux/arm64"))
 		})
 
 		It("should parse the local host ConfigMap correctly", func(ctx SpecContext) {
 			_, reconciler := setupClientAndReconciler(createLocalHostConfig())
-			configIface, err := reconciler.readConfiguration(ctx, "linux/arm64", userNamespace)
+			configIface, err := reconciler.getPlatformConfig(ctx, "linux/arm64", userNamespace)
+			Expect(err).ShouldNot(HaveOccurred()) // same
 			Expect(configIface).Should(BeAssignableToTypeOf(Local{}))
-			Expect(err).ShouldNot(HaveOccurred())
 		})
 
 		It("should parse the dynamic host ConfigMap correctly", func(ctx SpecContext) {
 			_, reconciler := setupClientAndReconciler(createDynamicHostConfig())
-			configIface, err := reconciler.readConfiguration(ctx, "linux/arm64", userNamespace)
+			configIface, err := reconciler.getPlatformConfig(ctx, "linux/arm64", userNamespace)
+			Expect(err).ShouldNot(HaveOccurred()) // same
 			config := configIface.(DynamicResolver)
-			Expect(err).ShouldNot(HaveOccurred())
 			Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("foo", "bar"))
 			Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("key", "value"))
 		})
 
 		It("should parse the dynamic pool ConfigMap correctly", func(ctx SpecContext) {
 			_, reconciler := setupClientAndReconciler(createDynamicPoolHostConfig())
-			configIface, err := reconciler.readConfiguration(ctx, "linux/arm64", userNamespace)
+			configIface, err := reconciler.getPlatformConfig(ctx, "linux/arm64", userNamespace)
+			Expect(err).ShouldNot(HaveOccurred()) // you get it
 			config := configIface.(DynamicHostPool)
-			Expect(err).ShouldNot(HaveOccurred())
 			Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("foo", "bar"))
 			Expect(config.additionalInstanceTags).Should(HaveKeyWithValue("key", "value"))
+		})
+
+		It("should cache platform configs and return cached version", func(ctx SpecContext) {
+			_, reconciler := setupClientAndReconciler(createHostConfig())
+
+			// First call should parse and cache
+			config1, err := reconciler.getPlatformConfig(ctx, "linux/arm64", userNamespace)
+			Expect(err).ShouldNot(HaveOccurred())
+			// Verify it was cached
+			Expect(reconciler.platformConfig).Should(HaveKey("linux/arm64"))
+			// Second call should return cached version
+			config2, err := reconciler.getPlatformConfig(ctx, "linux/arm64", userNamespace)
+			Expect(err).ShouldNot(HaveOccurred())
+			// Verify both calls returned the same config (by comparing the cache)
+			Expect(config1).Should(Equal(config2))
+			Expect(reconciler.platformConfig["linux/arm64"]).Should(Equal(config1))
+		})
+
+		It("should invalidate cache when ConfigMap version changes", func(ctx SpecContext) {
+			client, reconciler := setupClientAndReconciler(createHostConfig())
+
+			// First call should parse and cache
+			config1, err := reconciler.getPlatformConfig(ctx, "linux/arm64", userNamespace)
+			Expect(err).ShouldNot(HaveOccurred())
+			pool1 := config1.(HostPool)
+			Expect(pool1.hosts).Should(HaveLen(2))
+
+			// Create a new ConfigMap with different data (simulating an update)
+			cm := &corev1.ConfigMap{}
+			err = client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: HostConfig}, cm)
+			Expect(err).ShouldNot(HaveOccurred())
+
+			// Add a new host to the data
+			cm.Data["host.host3.address"] = "192.0.2.3"
+			cm.Data["host.host3.platform"] = "linux/arm64"
+			cm.Data["host.host3.user"] = "ec2-user"
+			cm.Data["host.host3.secret"] = "awskeys"
+			cm.Data["host.host3.concurrency"] = "2"
+			err = client.Update(ctx, cm)
+			Expect(err).ShouldNot(HaveOccurred())
+
+			// Second call should reparse with new data (cache is invalidated by changed ResourceVersion)
+			config2, err := reconciler.getPlatformConfig(ctx, "linux/arm64", userNamespace)
+			Expect(err).ShouldNot(HaveOccurred())
+			pool2 := config2.(HostPool)
+			Expect(pool2.hosts).Should(HaveLen(3))
+			Expect(pool2.hosts).Should(HaveKey("host3"))
 		})
 	})
 

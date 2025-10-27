@@ -55,7 +55,7 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 					Expect(parseDynamicRequiredTypeField(data, "dynamic.linux-amd64.", "linux/amd64", "dynamic platform")).Should(Equal(typeName))
 				},
 				Entry("for AWS type", "aws"),
-				Entry("for IBM type", "ibm"),
+				Entry("for IBM type", "ibmz"),
 				Entry("for any arbitrary type", "gcp"),
 			)
 		})
@@ -190,7 +190,7 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 					data := map[string]string{
 						prefix + "ssh-secret": secret,
 					}
-					Expect(parseRequiredSSHSecretField(data, prefix, platform, "dynamic platform", "ibm")).Should(Equal(secret))
+					Expect(parseRequiredSSHSecretField(data, prefix, platform, "dynamic platform", "ibmz")).Should(Equal(secret))
 				},
 				Entry("for s390x platform", "linux/s390x", "ibm-s390x-secret"),
 				Entry("for ppc64le platform", "linux/ppc64le", "ibm-ppc64le-secret"),
@@ -202,7 +202,7 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 				data := map[string]string{
 					"dynamic.linux-s390x.ssh-secret": "invalid-secret-no-platform",
 				}
-				_, err := parseRequiredSSHSecretField(data, "dynamic.linux-s390x.", "linux/s390x", "dynamic platform", "ibm")
+				_, err := parseRequiredSSHSecretField(data, "dynamic.linux-s390x.", "linux/s390x", "dynamic platform", "ibmz")
 				Expect(err).Should(HaveOccurred())
 				Expect(err.Error()).Should(ContainSubstring("invalid ssh-secret"))
 			})
@@ -232,7 +232,7 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 				}
 				_, err := parseRequiredSSHSecretField(data, "dynamic.linux-amd64.", "linux/amd64", "dynamic platform", "KokoHazamar")
 				Expect(err).Should(HaveOccurred())
-				Expect(err.Error()).Should(ContainSubstring("invalid type: expect 'ibm' or 'aws'"))
+				Expect(err.Error()).Should(ContainSubstring("invalid type: expect 'aws', 'ibmz', or 'ibmp'"))
 			})
 		})
 	})
@@ -262,14 +262,14 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 
 			It("should parse IBM platform with default timeout", func(ctx SpecContext) {
 				data := map[string]string{
-					"dynamic.linux-s390x.type":          "ibm",
+					"dynamic.linux-s390x.type":          "ibmz",
 					"dynamic.linux-s390x.max-instances": "3",
 					"dynamic.linux-s390x.ssh-secret":    "ibm-s390x-secret",
 				}
 
 				ibmzConfig, err := parseDynamicPlatformConfig(data, "linux/s390x")
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(ibmzConfig.Type).Should(Equal("ibm"))
+				Expect(ibmzConfig.Type).Should(Equal("ibmz"))
 				Expect(ibmzConfig.MaxInstances).Should(Equal(3))
 				Expect(ibmzConfig.AllocationTimeout).Should(Equal(int64(defaultAllocationTimeout)))
 				Expect(ibmzConfig.SSHSecret).Should(Equal("ibm-s390x-secret"))
@@ -339,7 +339,7 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 				),
 				Entry("for IBM platform with invalid ssh-secret",
 					map[string]string{
-						"dynamic.linux-s390x.type":          "ibm",
+						"dynamic.linux-s390x.type":          "ibmz",
 						"dynamic.linux-s390x.max-instances": "3",
 						"dynamic.linux-s390x.ssh-secret":    "invalid-secret",
 					},

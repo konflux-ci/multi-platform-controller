@@ -42,7 +42,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		Expect(params["TASKRUN_NAME"]).Should(Equal("test-static-alloc"))
 		Expect(params["NAMESPACE"]).Should(Equal(userNamespace))
 		Expect(params["USER"]).Should(Equal("ec2-user"))
-		Expect(params["HOST"]).Should(BeElementOf("ec2-09-876-543-210.compute-1.amazonaws.com", "ec2-12-345-67-890.compute-1.amazonaws.com"))
+		Expect(params["HOST"]).Should(BeElementOf("192.0.2.1", "192.0.2.2"))
 	})
 
 	// It tests the scenario where all available host slots are occupied.
