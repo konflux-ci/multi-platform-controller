@@ -136,15 +136,15 @@ func parseDynamicOptionalInstanceTagField(data map[string]string, prefix, platfo
 // It receives the already-validated cloud provider type from the config struct being built.
 // Validation differs based on cloud provider type:
 // - AWS: Validates non-empty value (any non-empty trimmed value is valid)
-// - IBM: Uses validateIBMHostSecret for additional platform-specific validation
-// - Other types: Returns error (currently, only "aws" and "ibm" are supported)
+// - IBM (ibmz, ibmp): Uses validateIBMHostSecret for additional platform-specific validation
+// - Other types: Returns error (currently, only "aws", "ibmz", and "ibmp" are supported)
 //
 // Parameters:
 // - data: The ConfigMap data map containing platform configuration
 // - prefix: The configuration prefix (e.g., "dynamic.linux-amd64.")
 // - platform: The platform name for error messages
 // - platformType: The platform type for error messages (e.g., "dynamic platform" or "dynamic pool platform")
-// - cloudProviderType: The cloud provider type from the config struct ("aws" or "ibm")
+// - cloudProviderType: The cloud provider type from the config struct ("aws", "ibmz", or "ibmp")
 //
 // Returns:
 // - string: The SSH secret name
@@ -160,14 +160,14 @@ func parseRequiredSSHSecretField(data map[string]string, prefix, platform, platf
 		// For AWS platforms, the trimmed non-empty value is valid
 		// (dynamic platforms require non-empty after trim, pool platforms accept any non-empty value)
 		return sshSecret, nil
-	case "ibm":
+	case "ibmz", "ibmp":
 		// IBM platforms: validate using validateIBMHostSecret
 		if err := validateIBMHostSecret(platform, sshSecret); err != nil {
 			return "", fmt.Errorf("%s '%s': invalid ssh-secret '%s': %w", platformType, platform, sshSecret, err)
 		}
 		return sshSecret, nil
 	default:
-		return "", fmt.Errorf("invalid type: expect 'ibm' or 'aws', got '%s'", cloudProviderType)
+		return "", fmt.Errorf("invalid type: expect 'aws', 'ibmz', or 'ibmp', got '%s'", cloudProviderType)
 	}
 }
 

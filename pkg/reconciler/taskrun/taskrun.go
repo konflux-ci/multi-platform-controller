@@ -16,7 +16,6 @@ import (
 	"github.com/konflux-ci/multi-platform-controller/pkg/aws"
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
 	"github.com/konflux-ci/multi-platform-controller/pkg/ibm"
-	errors2 "github.com/pkg/errors"
 	tektonapi "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	kubecore "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -491,7 +490,7 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektona
 	}
 
 	//let's allocate a host, get the map with host info
-	hosts, err := r.readConfiguration(ctx, targetPlatform, tr.Namespace)
+	hosts, err := r.getPlatformConfig(ctx, targetPlatform, tr.Namespace)
 	if err != nil {
 		log.Error(err, "failed to read host config")
 		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
@@ -585,7 +584,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 	log = log.WithValues("platform", platform)
 
 	// Get platform configuration
-	config, err := r.readConfiguration(ctx, platform, tr.Namespace)
+	config, err := r.getPlatformConfig(ctx, platform, tr.Namespace)
 	if err != nil {
 		log.Error(err, "failed to read platform configuration")
 		return reconcile.Result{}, fmt.Errorf("failed to read configuration: %w", err)
@@ -706,7 +705,32 @@ func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, platform stri
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform string, targetNamespace string) (PlatformConfig, error) {
+// getPlatformConfig retrieves and caches platform configuration for a given target platform
+// This function is the central configuration resolver for the TaskRun reconciler. It handles
+// ConfigMap retrieval, caching, cache invalidation, and delegates to specialized parsing functions
+// for each platform type (local, dynamic, dynamic pool, and static).
+//
+// Caching Strategy:
+// Configurations are cached by platform name in r.platformConfig. Cache is invalidated when ConfigMap ResourceVersion
+// changes. Subsequent requests for the same platform return cached configuration.
+//
+// Platform Resolution Order:
+// The targetPlatform string is searched for across the configuration file. If found in one of the host lists, a
+// resolver for the host kinds if returned and if not, the next kind of host is attempted.
+// 1st search targetPlatform in the "local-platforms" list - if found, return Local{}
+// 2nd search targetPlatform in "dynamic-platforms" list - if found, return DynamicResolver
+// 3rd search targetPlatform in "dynamic-pool-platforms" list - if found, return DynamicHostPool
+// 4th Returns HostPool containing all static hosts matching the target platform
+//
+// Parameters:
+// - ctx: Context for the request
+// - targetPlatform: The platform to retrieve configuration for (e.g., "linux/arm64", "linux/s390x")
+// - targetNamespace: The namespace of the requesting TaskRun (currently unused but reserved for future use)
+//
+// Returns:
+// - PlatformConfig: The platform configuration (Local, DynamicResolver, DynamicHostPool, or HostPool)
+// - error: ConfigMap retrieval error, parsing error, or metrics registration error
+func (r *ReconcileTaskRun) getPlatformConfig(ctx context.Context, targetPlatform string, targetNamespace string) (PlatformConfig, error) {
 	cm := kubecore.ConfigMap{}
 	err := r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: HostConfig}, &cm)
 	if err != nil {
@@ -741,159 +765,208 @@ func (r *ReconcileTaskRun) readConfiguration(ctx context.Context, targetPlatform
 		}
 	}
 
-	localPlatforms := cm.Data[LocalPlatforms]
-	if localPlatforms != "" {
-		local := strings.Split(localPlatforms, ",")
-		if slices.Contains(local, targetPlatform) {
-			return Local{}, nil
-		}
+	data := cm.Data
+
+	// Is our targetPlatform a local platform? Check local platforms
+	localPlatforms, err := parsePlatformList(data[LocalPlatforms], PlatformTypeLocal)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse local platforms: %w", err)
+	}
+	if slices.Contains(localPlatforms, targetPlatform) {
+		return Local{}, nil
 	}
 
-	dynamic := cm.Data[DynamicPlatforms]
-	if dynamic != "" {
-		for _, platform := range strings.Split(dynamic, ",") {
-			platformConfigName := strings.ReplaceAll(platform, "/", "-")
-			if platform == targetPlatform {
-				typeName := cm.Data["dynamic."+platformConfigName+".type"]
-				allocfunc := r.cloudProviders[typeName]
-				if allocfunc == nil {
-					return nil, errors2.New("unknown dynamic provisioning type " + typeName)
-				}
-				maxInstances, err := strconv.Atoi(cm.Data["dynamic."+platformConfigName+".max-instances"])
-				if err != nil {
-					return nil, err
-				}
-				instanceTag := cm.Data["dynamic."+platformConfigName+".instance-tag"]
-				if instanceTag == "" {
-					instanceTag = cm.Data[DefaultInstanceTag]
-				}
-				timeoutSeconds := cm.Data["dynamic."+platformConfigName+".allocation-timeout"]
-				timeout := int64(600) //default to 10 minutes
-				if timeoutSeconds != "" {
-					timeoutInt, err := strconv.Atoi(timeoutSeconds)
-					if err != nil {
-						log.Error(err, "unable to parse allocation timeout")
-					} else {
-						timeout = int64(timeoutInt)
-					}
-				}
-				ret := DynamicResolver{
-					CloudProvider:          allocfunc(platformConfigName, cm.Data, r.operatorNamespace),
-					sshSecret:              cm.Data["dynamic."+platformConfigName+".ssh-secret"],
-					platform:               platform,
-					maxInstances:           maxInstances,
-					instanceTag:            instanceTag,
-					timeout:                timeout,
-					sudoCommands:           cm.Data["dynamic."+platformConfigName+".sudo-commands"],
-					additionalInstanceTags: additionalInstanceTags,
-					eventRecorder:          r.eventRecorder,
-				}
-				r.platformConfig[targetPlatform] = ret
-				err = mpcmetrics.RegisterPlatformMetrics(ctx, targetPlatform, maxInstances)
-				if err != nil {
-					return nil, err
-				}
-				return ret, nil
-			}
+	// No match? Check DYNAMIC platforms
+	dynamicPlatforms, err := parsePlatformList(data[DynamicPlatforms], PlatformTypeDynamic)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse dynamic platforms: %w", err)
+	}
+	if slices.Contains(dynamicPlatforms, targetPlatform) {
+		dynamicConfig, err := parseDynamicPlatformConfig(data, targetPlatform)
+		if err != nil {
+			return nil, err
 		}
+		platformConfigName := strings.ReplaceAll(targetPlatform, "/", "-")
+		ret, err := r.buildDynamicResolver(ctx, dynamicConfig, targetPlatform, platformConfigName, additionalInstanceTags, data)
+		if err != nil {
+			return nil, err
+		}
+		r.platformConfig[targetPlatform] = ret
+		return ret, nil
 	}
 
-	dynamicPool := cm.Data[DynamicPoolPlatforms]
-	if dynamicPool != "" {
-		for _, platform := range strings.Split(dynamicPool, ",") {
-			platformConfigName := strings.ReplaceAll(platform, "/", "-")
-			if platform == targetPlatform {
-				typeName := cm.Data["dynamic."+platformConfigName+".type"]
-				allocfunc := r.cloudProviders[typeName]
-				if allocfunc == nil {
-					return nil, errors2.New("unknown dynamic provisioning type " + typeName)
-				}
-				maxInstances, err := strconv.Atoi(cm.Data["dynamic."+platformConfigName+".max-instances"])
-				if err != nil {
-					return nil, err
-				}
-				concurrency, err := strconv.Atoi(cm.Data["dynamic."+platformConfigName+".concurrency"])
-				if err != nil {
-					return nil, err
-				}
-				maxAge, err := strconv.Atoi(cm.Data["dynamic."+platformConfigName+".max-age"]) // Minutes
-				if err != nil {
-					return nil, err
-				}
-
-				instanceTag := cm.Data["dynamic."+platformConfigName+".instance-tag"]
-				if instanceTag == "" {
-					instanceTag = cm.Data["instance-tag"]
-				}
-				ret := DynamicHostPool{
-					cloudProvider:          allocfunc(platformConfigName, cm.Data, r.operatorNamespace),
-					sshSecret:              cm.Data["dynamic."+platformConfigName+".ssh-secret"],
-					platform:               platform,
-					maxInstances:           maxInstances,
-					maxAge:                 time.Minute * time.Duration(maxAge),
-					concurrency:            concurrency,
-					instanceTag:            instanceTag,
-					additionalInstanceTags: additionalInstanceTags,
-				}
-				r.platformConfig[targetPlatform] = ret
-				err = mpcmetrics.RegisterPlatformMetrics(ctx, targetPlatform, maxInstances)
-				if err != nil {
-					return nil, err
-				}
-				return ret, nil
-			}
+	// No match? Check DYNAMIC POOL platforms
+	dynamicPoolPlatforms, err := parsePlatformList(data[DynamicPoolPlatforms], PlatformTypeDynamicPool)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse dynamic pool platforms: %w", err)
+	}
+	if slices.Contains(dynamicPoolPlatforms, targetPlatform) {
+		poolConfig, err := parseDynamicPoolPlatformConfig(data, targetPlatform)
+		if err != nil {
+			return nil, err
 		}
+		platformConfigName := strings.ReplaceAll(targetPlatform, "/", "-")
+		ret, err := r.buildDynamicHostPool(ctx, poolConfig, targetPlatform, platformConfigName, additionalInstanceTags, data)
+		if err != nil {
+			return nil, err
+		}
+		r.platformConfig[targetPlatform] = ret
+		return ret, nil
 	}
 
+	// Still no match?? Check STATIC platforms
+	// Collect all hosts for this platform
 	ret := HostPool{hosts: map[string]*Host{}, targetPlatform: targetPlatform}
-	for k, v := range cm.Data {
-		if !strings.HasPrefix(k, "host.") {
+	hostNames := make(map[string]bool)
+
+	// First, find all unique host names
+	for key := range data {
+		if !strings.HasPrefix(key, "host.") {
 			continue
 		}
-		k = k[len("host."):]
+		k := key[len("host."):]
 		pos := strings.LastIndex(k, ".")
 		if pos == -1 {
 			continue
 		}
 		name := k[0:pos]
-		key := k[pos+1:]
-		host := ret.hosts[name]
-		if host == nil {
-			host = &Host{}
-			ret.hosts[name] = host
-			host.Name = name
+		hostNames[name] = true
+	}
+
+	// Parse each host and add to pool if it matches our platform
+	for hostName := range hostNames {
+		hostConfig, err := parseStaticHostConfig(data, hostName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse static host '%s': %w", hostName, err)
 		}
-		switch key {
-		case "address":
-			host.Address = v
-		case "user":
-			host.User = v
-		case "platform":
-			host.Platform = v
-		case "secret":
-			host.Secret = v
-		case "concurrency":
-			atoi, err := strconv.Atoi(v)
-			if err != nil {
-				return nil, err
+		// Only add hosts that match our target platform
+		if hostConfig.Platform == targetPlatform {
+			ret.hosts[hostName] = &Host{
+				Name:        hostName,
+				Address:     hostConfig.Address,
+				User:        hostConfig.User,
+				Platform:    hostConfig.Platform,
+				Secret:      hostConfig.Secret,
+				Concurrency: hostConfig.Concurrency,
 			}
-			host.Concurrency = atoi
-		default:
-			log.Info("unknown key", "key", key)
 		}
 	}
-	// calculate platform capacity
+
+	// Calculate platform capacity (will be 0 if no hosts match)
 	platformCapacity := 0
 	for _, host := range ret.hosts {
-		if host.Platform == targetPlatform {
-			platformCapacity += host.Concurrency
-		}
+		platformCapacity += host.Concurrency
 	}
+
+	// Always cache and register metrics, even if no hosts match
 	r.platformConfig[targetPlatform] = ret
 	err = mpcmetrics.RegisterPlatformMetrics(ctx, targetPlatform, platformCapacity)
 	if err != nil {
 		return nil, err
 	}
+
+	return ret, nil
+}
+
+// buildDynamicResolver constructs a DynamicResolver from parsed dynamic platform configuration
+// This function is a helper for getPlatformConfig that builds the complete DynamicResolver object
+// from the parsed configuration returned by parseDynamicPlatformConfig. It handles cloud provider
+// initialization, instance tag resolution, and metrics registration.
+//
+// Cloud Provider Initialization:
+// - Looks up cloud provider constructor function from r.cloudProviders map using config.Type
+// - Supported types: "aws", "ibmz", "ibmp"
+// - Constructor receives platformConfigName, full ConfigMap data, and operator namespace
+// - Returns error if cloud provider type is unknown
+//
+// Parameters:
+// - ctx: Context for metrics registration
+// - config: Parsed dynamic platform configuration from parseDynamicPlatformConfig
+// - platform: Target platform string (e.g., "linux/arm64")
+// - platformConfigName: Platform config name with dashes (e.g., "linux-arm64")
+// - additionalInstanceTags: Additional instance tags from ConfigMap
+// - data: Full ConfigMap data for cloud provider initialization
+//
+// Returns:
+// - DynamicResolver: Fully initialized dynamic platform resolver
+// - error: Cloud provider lookup error or metrics registration error
+func (r *ReconcileTaskRun) buildDynamicResolver(ctx context.Context, config DynamicPlatformConfig, platform string, platformConfigName string, additionalInstanceTags map[string]string, data map[string]string) (DynamicResolver, error) {
+	allocfunc := r.cloudProviders[config.Type]
+
+	// Use instance tag from config, fall back to default if empty
+	instanceTag := config.InstanceTag
+	if instanceTag == "" {
+		instanceTag = data[DefaultInstanceTag]
+	}
+
+	ret := DynamicResolver{
+		CloudProvider:          allocfunc(platformConfigName, data, r.operatorNamespace),
+		sshSecret:              config.SSHSecret,
+		platform:               platform,
+		maxInstances:           config.MaxInstances,
+		instanceTag:            instanceTag,
+		timeout:                config.AllocationTimeout,
+		sudoCommands:           config.SudoCommands,
+		additionalInstanceTags: additionalInstanceTags,
+		eventRecorder:          r.eventRecorder,
+	}
+
+	err := mpcmetrics.RegisterPlatformMetrics(ctx, platform, config.MaxInstances)
+	if err != nil {
+		return DynamicResolver{}, err
+	}
+
+	return ret, nil
+}
+
+// buildDynamicHostPool constructs a DynamicHostPool from parsed dynamic pool platform configuration
+// This function is a helper for getPlatformConfig that builds the complete DynamicHostPool object
+// from the parsed configuration returned by parseDynamicPoolPlatformConfig. It handles cloud provider
+// initialization, instance tag resolution, and metrics registration. Dynamic host pools combine
+// fixed concurrency with auto-scaling and TTL-based host lifecycle management.
+//
+// Cloud Provider Initialization:
+// - Looks up cloud provider constructor function from r.cloudProviders map using config.Type
+// - Supported types: "aws", "ibmz", "ibmp"
+// - Constructor receives platformConfigName, full ConfigMap data, and operator namespace
+// - Returns error if cloud provider type is unknown
+//
+// Parameters:
+// - ctx: Context for metrics registration
+// - config: Parsed dynamic pool platform configuration from parseDynamicPoolPlatformConfig
+// - platform: Target platform string (e.g., "linux/arm64")
+// - platformConfigName: Platform config name with dashes (e.g., "linux-arm64")
+// - additionalInstanceTags: Additional instance tags from ConfigMap
+// - data: Full ConfigMap data for cloud provider initialization
+//
+// Returns:
+// - DynamicHostPool: Fully initialized dynamic pool platform resolver
+// - error: Cloud provider lookup error or metrics registration error
+func (r *ReconcileTaskRun) buildDynamicHostPool(ctx context.Context, config DynamicPoolPlatformConfig, platform string, platformConfigName string, additionalInstanceTags map[string]string, data map[string]string) (DynamicHostPool, error) {
+	allocfunc := r.cloudProviders[config.Type]
+
+	// Use instance tag from config, fall back to default if empty
+	instanceTag := config.InstanceTag
+	if instanceTag == "" {
+		instanceTag = data[DefaultInstanceTag]
+	}
+
+	ret := DynamicHostPool{
+		cloudProvider:          allocfunc(platformConfigName, data, r.operatorNamespace),
+		sshSecret:              config.SSHSecret,
+		platform:               platform,
+		maxInstances:           config.MaxInstances,
+		maxAge:                 time.Minute * time.Duration(config.MaxAge),
+		concurrency:            config.Concurrency,
+		instanceTag:            instanceTag,
+		additionalInstanceTags: additionalInstanceTags,
+	}
+
+	err := mpcmetrics.RegisterPlatformMetrics(ctx, platform, config.MaxInstances)
+	if err != nil {
+		return DynamicHostPool{}, err
+	}
+
 	return ret, nil
 }
 
