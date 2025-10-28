@@ -479,7 +479,7 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektona
 	log.Info("attempting to allocate host")
 	//check the secret does not already exist
 	secret := kubecore.Secret{}
-	err := r.client.Get(ctx, types.NamespacedName{Namespace: tr.Namespace, Name: secretName}, &secret)
+	err := GetWithRetry(ctx, r.client, types.NamespacedName{Namespace: tr.Namespace, Name: secretName}, &secret)
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
 			return reconcile.Result{}, err
@@ -670,7 +670,7 @@ func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, platform stri
 	//try and requeue a waiting task if one exists
 	taskList := tektonapi.TaskRunList{}
 
-	err := r.client.List(ctx, &taskList, client.MatchingLabels{WaitingForPlatformLabel: platformLabel(platform)})
+	err := ListWithRetry(ctx, r.client, &taskList, client.MatchingLabels{WaitingForPlatformLabel: platformLabel(platform)})
 	if err != nil {
 		log.Error(err, "failed to list waiting tasks")
 		return reconcile.Result{}, fmt.Errorf("failed to list waiting tasks: %w", err)
@@ -732,7 +732,7 @@ func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, platform stri
 // - error: ConfigMap retrieval error, parsing error, or metrics registration error
 func (r *ReconcileTaskRun) getPlatformConfig(ctx context.Context, targetPlatform string, targetNamespace string) (PlatformConfig, error) {
 	cm := kubecore.ConfigMap{}
-	err := r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: HostConfig}, &cm)
+	err := GetWithRetry(ctx, r.client, types.NamespacedName{Namespace: r.operatorNamespace, Name: HostConfig}, &cm)
 	if err != nil {
 		return nil, err
 	}
@@ -982,7 +982,7 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 	//first verify the secret exists, so we don't hang if it is missing
 	log := logr.FromContextOrDiscard(ctx)
 	secret := kubecore.Secret{}
-	err := r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: sshSecret}, &secret)
+	err := GetWithRetry(ctx, r.client, types.NamespacedName{Namespace: r.operatorNamespace, Name: sshSecret}, &secret)
 	if err != nil {
 		log := logr.FromContextOrDiscard(ctx)
 		log.Error(fmt.Errorf("failed to find SSH secret %s", sshSecret), "failed to find SSH secret")
@@ -1049,20 +1049,30 @@ func platformLabel(platform string) string {
 	return strings.ReplaceAll(platform, "/", "-")
 }
 
-// UpdateTaskRunWithRetry performs a conflict-resilient update of a TaskRun object.
+// UpdateTaskRunWithRetry performs a resilient update of a TaskRun object.
+// It handles both transient API errors (like etcd timeouts) and conflicts.
 // On conflict, it fetches the latest version and merges labels, annotations, and finalizers from the incoming TaskRun.
+// The entire operation is capped at 30 seconds to prevent excessive retry duration.
 func UpdateTaskRunWithRetry(ctx context.Context, cli client.Client, apiReader client.Reader, tr *tektonapi.TaskRun) error {
-	err := cli.Update(ctx, tr)
+	// Cap the total retry duration at 30 seconds to prevent nested retries from running too long
+	// Worst case: ~15.5s (outer transient retries) + ~0.05s (inner conflict retries) = ~16s
+	// The 30s timeout provides headroom while preventing runaway retry loops
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 
-	// if no error or a not a conflict error happened
-	// we need to return here
-	if err == nil || !k8serrors.IsConflict(err) {
-		return err
-	}
+	// Wrap the entire update operation with transient error retry logic
+	return RetryOnTransientAPIError(ctx, func() error {
+		err := cli.Update(ctx, tr)
 
-	// if a conflict happened we retry
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		return updateTaskRun(ctx, cli, apiReader, tr)
+		// if no error or not a conflict error, return
+		if err == nil || !k8serrors.IsConflict(err) {
+			return err
+		}
+
+		// if a conflict happened, retry with conflict resolution
+		return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			return updateTaskRun(ctx, cli, apiReader, tr)
+		})
 	})
 }
 

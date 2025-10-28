@@ -94,7 +94,7 @@ func (a DynamicHostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr
 
 func (a DynamicHostPool) isHostIdle(r *ReconcileTaskRun, ctx context.Context, selectedHost string) (bool, error) {
 	trs := v1.TaskRunList{}
-	err := r.client.List(ctx, &trs, client.MatchingLabels{AssignedHost: selectedHost})
+	err := ListWithRetry(ctx, r.client, &trs, client.MatchingLabels{AssignedHost: selectedHost})
 	if err != nil {
 		return false, err
 	}
