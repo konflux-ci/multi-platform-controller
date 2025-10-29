@@ -1,4 +1,4 @@
-package taskrun
+package config
 
 import (
 	"fmt"
@@ -37,7 +37,7 @@ const (
 // Returns:
 // - []string: Slice of validated platform strings
 // - error: Validation error if any platform is invalid or empty in middle of list
-func parsePlatformList(platformList string, pType PlatformType) ([]string, error) {
+func ParsePlatformList(platformList string, pType PlatformType) ([]string, error) {
 	if platformList == "" {
 		return []string{}, nil
 	}
@@ -191,7 +191,7 @@ func parseRequiredSSHSecretField(data map[string]string, prefix, platform, platf
 // Returns:
 // - DynamicPlatformConfig: The parsed and validated configuration
 // - error: Validation error if any required field is missing or invalid
-func parseDynamicPlatformConfig(data map[string]string, platform string) (DynamicPlatformConfig, error) {
+func ParseDynamicPlatformConfig(data map[string]string, platform string) (DynamicPlatformConfig, error) {
 	platformConfigName := strings.ReplaceAll(platform, "/", "-")
 	prefix := "dynamic." + platformConfigName + "."
 
@@ -265,7 +265,7 @@ func parseDynamicPlatformConfig(data map[string]string, platform string) (Dynami
 // Returns:
 // - DynamicPoolPlatformConfig: The parsed and validated configuration
 // - error: Validation error if any required field is missing or invalid
-func parseDynamicPoolPlatformConfig(data map[string]string, platform string) (DynamicPoolPlatformConfig, error) {
+func ParseDynamicPoolPlatformConfig(data map[string]string, platform string) (DynamicPoolPlatformConfig, error) {
 	platformConfigName := strings.ReplaceAll(platform, "/", "-")
 	prefix := "dynamic." + platformConfigName + "."
 
@@ -343,13 +343,13 @@ func parseDynamicPoolPlatformConfig(data map[string]string, platform string) (Dy
 // Returns:
 // - StaticHostConfig: The parsed and validated configuration
 // - error: Validation error if address is missing or any field is invalid
-func parseStaticHostConfig(data map[string]string, hostName string) (StaticHostConfig, error) {
+func ParseStaticHostConfig(data map[string]string, hostName string) (StaticHostConfig, error) {
 	hostConfig := StaticHostConfig{}
 	prefix := "host." + hostName + "."
 
 	// Parse and validate each field
 	if address := strings.TrimSpace(data[prefix+"address"]); address != "" {
-		if err := validateIPFormat(address); err != nil {
+		if err := ValidateIPFormat(address); err != nil {
 			return StaticHostConfig{}, fmt.Errorf("static host '%s': invalid address '%s': %w", hostName, address, err)
 		}
 		hostConfig.Address = address
