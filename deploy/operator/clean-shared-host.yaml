@@ -31,32 +31,41 @@ spec:
         cp $(workspaces.ssh.path)/id_rsa /tmp/master_key
         chmod 0400 /tmp/master_key
         export SSH_HOST=$(params.USER)@$(params.HOST)
-        
+
         export USERNAME=u-$(echo $(params.TASKRUN_NAME)$(params.NAMESPACE) | md5sum | cut -b-28)
-        
+
+        # Obfuscate USERNAME for logging
+        obfuscated_username="${USERNAME:0:2}**********${USERNAME: -3:3}"
+
         SSH_OPTS="-i /tmp/master_key -o StrictHostKeyChecking=no"
-  
+
         # check user exists
         if ssh $SSH_OPTS "$SSH_HOST" id -u "$USERNAME" > /dev/null 2>&1; then
-           echo "User $USERNAME exists, proceeding with cleanup"
+           echo "User $obfuscated_username exists, proceeding with cleanup"
         else
            exit_code=$?
            if [ $exit_code -eq 1 ]; then
-             echo "User $USERNAME already deleted, exiting"
+             echo "User $obfuscated_username already deleted, exiting"
              exit 0
            else
              echo "SSH error (exit code $exit_code)" >&2
              exit $exit_code
            fi
         fi
-      
+
+        # kill all processes associated with $USERNAME
         ssh $SSH_OPTS "$SSH_HOST" sudo killall -9 -u "$USERNAME" || true
+
         for i in {10..1}; do
           if ssh $SSH_OPTS "$SSH_HOST" sudo userdel -f -r -Z "$USERNAME"; then
-            echo "User $USERNAME deleted successfully"
-            break
-          else
-            echo "User $USERNAME removing attempt failed, retrying..."
+            echo "User $obfuscated_username deleted successfully"
+            exit 0
+          fi
+          ATTEMPTS_REMAINING=$((i - 1))
+          if [ "$ATTEMPTS_REMAINING" -gt 0 ]; then
+            echo "User $obfuscated_username removal attempt failed, retrying $ATTEMPTS_REMAINING more times..."
             sleep 1
           fi
         done
+        echo "ERROR: Failed to delete user $obfuscated_username on $SSH_HOST after 10 total attempts."
+        exit 1
