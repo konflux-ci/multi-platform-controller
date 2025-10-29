@@ -137,10 +137,9 @@ var _ = Describe("IBM Power Cloud Helper Functions", func() {
 		})
 
 		When("the network slice contains a nil entry", func() {
-			It("should not panic", func() {
-				Expect(func() {
-					retrieveInstanceIp("vm-with-nil-network", []*models.PVMInstanceNetwork{nil})
-				}).ShouldNot(Panic())
+			It("should return an error for nil network entry", func() {
+				Expect(retrieveInstanceIp("vm-with-nil-network", []*models.PVMInstanceNetwork{nil})).Error().
+					Should(MatchError(ContainSubstring("network entry is nil")))
 			})
 		})
 	})
