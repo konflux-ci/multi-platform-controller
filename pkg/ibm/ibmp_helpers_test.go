@@ -129,8 +129,8 @@ var _ = Describe("IBM Power Cloud Helper Functions", func() {
 			)
 
 			It("should return an error for invalid IP address format", func() {
-				Expect(retrieveInstanceIp("vm-with-garbage-ip")).Error().
-					Should(ContainSubstring("invalid IP address format")
+				Expect(retrieveInstanceIp("vm-with-garbage-ip", []*models.PVMInstanceNetwork{networkWithGarbageIP})).Error().
+					Should(ContainSubstring("invalid IP address format"))
 			})
 		})
 
