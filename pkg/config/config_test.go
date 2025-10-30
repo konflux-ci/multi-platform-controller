@@ -1,6 +1,6 @@
 // This file contains tests for the host configuration parsing and validation functions.
 // It covers parsing of local platforms, dynamic platforms, dynamic pool platforms, and static hosts.
-package taskrun
+package config
 
 import (
 	"strings"
@@ -8,8 +8,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
-
-//TODO: add 'const systemNamespace = "multi-platform-controller"' here at the start of KFLUXINFRA-2328
 
 var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 
@@ -19,7 +17,7 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 		When("parsing valid platform lists", func() {
 			DescribeTable("should parse platform lists correctly",
 				func(ctx SpecContext, input string, expected []string) {
-					result, _ := parsePlatformList(input, PlatformTypeDynamic)
+					result, _ := ParsePlatformList(input, PlatformTypeDynamic)
 					Expect(result).Should(Equal(expected))
 				},
 				Entry("empty string returns empty slice", "", []string{}),
@@ -33,7 +31,7 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 		When("parsing invalid platform lists", func() {
 			DescribeTable("should return error for various invalid inputs",
 				func(ctx SpecContext, input string, expectedErrorSubstring string) {
-					_, err := parsePlatformList(input, PlatformTypeDynamic)
+					_, err := ParsePlatformList(input, PlatformTypeDynamic)
 					Expect(err.Error()).Should(ContainSubstring(expectedErrorSubstring))
 				},
 				Entry("invalid platform format", "invalid_platform", "invalid dynamic platform 'invalid_platform'"),
@@ -250,7 +248,7 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 					"dynamic.linux-amd64.sudo-commands":      "yum install -y docker",
 				}
 
-				dynamicConfig, err := parseDynamicPlatformConfig(data, "linux/amd64")
+				dynamicConfig, err := ParseDynamicPlatformConfig(data, "linux/amd64")
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(dynamicConfig.Type).Should(Equal("aws"))
 				Expect(dynamicConfig.MaxInstances).Should(Equal(10))
@@ -267,7 +265,7 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 					"dynamic.linux-s390x.ssh-secret":    "ibm-s390x-secret",
 				}
 
-				ibmzConfig, err := parseDynamicPlatformConfig(data, "linux/s390x")
+				ibmzConfig, err := ParseDynamicPlatformConfig(data, "linux/s390x")
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ibmzConfig.Type).Should(Equal("ibmz"))
 				Expect(ibmzConfig.MaxInstances).Should(Equal(3))
@@ -281,7 +279,7 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 		When("parsing invalid dynamic platform configurations", func() {
 			DescribeTable("should return error and empty config for various invalid configurations",
 				func(ctx SpecContext, data map[string]string, platform string, expectedErrorSubstring string) {
-					dynamicConfig, err := parseDynamicPlatformConfig(data, platform)
+					dynamicConfig, err := ParseDynamicPlatformConfig(data, platform)
 					Expect(dynamicConfig).Should(Equal(DynamicPlatformConfig{}))
 					Expect(err.Error()).Should(ContainSubstring(expectedErrorSubstring))
 				},
@@ -365,7 +363,7 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 					"dynamic.linux-amd64.ssh-secret":    "aws-pool-secret",
 				}
 
-				poolConfig, err := parseDynamicPoolPlatformConfig(data, "linux/amd64")
+				poolConfig, err := ParseDynamicPoolPlatformConfig(data, "linux/amd64")
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(poolConfig.Concurrency).Should(Equal(4))
 				Expect(poolConfig.MaxAge).Should(Equal(int64(60)))
@@ -380,7 +378,7 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 						"dynamic.linux-amd64.max-age":       "60",
 						"dynamic.linux-amd64.ssh-secret":    "aws-secret",
 					}
-					poolConfig, err := parseDynamicPoolPlatformConfig(data, "linux/amd64")
+					poolConfig, err := ParseDynamicPoolPlatformConfig(data, "linux/amd64")
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(poolConfig.Concurrency).Should(Equal(expected))
 				},
@@ -397,7 +395,7 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 						"dynamic.linux-amd64.max-age":       value,
 						"dynamic.linux-amd64.ssh-secret":    "aws-secret",
 					}
-					poolConfig, err := parseDynamicPoolPlatformConfig(data, "linux/amd64")
+					poolConfig, err := ParseDynamicPoolPlatformConfig(data, "linux/amd64")
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(poolConfig.MaxAge).Should(Equal(expected))
 				},
@@ -409,7 +407,7 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 		When("parsing invalid pool-specific fields", func() {
 			DescribeTable("should return error and empty config for invalid pool-specific configurations",
 				func(ctx SpecContext, data map[string]string, platform string, expectedErrorSubstring string) {
-					poolConfig, err := parseDynamicPoolPlatformConfig(data, platform)
+					poolConfig, err := ParseDynamicPoolPlatformConfig(data, platform)
 					Expect(poolConfig).Should(Equal(DynamicPoolPlatformConfig{}))
 					Expect(err.Error()).Should(ContainSubstring(expectedErrorSubstring))
 				},
@@ -521,7 +519,7 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 					for field, value := range fieldsToOverride {
 						data["host.moshe-kipod-s390x-static."+field] = value
 					}
-					hostConfig, err := parseStaticHostConfig(data, "moshe-kipod-s390x-static")
+					hostConfig, err := ParseStaticHostConfig(data, "moshe-kipod-s390x-static")
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(hostConfig.Address).Should(Equal(expectedAddress))
 					Expect(hostConfig.User).Should(Equal(expectedUser))
@@ -559,7 +557,7 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 					for field, value := range fieldsToOverride {
 						data["host.koko-hazamar-s390x-static."+field] = value
 					}
-					hostConfig, err := parseStaticHostConfig(data, "koko-hazamar-s390x-static")
+					hostConfig, err := ParseStaticHostConfig(data, "koko-hazamar-s390x-static")
 					Expect(hostConfig).Should(Equal(StaticHostConfig{}))
 					Expect(err.Error()).Should(ContainSubstring(expectedErrorSubstring))
 				},

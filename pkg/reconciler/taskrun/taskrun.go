@@ -15,6 +15,7 @@ import (
 
 	"github.com/konflux-ci/multi-platform-controller/pkg/aws"
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
+	"github.com/konflux-ci/multi-platform-controller/pkg/config"
 	"github.com/konflux-ci/multi-platform-controller/pkg/ibm"
 	tektonapi "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	kubecore "k8s.io/api/core/v1"
@@ -443,7 +444,7 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *tektonapi.Tas
 		return reconcile.Result{}, nil
 	}
 
-	targetPlatform, err := validatePlatform(tr)
+	targetPlatform, err := config.ValidatePlatform(tr)
 	if err != nil {
 		err := r.createErrorSecret(ctx, tr, "[UNKNOWN]", secretName, err.Error())
 		if err != nil {
@@ -576,7 +577,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 	log.Info("handling completed/deleted TaskRun", "completed", isCompleted, "beingDeleted", isBeingDeleted)
 
 	// Extract platform with error handling
-	platform, err := extractPlatform(tr)
+	platform, err := config.ExtractPlatform(tr)
 	if err != nil {
 		log.Error(err, "failed to extract platform for deallocation")
 		return reconcile.Result{}, fmt.Errorf("failed to extract platform: %w", err)
@@ -584,19 +585,19 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 	log = log.WithValues("platform", platform)
 
 	// Get platform configuration
-	config, err := r.getPlatformConfig(ctx, platform, tr.Namespace)
+	platformConfig, err := r.getPlatformConfig(ctx, platform, tr.Namespace)
 	if err != nil {
 		log.Error(err, "failed to read platform configuration")
 		return reconcile.Result{}, fmt.Errorf("failed to read configuration: %w", err)
 	}
-	if config == nil {
+	if platformConfig == nil {
 		log.Error(errors.New("no configuration found"), "no config for platform", "platform", platform)
 		return reconcile.Result{}, nil
 	}
 
 	// Attempt host deallocation
 	log.Info("calling host deallocation")
-	err = config.Deallocate(r, ctx, tr, secretName, assignedHost)
+	err = platformConfig.Deallocate(r, ctx, tr, secretName, assignedHost)
 	if err != nil {
 		log.Error(err, "failed to deallocate host", "host", assignedHost)
 		// Continue with cleanup even if deallocation fails
@@ -768,7 +769,7 @@ func (r *ReconcileTaskRun) getPlatformConfig(ctx context.Context, targetPlatform
 	data := cm.Data
 
 	// Is our targetPlatform a local platform? Check local platforms
-	localPlatforms, err := parsePlatformList(data[LocalPlatforms], PlatformTypeLocal)
+	localPlatforms, err := config.ParsePlatformList(data[LocalPlatforms], config.PlatformTypeLocal)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse local platforms: %w", err)
 	}
@@ -777,12 +778,12 @@ func (r *ReconcileTaskRun) getPlatformConfig(ctx context.Context, targetPlatform
 	}
 
 	// No match? Check DYNAMIC platforms
-	dynamicPlatforms, err := parsePlatformList(data[DynamicPlatforms], PlatformTypeDynamic)
+	dynamicPlatforms, err := config.ParsePlatformList(data[DynamicPlatforms], config.PlatformTypeDynamic)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse dynamic platforms: %w", err)
 	}
 	if slices.Contains(dynamicPlatforms, targetPlatform) {
-		dynamicConfig, err := parseDynamicPlatformConfig(data, targetPlatform)
+		dynamicConfig, err := config.ParseDynamicPlatformConfig(data, targetPlatform)
 		if err != nil {
 			return nil, err
 		}
@@ -796,12 +797,12 @@ func (r *ReconcileTaskRun) getPlatformConfig(ctx context.Context, targetPlatform
 	}
 
 	// No match? Check DYNAMIC POOL platforms
-	dynamicPoolPlatforms, err := parsePlatformList(data[DynamicPoolPlatforms], PlatformTypeDynamicPool)
+	dynamicPoolPlatforms, err := config.ParsePlatformList(data[DynamicPoolPlatforms], config.PlatformTypeDynamicPool)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse dynamic pool platforms: %w", err)
 	}
 	if slices.Contains(dynamicPoolPlatforms, targetPlatform) {
-		poolConfig, err := parseDynamicPoolPlatformConfig(data, targetPlatform)
+		poolConfig, err := config.ParseDynamicPoolPlatformConfig(data, targetPlatform)
 		if err != nil {
 			return nil, err
 		}
@@ -835,7 +836,7 @@ func (r *ReconcileTaskRun) getPlatformConfig(ctx context.Context, targetPlatform
 
 	// Parse each host and add to pool if it matches our platform
 	for hostName := range hostNames {
-		hostConfig, err := parseStaticHostConfig(data, hostName)
+		hostConfig, err := config.ParseStaticHostConfig(data, hostName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse static host '%s': %w", hostName, err)
 		}
@@ -890,28 +891,28 @@ func (r *ReconcileTaskRun) getPlatformConfig(ctx context.Context, targetPlatform
 // Returns:
 // - DynamicResolver: Fully initialized dynamic platform resolver
 // - error: Cloud provider lookup error or metrics registration error
-func (r *ReconcileTaskRun) buildDynamicResolver(ctx context.Context, config DynamicPlatformConfig, platform string, platformConfigName string, additionalInstanceTags map[string]string, data map[string]string) (DynamicResolver, error) {
-	allocfunc := r.cloudProviders[config.Type]
+func (r *ReconcileTaskRun) buildDynamicResolver(ctx context.Context, dynamicConfig config.DynamicPlatformConfig, platform string, platformConfigName string, additionalInstanceTags map[string]string, data map[string]string) (DynamicResolver, error) {
+	allocfunc := r.cloudProviders[dynamicConfig.Type]
 
 	// Use instance tag from config, fall back to default if empty
-	instanceTag := config.InstanceTag
+	instanceTag := dynamicConfig.InstanceTag
 	if instanceTag == "" {
 		instanceTag = data[DefaultInstanceTag]
 	}
 
 	ret := DynamicResolver{
 		CloudProvider:          allocfunc(platformConfigName, data, r.operatorNamespace),
-		sshSecret:              config.SSHSecret,
+		sshSecret:              dynamicConfig.SSHSecret,
 		platform:               platform,
-		maxInstances:           config.MaxInstances,
+		maxInstances:           dynamicConfig.MaxInstances,
 		instanceTag:            instanceTag,
-		timeout:                config.AllocationTimeout,
-		sudoCommands:           config.SudoCommands,
+		timeout:                dynamicConfig.AllocationTimeout,
+		sudoCommands:           dynamicConfig.SudoCommands,
 		additionalInstanceTags: additionalInstanceTags,
 		eventRecorder:          r.eventRecorder,
 	}
 
-	err := mpcmetrics.RegisterPlatformMetrics(ctx, platform, config.MaxInstances)
+	err := mpcmetrics.RegisterPlatformMetrics(ctx, platform, dynamicConfig.MaxInstances)
 	if err != nil {
 		return DynamicResolver{}, err
 	}
@@ -942,27 +943,27 @@ func (r *ReconcileTaskRun) buildDynamicResolver(ctx context.Context, config Dyna
 // Returns:
 // - DynamicHostPool: Fully initialized dynamic pool platform resolver
 // - error: Cloud provider lookup error or metrics registration error
-func (r *ReconcileTaskRun) buildDynamicHostPool(ctx context.Context, config DynamicPoolPlatformConfig, platform string, platformConfigName string, additionalInstanceTags map[string]string, data map[string]string) (DynamicHostPool, error) {
-	allocfunc := r.cloudProviders[config.Type]
+func (r *ReconcileTaskRun) buildDynamicHostPool(ctx context.Context, poolConfig config.DynamicPoolPlatformConfig, platform string, platformConfigName string, additionalInstanceTags map[string]string, data map[string]string) (DynamicHostPool, error) {
+	allocfunc := r.cloudProviders[poolConfig.Type]
 
 	// Use instance tag from config, fall back to default if empty
-	instanceTag := config.InstanceTag
+	instanceTag := poolConfig.InstanceTag
 	if instanceTag == "" {
 		instanceTag = data[DefaultInstanceTag]
 	}
 
 	ret := DynamicHostPool{
 		cloudProvider:          allocfunc(platformConfigName, data, r.operatorNamespace),
-		sshSecret:              config.SSHSecret,
+		sshSecret:              poolConfig.SSHSecret,
 		platform:               platform,
-		maxInstances:           config.MaxInstances,
-		maxAge:                 time.Minute * time.Duration(config.MaxAge),
-		concurrency:            config.Concurrency,
+		maxInstances:           poolConfig.MaxInstances,
+		maxAge:                 time.Minute * time.Duration(poolConfig.MaxAge),
+		concurrency:            poolConfig.Concurrency,
 		instanceTag:            instanceTag,
 		additionalInstanceTags: additionalInstanceTags,
 	}
 
-	err := mpcmetrics.RegisterPlatformMetrics(ctx, platform, config.MaxInstances)
+	err := mpcmetrics.RegisterPlatformMetrics(ctx, platform, poolConfig.MaxInstances)
 	if err != nil {
 		return DynamicHostPool{}, err
 	}
