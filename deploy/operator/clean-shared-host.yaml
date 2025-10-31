@@ -58,12 +58,12 @@ spec:
 
         for i in {10..1}; do
           if ssh $SSH_OPTS "$SSH_HOST" sudo userdel -f -r -Z "$USERNAME"; then
-            echo "User $obfuscated_username deleted successfully"
+            echo "User $obfuscated_username successfully deleted"
             exit 0
           fi
           ATTEMPTS_REMAINING=$((i - 1))
           if [ "$ATTEMPTS_REMAINING" -gt 0 ]; then
-            echo "User $obfuscated_username removal attempt failed, retrying $ATTEMPTS_REMAINING more times..."
+            echo "User $obfuscated_username deletion attempt failed, retrying $ATTEMPTS_REMAINING more times..."
             sleep 1
           fi
         done
