@@ -7,6 +7,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
+	mpcmetrics "github.com/konflux-ci/multi-platform-controller/pkg/metrics"
 	"github.com/konflux-ci/multi-platform-controller/pkg/reconciler/taskrun"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -23,6 +24,7 @@ import (
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
 var (
@@ -113,6 +115,40 @@ func NewManager(cfg *rest.Config, managerOptions ctrl.Options, controllerOptions
 		//update the nodes on startup
 		taskrun.UpdateHostPools(operatorNamespace, mgr.GetClient(), &controllerLog)
 	}()
+
+	// Seed RunningTasks metric on startup after caches sync. Metrics per-platform may not be registered yet,
+	// so values are queued and applied when the platform metrics are registered the first time.
+	if err := mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
+		// Wait for informer caches to sync
+		if ok := mgr.GetCache().WaitForCacheSync(ctx); !ok {
+			return context.Canceled
+		}
+		// List TaskRuns with AssignedHost label and without CompletionTime
+		var trList pipelinev1.TaskRunList
+		req, err := labels.NewRequirement(taskrun.AssignedHost, selection.Exists, []string{})
+		if err != nil {
+			return err
+		}
+		ls := labels.NewSelector().Add(*req)
+		if err := mgr.GetClient().List(ctx, &trList, &client.ListOptions{LabelSelector: ls}); err != nil {
+			return err
+		}
+		// Increment pending running tasks per TaskRun. If metrics are already registered,
+		// this will increment live gauges; otherwise it records pending increments.
+		for _, tr := range trList.Items {
+			if tr.Status.CompletionTime != nil {
+				continue
+			}
+			platform := tr.Labels[taskrun.TargetPlatformLabel]
+			if platform == "" {
+				continue
+			}
+			mpcmetrics.IncrementPendingRunningTask(platform, tr.Namespace)
+		}
+		return nil
+	})); err != nil {
+		return nil, err
+	}
 
 	return mgr, nil
 }

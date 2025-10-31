@@ -12,10 +12,46 @@ var (
 
 	// Map of metrics set. Holds pointers, so no real need to be thread-safe here as the values are never rewritten.
 	platformMetrics = map[string]*PlatformMetrics{}
+	// Pending seeds for RunningTasks when metrics for a platform are not yet registered
+	pendingRunningTasks = pendingSeeds{}
 
 	smallBuckets = []float64{1, 2, 3, 4, 5, 10, 15, 20, 30, 60, 120, 300, 600, 1200}
 	bigBuckets   = []float64{20, 40, 60, 90, 120, 300, 600, 1200, 2400, 4800, 6000, 7200, 8400, 9600}
 )
+
+// perNamespace holds gauge values per namespace
+type perNamespace map[string]float64
+
+// pendingSeeds stores pending RunningTasks values using nested structs
+type pendingSeeds struct {
+	perPlatform map[string]perNamespace
+}
+
+// increment increases the pending value for platform/namespace by 1
+func (p *pendingSeeds) increment(platform, namespace string) {
+	if p.perPlatform == nil {
+		p.perPlatform = map[string]perNamespace{}
+	}
+	ns, ok := p.perPlatform[platform]
+	if !ok {
+		ns = perNamespace{}
+		p.perPlatform[platform] = ns
+	}
+	ns[namespace] = ns[namespace] + 1
+}
+
+// drain applies and clears all pending seeds for a platform
+func (p *pendingSeeds) drain(platform string, fn func(namespace string, value float64)) {
+	if p.perPlatform == nil {
+		return
+	}
+	if ns, ok := p.perPlatform[platform]; ok {
+		for namespace, value := range ns {
+			fn(namespace, value)
+		}
+		delete(p.perPlatform, platform)
+	}
+}
 
 // PlatformMetrics set of per-platform metrics
 type PlatformMetrics struct {
@@ -135,6 +171,11 @@ func RegisterPlatformMetrics(_ context.Context, platform string, poolSize int) e
 	}
 	pmetrics.poolSize.WithLabelValues().Set(float64(poolSize))
 	platformMetrics[platform] = &pmetrics
+
+	// Drain any pending RunningTasks seeds for this platform
+	pendingRunningTasks.drain(platform, func(namespace string, value float64) {
+		pmetrics.RunningTasks.WithLabelValues(namespace).Set(value)
+	})
 	return nil
 }
 
@@ -149,3 +190,16 @@ func HandleMetrics(platform string, f func(*PlatformMetrics)) {
 		f(pmetrics)
 	}
 }
+
+// IncrementPendingRunningTask increments the running tasks count for a platform/namespace.
+// If the platform metrics are already registered, it increments the live gauge.
+// Otherwise, it records a pending increment to be applied on registration.
+func IncrementPendingRunningTask(platform string, namespace string) {
+	platform = platformLabel(platform)
+	if pmetrics := platformMetrics[platform]; pmetrics != nil {
+		pmetrics.RunningTasks.WithLabelValues(namespace).Inc()
+		return
+	}
+	pendingRunningTasks.increment(platform, namespace)
+}
+
