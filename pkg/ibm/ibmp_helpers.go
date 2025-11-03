@@ -14,6 +14,7 @@ import (
 	"github.com/IBM/go-sdk-core/v5/core"
 	"github.com/go-logr/logr"
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
+	"github.com/konflux-ci/multi-platform-controller/pkg/config"
 	v1 "k8s.io/api/core/v1"
 	types2 "k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -26,18 +27,37 @@ const (
 )
 
 // retrieveInstanceIP returns a string representing the IP address of instance instanceID.
+// The function validates the IP address format before returning it.
+// Validation ensures the IP is in valid IPv4 dotted decimal notation.
+//
+// Returns:
+// - string: The validated IP address (ExternalIP if available, otherwise IPAddress)
+// - error: If no networks found, no IP address found, or IP format is invalid
 func retrieveInstanceIp(instanceID string, networks []*models.PVMInstanceNetwork) (string, error) {
 	if len(networks) == 0 {
 		return "", fmt.Errorf("no networks found for Power Systems VM %s", instanceID)
 	}
 	network := networks[0]
+	if network == nil {
+		return "", fmt.Errorf("network entry is nil for Power Systems VM %s", instanceID)
+	}
+
+	// Determine which IP to use (prefer ExternalIP over IPAddress)
+	var ip string
 	if network.ExternalIP != "" {
-		return network.ExternalIP, nil
+		ip = network.ExternalIP
 	} else if network.IPAddress != "" {
-		return network.IPAddress, nil
+		ip = network.IPAddress
 	} else {
 		return "", fmt.Errorf("no IP address found for Power Systems VM %s", instanceID)
 	}
+
+	// Validate IP format before returning
+	if err := config.ValidateIPFormat(ip); err != nil {
+		return "", fmt.Errorf("invalid IP address format for Power Systems VM %s: %w", instanceID, err)
+	}
+
+	return ip, nil
 }
 
 // createAuthenticatedBaseService generates a base communication service with an API key-based IAM (Identity and Access

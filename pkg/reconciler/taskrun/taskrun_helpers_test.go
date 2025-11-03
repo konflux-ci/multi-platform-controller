@@ -60,7 +60,7 @@ func setupClientAndReconciler(objs []runtimeclient.Object) (runtimeclient.Client
 		scheme:            scheme,
 		eventRecorder:     &record.FakeRecorder{},
 		operatorNamespace: systemNamespace,
-		cloudProviders:    map[string]func(platform string, config map[string]string, systemnamespace string) cloud.CloudProvider{"mock": MockCloudSetup},
+		cloudProviders:    map[string]func(platform string, config map[string]string, systemnamespace string) cloud.CloudProvider{"aws": MockCloudSetup, "ibmz": MockCloudSetup, "ibmp": MockCloudSetup},
 		platformConfig:    map[string]PlatformConfig{},
 	}
 	return client, reconciler
@@ -296,12 +296,12 @@ func createHostConfigMap() v1.ConfigMap {
 	cm.Labels = map[string]string{ConfigMapLabel: "hosts"}
 	cm.Data = map[string]string{
 		"allowed-namespaces":     "default,system-.*",
-		"host.host1.address":     "ec2-12-345-67-890.compute-1.amazonaws.com",
+		"host.host1.address":     "192.0.2.1",
 		"host.host1.secret":      "awskeys",
 		"host.host1.concurrency": "4",
 		"host.host1.user":        "ec2-user",
 		"host.host1.platform":    "linux/arm64",
-		"host.host2.address":     "ec2-09-876-543-210.compute-1.amazonaws.com",
+		"host.host2.address":     "192.0.2.2",
 		"host.host2.secret":      "awskeys",
 		"host.host2.concurrency": "4",
 		"host.host2.user":        "ec2-user",
@@ -319,7 +319,7 @@ func createDynamicHostConfig() []runtimeclient.Object {
 	cm.Data = map[string]string{
 		"additional-instance-tags":               "foo=bar,key=value",
 		"dynamic-platforms":                      "linux/arm64",
-		"dynamic.linux-arm64.type":               "mock",
+		"dynamic.linux-arm64.type":               "aws",
 		"dynamic.linux-arm64.region":             "us-east-1",
 		"dynamic.linux-arm64.ami":                "ami-03d6a5256a46c9feb",
 		"dynamic.linux-arm64.instance-type":      "t4g.medium",
@@ -345,7 +345,7 @@ func createDynamicPoolHostConfig() []runtimeclient.Object {
 	cm.Data = map[string]string{
 		"additional-instance-tags":          "foo=bar,key=value",
 		"dynamic-pool-platforms":            "linux/arm64",
-		"dynamic.linux-arm64.type":          "mock",
+		"dynamic.linux-arm64.type":          "aws",
 		"dynamic.linux-arm64.region":        "us-east-1",
 		"dynamic.linux-arm64.ami":           "ami-03d6a5256a46c9feb",
 		"dynamic.linux-arm64.instance-type": "t4g.medium",

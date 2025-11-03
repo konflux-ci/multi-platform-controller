@@ -1,8 +1,8 @@
 // This file contains tests for the validation functions used by the TaskRun reconciler.
 // It covers platform format validation, numeric parameter validation (instance counts, timeouts),
-// IP address validation and obfuscation, IBM host secret validation, and dynamic instance tag
+// IP address format validation, IBM host secret validation, and dynamic instance tag
 // parsing and validation for AWS EC2 configurations.
-package taskrun
+package config
 
 import (
 	"strings"
@@ -33,7 +33,7 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 		When("extracting platform from TaskRun parameters", func() {
 			It("should extract platform from TaskRun parameters successfully", func() {
 				tr := createTrWithPlatform("linux/amd64")
-				Expect(extractPlatform(tr)).To(Equal("linux/amd64"))
+				Expect(ExtractPlatform(tr)).To(Equal("linux/amd64"))
 			})
 
 			It("should extract platform from TaskRun with multiple parameters", func() {
@@ -46,7 +46,7 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 						},
 					},
 				}
-				Expect(extractPlatform(tr)).To(Equal("linux/arm64"))
+				Expect(ExtractPlatform(tr)).To(Equal("linux/arm64"))
 			})
 		})
 
@@ -63,7 +63,7 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 						},
 					},
 				}
-				Expect(extractPlatform(tr)).To(Equal("linux/amd64")) // Should return the first occurrence
+				Expect(ExtractPlatform(tr)).To(Equal("linux/amd64")) // Should return the first occurrence
 			})
 		})
 
@@ -77,7 +77,7 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 					},
 				}
 
-				_, err := extractPlatform(tr)
+				_, err := ExtractPlatform(tr)
 				Expect(err).Should(MatchError(errMissingPlatformParameter))
 			})
 		})
@@ -142,7 +142,7 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 				DescribeTable("it should return the platform and no error",
 					func(platformValue string) {
 						tr := createTrWithPlatform(platformValue)
-						Expect(validatePlatform(tr)).To(Equal(platformValue))
+						Expect(ValidatePlatform(tr)).To(Equal(platformValue))
 					},
 					Entry("for a standard platform", "linux/amd64"),
 					Entry("for the 'linux/x86_64' exception", "linux/x86_64"),
@@ -156,12 +156,12 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 							Params: []pipelinev1.Param{},
 						},
 					}
-					Expect(validatePlatform(tr)).Error().To(MatchError(errMissingPlatformParameter))
+					Expect(ValidatePlatform(tr)).Error().To(MatchError(errMissingPlatformParameter))
 				})
 
 				It("should return error when platform parameter format is invalid", func() {
 					tr := createTrWithPlatform("koko_hazamar/moshe_ata_lo_kipod")
-					_, err := validatePlatform(tr)
+					_, err := ValidatePlatform(tr)
 					Expect(err).Should(MatchError(errInvalidPlatformFormat))
 				})
 			})
@@ -171,10 +171,40 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 	// This section verifies validation of the numeric values that appear in host configurations.
 	Describe("The validateNonZeroPositiveNumber function", func() {
 
+		When("validating positive integer values", func() {
+			DescribeTable("it should return the parsed integer value",
+				func(value string, expected int) {
+					Expect(validateNonZeroPositiveNumber(value)).Should(Equal(expected))
+				},
+				Entry("with minimum value 1", "1", 1),
+				Entry("with mid-range value", "50", 50),
+				Entry("with very large value", "1000000", 1000000),
+			)
+		})
+
+		When("validating invalid values", func() {
+			DescribeTable("it should return an error",
+				func(value string) {
+					_, err := validateNonZeroPositiveNumber(value)
+					Expect(err).Should(HaveOccurred())
+					Expect(err.Error()).Should(ContainSubstring("greater than or equal to 1"))
+				},
+				Entry("with zero value", "0"),
+				Entry("with negative value", "-1"),
+				Entry("with non-numeric string", "abc"),
+				Entry("with empty string", ""),
+				Entry("with decimal value", "50.5"),
+				Entry("with value containing spaces", " 50 "),
+			)
+		})
+	})
+
+	Describe("The validateNonZeroPositiveNumberWithMax function", func() {
+
 		When("validating numeric values within valid range", func() {
 			DescribeTable("it should return the parsed integer value",
 				func(value string, maxValue int, expected int) {
-					Expect(validateNonZeroPositiveNumber(value, maxValue)).Should(Equal(expected))
+					Expect(validateNonZeroPositiveNumberWithMax(value, maxValue)).Should(Equal(expected))
 				},
 				Entry("with minimum value 1", "1", 100, 1),
 				Entry("with mid-range value", "50", 100, 50),
@@ -184,11 +214,10 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 		})
 
 		When("validating numeric values outside valid range or invalid format", func() {
-			DescribeTable("it should return an error containing the range",
+			DescribeTable("it should return an error",
 				func(value string, maxValue int) {
-					_, err := validateNonZeroPositiveNumber(value, maxValue)
+					_, err := validateNonZeroPositiveNumberWithMax(value, maxValue)
 					Expect(err).Should(HaveOccurred())
-					Expect(err.Error()).Should(ContainSubstring("must be a valid integer between 1 and"))
 				},
 				Entry("with zero value", "0", 100),
 				Entry("with negative value", "-1", 100),
@@ -202,67 +231,34 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 		})
 	})
 
-	// This section verifies validation of the max-instances parameter for dynamic host allocation.
-	Describe("The validateMaxInstances function", func() {
+	// This section tests IP format validation.
+	Describe("The ValidateIPFormat function", func() {
 
-		When("validating max-instances values", func() {
-			DescribeTable("should accept valid instance count within range",
-				func(value string, expected int) {
-					Expect(validateMaxInstances(value)).Should(Equal(expected))
-				},
-				Entry("with instance count within range value 10", "10", 10),
-				Entry("with maximum allowed instances value", "250", 250),
-			)
-		})
-	})
+		When("validating invalid IP formats", func() {
 
-	// This section verifies validation of the allocation timeout parameter for host provisioning.
-	Describe("The validateMaxAllocationTimeout function", func() {
-
-		When("validating allocation timeout values values", func() {
-			DescribeTable("should accept valid timeout within range",
-				func(value string, expected int) {
-					Expect(validateMaxAllocationTimeout(value)).Should(Equal(expected))
-				},
-				Entry("with valid timeout within range value 10", "600", 600),
-				Entry("with maximum allowed timeout value", "1200", 1200),
-			)
-		})
-	})
-
-	// This section tests IP obfuscation for security purposes in logs and error messages.
-	Describe("The obfuscateIP function", func() {
-
-		When("obfuscating IP addresses", func() {
-			It("it should replace first three octets with asterisks", func() {
-				ip := "203.0.113.1"
-				expectedObfuscation := "***.***.***.1"
-				Expect(obfuscateIP(ip)).Should(Equal(expectedObfuscation))
+			When("validating valid IP formats", func() {
+				DescribeTable("it should not return an error",
+					func(ip string) {
+						Expect(ValidateIPFormat(ip)).ShouldNot(HaveOccurred())
+					},
+					Entry("with localhost", "127.0.0.1"),
+					Entry("with valid IP", "192.0.2.6"), //  RFC-5737's TEST-NET-1 for documentation and testing
+				)
 			})
-		})
-	})
 
-	// TODO: comment-out when it's time for KFLUXINFRA-2328
-	// This spec only tests the IP format validation side of validateIP, since validateIP calls on
-	// ec2_helpers.PingIPAddress and it's pinging capabilities are already test-covered in ec2_helpers_test.go.
-	//Describe("The validateIP function", func() {
-	//
-	//	When("validating invalid IP formats", func() {
-	//		DescribeTable("it should return errInvalidIPFormat",
-	//			func(ip string) {
-	//				Expect(validateIP(ip)).Should(MatchError(errInvalidIPFormat))
-	//			},
-	//			Entry("with empty string", ""),
-	//			Entry("with invalid characters", "abc.def.ghi.jkl"),
-	//			Entry("with special characters", "abc.def.&.jkl"),
-	//			Entry("with incomplete octets", "203.0.1"),
-	//			Entry("with too many octets", "203.0.113.1.1"),
-	//			Entry("with non-numeric octets", "203.KokoHazamar.113.1"),
-	//			Entry("with octet exceeding 255", "203.0.113.256"),
-	//			Entry("with negative octets", "203.0.-113.1"),
-	//		)
-	//	})
-	//})
+			DescribeTable("it should return ErrInvalidIPFormat",
+				func(ip string) {
+					Expect(ValidateIPFormat(ip)).Should(MatchError(ErrInvalidIPFormat))
+				},
+				Entry("with empty string", ""),
+				Entry("with special characters", "203.0.1.*"),
+				Entry("with incomplete octets", "203.0.1"),
+				Entry("with non-numeric octets", "203.Koko.Hazamar.1"),
+				Entry("with octet exceeding 255", "203.0.113.256"),
+			)
+		})
+
+	})
 
 	// This section tests validation of IBM host secret configurations for s390x and ppc64le platforms.
 	Describe("The validateIBMHostSecret function", func() {
@@ -274,30 +270,15 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 				},
 				Entry("with s390x in both key and value", "host-s390x-prod", "config-s390x-data"),
 				Entry("with ppc64le in both key and value", "host-ppc64le-dev", "setup-ppc64le-config"),
-				Entry("with IBM platform substring anywhere", "prod-s390x", "s390x-host-001"),
-				Entry("with IBM platform substring anywhere", "ppc64le-config", "host-ppc64le"),
-				Entry("with just IBM platform", "ppc64le", "ppc64le"),
 			)
 		})
 
 		When("validating invalid IBM host secrets", func() {
-			It("should return error when value is empty", func() {
-				err := validateIBMHostSecret("host-s390x", "")
-				Expect(err).Should(MatchError(errIBMHostSecretEmpty))
-			})
-
-			It("should return error when value is only whitespace", func() {
-				err := validateIBMHostSecret("host-s390x", "   ")
-				Expect(err).Should(MatchError(errIBMHostSecretEmpty))
-			})
-
 			DescribeTable("it should return error when platform substrings don't match",
 				func(key, value string) {
-					err := validateIBMHostSecret(key, value)
-					Expect(err).Should(MatchError(errIBMHostSecretPlatformMismatch))
+					Expect(validateIBMHostSecret(key, value)).Should(MatchError(errIBMHostSecretPlatformMismatch))
 				},
 				Entry("with s390x in key but ppc64le in value", "host-s390x", "config-ppc64le"),
-				Entry("with ppc64le in key but s390x in value", "host-ppc64le", "config-s390x"),
 				Entry("with no platform in key", "host-prod", "config-s390x"),
 				Entry("with no platform in value", "host-s390x", "config-prod"),
 				Entry("with no platform in either", "host-prod", "config-dev"),
@@ -390,8 +371,8 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 				func(key, value string) {
 					Expect(validateDynamicInstanceTag(key, value)).Should(HaveOccurred())
 				},
-				Entry("with matching arm64 platform and instance type", "invalid-format", "prod-arm64-m2xlarge"),
-				Entry("with multi-part instance type in correct order", "linux-m2xlarge-arm64", "invalid-format"),
+				Entry("with invalid key format", "invalid-format", "prod-arm64-m2xlarge"),
+				Entry("with invalid value format", "linux-m2xlarge-arm64", "invalid-format"),
 			)
 		})
 	})

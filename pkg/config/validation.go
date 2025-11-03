@@ -1,8 +1,9 @@
-package taskrun
+package config
 
 import (
 	"errors"
 	"fmt"
+	"net"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,20 +15,19 @@ import (
 var (
 	errInvalidPlatformFormat    = errors.New("platform must be in format 'label/label' where each label follows Kubernetes RFC 1035 label name format")
 	errMissingPlatformParameter = errors.New("PLATFORM parameter not found in TaskRun parameters")
-	// TODO: comment-out when it's time for KFLUXINFRA-2328
-	//errInvalidIPFormat          = errors.New("value must be a valid IP address in dotted decimal notation")
+	ErrInvalidIPFormat          = errors.New("value must be a valid IP address in dotted decimal notation")
 
-	// IBM resource validation errors
-	errIBMHostSecretEmpty            = errors.New("host secret value cannot be empty")
 	errIBMHostSecretPlatformMismatch = errors.New("host secret key and value must contain matching platform substring")
+)
 
-	maxInstancesValue = 250
-	// Maximum allocation timeout value in seconds (20 minutes)
-	maxAllocationTimeout = 1200
+const (
+	// PlatformParam is the name of the PLATFORM parameter in TaskRun specs
+	PlatformParam = "PLATFORM"
+
 	// Maximum static host concurrency
-	//maxStaticConcurrency = 8 TODO: uncomment in the next PR
+	maxStaticConcurrency = 8
 	// Maximum pool host age in minutes (24 hours)
-	//maxPoolHostAge = 1440 TODO: uncomment in the next PR
+	maxPoolHostAge = 1440
 )
 
 // validatePlatformFormat validates a platform string according to the controller's rules
@@ -71,8 +71,8 @@ func validatePlatformFormat(platform string) error {
 // Returns:
 // - string: The validated platform value if found and valid
 // - error: errMissingPlatformParameter if PLATFORM parameter not found, or errInvalidPlatformFormat if format is invalid
-func validatePlatform(tr *tektonapi.TaskRun) (string, error) {
-	platform, err := extractPlatform(tr)
+func ValidatePlatform(tr *tektonapi.TaskRun) (string, error) {
+	platform, err := ExtractPlatform(tr)
 	if err != nil {
 		return "", err
 	}
@@ -94,7 +94,7 @@ func validatePlatform(tr *tektonapi.TaskRun) (string, error) {
 // Returns:
 // - string: The platform value if found
 // - error: errMissingPlatformParameter if the PLATFORM parameter is not found
-func extractPlatform(tr *tektonapi.TaskRun) (string, error) {
+func ExtractPlatform(tr *tektonapi.TaskRun) (string, error) {
 	for _, p := range tr.Spec.Params {
 		if p.Name == PlatformParam {
 			return p.Value.StringVal, nil
@@ -103,7 +103,30 @@ func extractPlatform(tr *tektonapi.TaskRun) (string, error) {
 	return "", errMissingPlatformParameter
 }
 
-// validateNonZeroPositiveNumber validates a string represents a valid integer within the specified range
+// validateNonZeroPositiveNumber validates a string represents a valid positive integer
+// Validation rules:
+// - Must be a valid integer parseable by strconv.Atoi
+// - Must be greater than or equal to 1
+//
+// Parameters:
+// - value: The string value to validate
+//
+// Returns:
+// - int: The validated integer value
+// - error: If value is invalid or less than 1
+func validateNonZeroPositiveNumber(value string) (int, error) {
+	num, err := strconv.Atoi(value)
+	if err != nil {
+		return -1, fmt.Errorf("invalid value '%s': must be a valid integer greater than or equal to 1: %w", value, err)
+	}
+	if num < 1 {
+		return -1, fmt.Errorf("invalid value '%s': must be greater than or equal to 1", value)
+	}
+	return num, nil
+}
+
+// validateNonZeroPositiveNumberWithMax validates a string represents a valid integer within the specified range
+// This is a wrapper around validateNonZeroPositiveNumber that additionally enforces an upper bound.
 // Validation rules:
 // - Must be a valid integer parseable by strconv.Atoi
 // - Must be between 1 and maxValue inclusive
@@ -115,61 +138,35 @@ func extractPlatform(tr *tektonapi.TaskRun) (string, error) {
 // Returns:
 // - int: The validated integer value
 // - error: If value is invalid or out of range
-func validateNonZeroPositiveNumber(value string, maxValue int) (int, error) {
-	num, err := strconv.Atoi(value)
+func validateNonZeroPositiveNumberWithMax(value string, maxValue int) (int, error) {
+	num, err := validateNonZeroPositiveNumber(value)
 	if err != nil {
-		return -1, fmt.Errorf("invalid value '%s': must be a valid integer between 1 and %d: %w", value, maxValue, err)
+		return -1, err
 	}
-	if num < 1 || num > maxValue {
-		return -1, fmt.Errorf("invalid value '%s': must be a valid integer between 1 and %d", value, maxValue)
+	if num > maxValue {
+		return -1, fmt.Errorf("invalid value '%s': must be between 1 and %d", value, maxValue)
 	}
 	return num, nil
 }
 
-// validateMaxInstances validates a string represents a valid max-instances value
-// Uses the global maxInstancesValue as the upper limit
-//
-// Parameters:
-// - value: The string value to validate
-//
-// Returns:
-// - int: The validated integer value
-// - error: If value is invalid or out of range
-func validateMaxInstances(value string) (int, error) {
-	result, err := validateNonZeroPositiveNumber(value, maxInstancesValue)
-	if err != nil {
-		return -1, fmt.Errorf("invalid max-instances: %w", err)
-	}
-	return result, nil
-}
-
-// validateMaxAllocationTimeout validates a string represents a valid allocation timeout value
-// Uses the global maxAllocationTimeout as the upper limit
-//
-// Parameters:
-// - value: The string value to validate
+// ValidateIPFormat validates that a string represents a valid IP address format.
+// This function assumes IPv4 addresses are being validated.
+// Validation rules:
+// - Must be a valid IPv4 address in dotted decimal notation (e.g., "192.168.1.1")
 //
 // Returns:
-// - int: The validated integer value
-// - error: If value is invalid or out of range
-func validateMaxAllocationTimeout(value string) (int, error) {
-	result, err := validateNonZeroPositiveNumber(value, maxAllocationTimeout)
-	if err != nil {
-		return -1, fmt.Errorf("invalid allocation-timeout: %w", err)
+// - nil if value is a valid IP address format
+// - ErrInvalidIPFormat if value is not a valid IP address
+func ValidateIPFormat(value string) error {
+	ip := net.ParseIP(value)
+	if ip == nil {
+		return ErrInvalidIPFormat
 	}
-	return result, nil
-}
-
-// obfuscateIP takes an IP address and returns it with the first three octets replaced with asterisks
-// Example: "192.168.1.1" becomes "***.***.***.1"
-func obfuscateIP(ip string) string {
-	parts := strings.Split(ip, ".")
-	return "***.***.***." + parts[3]
+	return nil
 }
 
 // validateIBMHostSecret validates IBM host secret configuration key-value pairs
 // Validation rules:
-// - Secret value cannot be empty
 // - Key and value must contain matching platform substring (either "s390x" or "ppc64le")
 // - No specific structure requirements - platform can appear anywhere in key or value
 //
@@ -178,10 +175,6 @@ func obfuscateIP(ip string) string {
 // - errIBMHostSecretEmpty if value is empty
 // - errIBMHostSecretPlatformMismatch if no matching platform substring found
 func validateIBMHostSecret(key, value string) error {
-	if strings.TrimSpace(value) == "" {
-		return errIBMHostSecretEmpty
-	}
-
 	platforms := []string{"s390x", "ppc64le"}
 	for _, platform := range platforms {
 		if strings.Contains(key, platform) && strings.Contains(value, platform) {
@@ -192,11 +185,21 @@ func validateIBMHostSecret(key, value string) error {
 	return errIBMHostSecretPlatformMismatch
 }
 
-// validateDynamicInstanceTag validates dynamic AWS host instance-tag configuration
-// - Key format: "<whatever>-<instance-type>-<platform>" (e.g., "linux-m2xlarge-arm64")
-// - Value format: "<whatever>-<platform>-<instance-type>" (e.g., "prod-arm64-m2xlarge")
-// - Platform must match between key and value (arm64/amd64)
-// - Instance type must match between key and value
+// validateDynamicInstanceTag validates dynamic AWS host instance-tag configuration.
+// It ensures the platform and instance type match between the key (platformConfigName) and the value (instanceTag).
+//
+// CONVENTION:
+//
+//   - key (platformConfigName): Must be in 'OS-InstanceType-Platform' format.
+//     (e.g., "linux-m2xlarge-arm64")
+//     Parsed by: parseDynamicHostInstanceTypeKey
+//
+//   - value (instanceTag): Must be in 'Prefix-Platform-InstanceType' format.
+//     (e.g., "prod-arm64-m2xlarge")
+//     Parsed by: parseDynamicHostInstanceTypeValue
+//
+// This function verifies that 'Platform' and 'InstanceType' (after sorting)
+// are identical between both.
 //
 // Returns:
 //   - nil if validation passes
