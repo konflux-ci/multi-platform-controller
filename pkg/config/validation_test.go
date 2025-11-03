@@ -2,7 +2,7 @@
 // It covers platform format validation, numeric parameter validation (instance counts, timeouts),
 // IP address format validation, IBM host secret validation, and dynamic instance tag
 // parsing and validation for AWS EC2 configurations.
-package taskrun
+package config
 
 import (
 	"strings"
@@ -33,7 +33,7 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 		When("extracting platform from TaskRun parameters", func() {
 			It("should extract platform from TaskRun parameters successfully", func() {
 				tr := createTrWithPlatform("linux/amd64")
-				Expect(extractPlatform(tr)).To(Equal("linux/amd64"))
+				Expect(ExtractPlatform(tr)).To(Equal("linux/amd64"))
 			})
 
 			It("should extract platform from TaskRun with multiple parameters", func() {
@@ -46,7 +46,7 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 						},
 					},
 				}
-				Expect(extractPlatform(tr)).To(Equal("linux/arm64"))
+				Expect(ExtractPlatform(tr)).To(Equal("linux/arm64"))
 			})
 		})
 
@@ -63,7 +63,7 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 						},
 					},
 				}
-				Expect(extractPlatform(tr)).To(Equal("linux/amd64")) // Should return the first occurrence
+				Expect(ExtractPlatform(tr)).To(Equal("linux/amd64")) // Should return the first occurrence
 			})
 		})
 
@@ -77,7 +77,7 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 					},
 				}
 
-				_, err := extractPlatform(tr)
+				_, err := ExtractPlatform(tr)
 				Expect(err).Should(MatchError(errMissingPlatformParameter))
 			})
 		})
@@ -142,7 +142,7 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 				DescribeTable("it should return the platform and no error",
 					func(platformValue string) {
 						tr := createTrWithPlatform(platformValue)
-						Expect(validatePlatform(tr)).To(Equal(platformValue))
+						Expect(ValidatePlatform(tr)).To(Equal(platformValue))
 					},
 					Entry("for a standard platform", "linux/amd64"),
 					Entry("for the 'linux/x86_64' exception", "linux/x86_64"),
@@ -156,12 +156,12 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 							Params: []pipelinev1.Param{},
 						},
 					}
-					Expect(validatePlatform(tr)).Error().To(MatchError(errMissingPlatformParameter))
+					Expect(ValidatePlatform(tr)).Error().To(MatchError(errMissingPlatformParameter))
 				})
 
 				It("should return error when platform parameter format is invalid", func() {
 					tr := createTrWithPlatform("koko_hazamar/moshe_ata_lo_kipod")
-					_, err := validatePlatform(tr)
+					_, err := ValidatePlatform(tr)
 					Expect(err).Should(MatchError(errInvalidPlatformFormat))
 				})
 			})
@@ -232,23 +232,23 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 	})
 
 	// This section tests IP format validation.
-	Describe("The validateIPFormat function", func() {
+	Describe("The ValidateIPFormat function", func() {
 
 		When("validating invalid IP formats", func() {
 
 			When("validating valid IP formats", func() {
 				DescribeTable("it should not return an error",
 					func(ip string) {
-						Expect(validateIPFormat(ip)).ShouldNot(HaveOccurred())
+						Expect(ValidateIPFormat(ip)).ShouldNot(HaveOccurred())
 					},
 					Entry("with localhost", "127.0.0.1"),
 					Entry("with valid IP", "192.0.2.6"), //  RFC-5737's TEST-NET-1 for documentation and testing
 				)
 			})
 
-			DescribeTable("it should return errInvalidIPFormat",
+			DescribeTable("it should return ErrInvalidIPFormat",
 				func(ip string) {
-					Expect(validateIPFormat(ip)).Should(MatchError(errInvalidIPFormat))
+					Expect(ValidateIPFormat(ip)).Should(MatchError(ErrInvalidIPFormat))
 				},
 				Entry("with empty string", ""),
 				Entry("with special characters", "203.0.1.*"),

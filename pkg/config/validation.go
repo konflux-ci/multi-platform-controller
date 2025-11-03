@@ -1,4 +1,4 @@
-package taskrun
+package config
 
 import (
 	"errors"
@@ -15,12 +15,15 @@ import (
 var (
 	errInvalidPlatformFormat    = errors.New("platform must be in format 'label/label' where each label follows Kubernetes RFC 1035 label name format")
 	errMissingPlatformParameter = errors.New("PLATFORM parameter not found in TaskRun parameters")
-	errInvalidIPFormat          = errors.New("value must be a valid IP address in dotted decimal notation")
+	ErrInvalidIPFormat          = errors.New("value must be a valid IP address in dotted decimal notation")
 
 	errIBMHostSecretPlatformMismatch = errors.New("host secret key and value must contain matching platform substring")
 )
 
 const (
+	// PlatformParam is the name of the PLATFORM parameter in TaskRun specs
+	PlatformParam = "PLATFORM"
+
 	// Maximum static host concurrency
 	maxStaticConcurrency = 8
 	// Maximum pool host age in minutes (24 hours)
@@ -68,8 +71,8 @@ func validatePlatformFormat(platform string) error {
 // Returns:
 // - string: The validated platform value if found and valid
 // - error: errMissingPlatformParameter if PLATFORM parameter not found, or errInvalidPlatformFormat if format is invalid
-func validatePlatform(tr *tektonapi.TaskRun) (string, error) {
-	platform, err := extractPlatform(tr)
+func ValidatePlatform(tr *tektonapi.TaskRun) (string, error) {
+	platform, err := ExtractPlatform(tr)
 	if err != nil {
 		return "", err
 	}
@@ -91,7 +94,7 @@ func validatePlatform(tr *tektonapi.TaskRun) (string, error) {
 // Returns:
 // - string: The platform value if found
 // - error: errMissingPlatformParameter if the PLATFORM parameter is not found
-func extractPlatform(tr *tektonapi.TaskRun) (string, error) {
+func ExtractPlatform(tr *tektonapi.TaskRun) (string, error) {
 	for _, p := range tr.Spec.Params {
 		if p.Name == PlatformParam {
 			return p.Value.StringVal, nil
@@ -146,18 +149,18 @@ func validateNonZeroPositiveNumberWithMax(value string, maxValue int) (int, erro
 	return num, nil
 }
 
-// validateIPFormat validates that a string represents a valid IP address format.
+// ValidateIPFormat validates that a string represents a valid IP address format.
 // This function assumes IPv4 addresses are being validated.
 // Validation rules:
 // - Must be a valid IPv4 address in dotted decimal notation (e.g., "192.168.1.1")
 //
 // Returns:
 // - nil if value is a valid IP address format
-// - errInvalidIPFormat if value is not a valid IP address
-func validateIPFormat(value string) error {
+// - ErrInvalidIPFormat if value is not a valid IP address
+func ValidateIPFormat(value string) error {
 	ip := net.ParseIP(value)
 	if ip == nil {
-		return errInvalidIPFormat
+		return ErrInvalidIPFormat
 	}
 	return nil
 }

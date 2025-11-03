@@ -119,6 +119,27 @@ var _ = Describe("IBM Power Cloud Helper Functions", func() {
 				),
 			)
 		})
+
+		When("the IP address format is invalid", func() {
+			var (
+				garbageIP            = "192.koko.hazamar.3"
+				networkWithGarbageIP = &models.PVMInstanceNetwork{
+					ExternalIP: garbageIP,
+				}
+			)
+
+			It("should return an error for invalid IP address format", func() {
+				Expect(retrieveInstanceIp("vm-with-garbage-ip", []*models.PVMInstanceNetwork{networkWithGarbageIP})).Error().
+					Should(MatchError(ContainSubstring("invalid IP address format")))
+			})
+		})
+
+		When("the network slice contains a nil entry", func() {
+			It("should return an error for nil network entry", func() {
+				Expect(retrieveInstanceIp("vm-with-nil-network", []*models.PVMInstanceNetwork{nil})).Error().
+					Should(MatchError(ContainSubstring("network entry is nil")))
+			})
+		})
 	})
 
 	// A unit test for parseCRN. Tests the logic of fetching the service instance string from a IBMPowerDynamicConfig as
