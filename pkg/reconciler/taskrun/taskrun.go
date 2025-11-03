@@ -279,7 +279,6 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
 			metrics.ProvisionFailures.Inc()
 		})
-		mpcmetrics.CountAvailabilityError(targetPlatform)
 		message := fmt.Sprintf("provision task for host %s for user task %s/%s failed", assigned, userNamespace, userTaskName)
 		r.eventRecorder.Event(tr, "Error", "ProvisioningFailed", message)
 		log.Error(errors.New("provision failed"), message)
@@ -314,7 +313,6 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 		message := fmt.Sprintf("provision task for host %s for user task %s/%s succeeded", assigned, userNamespace, userTaskName)
 		log.Info(message)
 		r.eventRecorder.Event(tr, "Normal", "Provisioned", message)
-		mpcmetrics.CountAvailabilitySuccess(targetPlatform)
 		//verify we ended up with a secret
 		secret := kubecore.Secret{}
 		err := r.client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: secretName}, &secret)
@@ -497,7 +495,6 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektona
 		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
 			metrics.HostAllocationFailures.Inc()
 		})
-		mpcmetrics.CountAvailabilityError(targetPlatform)
 		return reconcile.Result{}, r.createErrorSecret(ctx, tr, targetPlatform, secretName, fmt.Sprintf("failed to read host config: %v", err))
 	}
 	if tr.Annotations == nil {

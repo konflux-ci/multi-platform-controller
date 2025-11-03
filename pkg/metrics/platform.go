@@ -8,6 +8,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
+const (
+	MetricsSubsystem = "multi_platform_controller"
+)
+
 var (
 
 	// Map of metrics set. Holds pointers, so no real need to be thread-safe here as the values are never rewritten.
