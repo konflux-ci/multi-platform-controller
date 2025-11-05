@@ -13,6 +13,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
+	"sync"
+
 	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 )
 
@@ -34,6 +36,10 @@ var (
 		Name:      "waiting_tasks",
 		Help:      "The number of tasks waiting for an executor to be available to run",
 	}, []string{"platform", "taskrun_namespace"})
+
+	// Protect gauge reset+increment sequences from concurrent exporter runs
+	runningGaugeMu sync.Mutex
+	waitingGaugeMu sync.Mutex
 )
 
 // AddTaskRunMetricsExporter starts a periodic exporter that updates RunningTasks and WaitingTasks gauges every minute.
@@ -78,8 +84,9 @@ func exportRunningTasks(ctx context.Context, c client.Client) error {
 	if err := c.List(ctx, &trList, &client.ListOptions{LabelSelector: ls}); err != nil {
 		return err
 	}
-	// Build counts per platform and namespace
-	counts := map[string]map[string]float64{}
+	runningGaugeMu.Lock()
+	defer runningGaugeMu.Unlock()
+	runningTasksGauge.Reset()
 	for _, tr := range trList.Items {
 		if tr.Status.CompletionTime != nil {
 			continue
@@ -88,21 +95,10 @@ func exportRunningTasks(ctx context.Context, c client.Client) error {
 		if platform == "" {
 			continue
 		}
-		ns := tr.Namespace
-		if _, ok := counts[platform]; !ok {
-			counts[platform] = map[string]float64{}
-		}
-		counts[platform][ns] = counts[platform][ns] + 1
-	}
-	// Reset and apply all metrics
-	runningTasksGauge.Reset()
-	for platform, nsMap := range counts {
 		p := platformLabel(platform)
-		for ns, value := range nsMap {
-			runningTasksGauge.WithLabelValues(p, ns).Set(value)
-		}
+		runningTasksGauge.WithLabelValues(p, tr.Namespace).Inc()
 	}
-	log.V(1).Info("exported running tasks", "platforms", len(counts))
+	log.V(1).Info("exported running tasks", "items", len(trList.Items))
 	return nil
 }
 
@@ -117,25 +113,17 @@ func exportWaitingTasks(ctx context.Context, c client.Client) error {
 	if err := c.List(ctx, &trList, &client.ListOptions{LabelSelector: ls}); err != nil {
 		return err
 	}
-	counts := map[string]map[string]float64{}
+	waitingGaugeMu.Lock()
+	defer waitingGaugeMu.Unlock()
+	waitingTasksGauge.Reset()
 	for _, tr := range trList.Items {
 		platform := tr.Labels[waitingForPlatformLabel]
 		if platform == "" {
 			continue
 		}
-		ns := tr.Namespace
-		if _, ok := counts[platform]; !ok {
-			counts[platform] = map[string]float64{}
-		}
-		counts[platform][ns] = counts[platform][ns] + 1
-	}
-	waitingTasksGauge.Reset()
-	for platform, nsMap := range counts {
 		p := platformLabel(platform)
-		for ns, value := range nsMap {
-			waitingTasksGauge.WithLabelValues(p, ns).Set(value)
-		}
+		waitingTasksGauge.WithLabelValues(p, tr.Namespace).Inc()
 	}
-	log.V(1).Info("exported waiting tasks", "platforms", len(counts))
+	log.V(1).Info("exported waiting tasks", "items", len(trList.Items))
 	return nil
 }
