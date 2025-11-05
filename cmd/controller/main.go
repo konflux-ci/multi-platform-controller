@@ -4,8 +4,6 @@ import (
 	"flag"
 	"os"
 
-	mpcmetrics "github.com/konflux-ci/multi-platform-controller/pkg/metrics"
-	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 
 	zap2 "go.uber.org/zap"
@@ -85,11 +83,6 @@ func main() {
 	mgr, err = controller.NewManager(restConfig, managerOptions, controllerOptions)
 	if err != nil {
 		mainLog.Error(err, "unable to start manager")
-		os.Exit(1)
-	}
-
-	if err = mpcmetrics.RegisterCommonMetrics(ctx, metrics.Registry); err != nil {
-		mainLog.Error(err, "failed to register common metrics")
 		os.Exit(1)
 	}
 
