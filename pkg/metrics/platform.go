@@ -26,8 +26,6 @@ type PlatformMetrics struct {
 	AllocationTime         prometheus.Histogram
 	WaitTime               prometheus.Histogram
 	TaskRunTime            prometheus.Histogram
-	RunningTasks           *prometheus.GaugeVec
-	WaitingTasks           *prometheus.GaugeVec
 	ProvisionFailures      prometheus.Counter
 	ProvisionSuccesses     prometheus.Counter
 	CleanupFailures        prometheus.Counter
@@ -69,26 +67,6 @@ func RegisterPlatformMetrics(_ context.Context, platform string, poolSize int) e
 		Help:        "The total time taken by a task, including wait and allocation time",
 		Buckets:     bigBuckets})
 	if err := metrics.Registry.Register(pmetrics.TaskRunTime); err != nil {
-		return err
-	}
-
-	pmetrics.RunningTasks = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		ConstLabels: map[string]string{"platform": platform},
-		Subsystem:   MetricsSubsystem,
-		Name:        "running_tasks",
-		Help:        "The number of currently running tasks on this platform",
-	}, []string{"taskrun_namespace"})
-	if err := metrics.Registry.Register(pmetrics.RunningTasks); err != nil {
-		return err
-	}
-
-	pmetrics.WaitingTasks = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		ConstLabels: map[string]string{"platform": platform},
-		Subsystem:   MetricsSubsystem,
-		Name:        "waiting_tasks",
-		Help:        "The number of tasks waiting for an executor to be available to run",
-	}, []string{"taskrun_namespace"})
-	if err := metrics.Registry.Register(pmetrics.WaitingTasks); err != nil {
 		return err
 	}
 

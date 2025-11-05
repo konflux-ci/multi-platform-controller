@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	mpcmetrics "github.com/konflux-ci/multi-platform-controller/pkg/metrics"
 	"os"
 	"time"
 
@@ -113,6 +114,10 @@ func NewManager(cfg *rest.Config, managerOptions ctrl.Options, controllerOptions
 		//update the nodes on startup
 		taskrun.UpdateHostPools(operatorNamespace, mgr.GetClient(), &controllerLog)
 	}()
+
+	if err := mpcmetrics.AddTaskRunMetricsExporter(mgr); err != nil {
+		return nil, err
+	}
 
 	return mgr, nil
 }
