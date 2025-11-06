@@ -10,8 +10,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 var _ = Describe("TaskRun metrics exporter", func() {
@@ -90,5 +90,3 @@ var _ = Describe("TaskRun metrics exporter", func() {
 		Expect(wNs1).To(Equal(1))
 	})
 })
-
-

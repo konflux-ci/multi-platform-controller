@@ -2,9 +2,10 @@ package controller
 
 import (
 	"context"
-	mpcmetrics "github.com/konflux-ci/multi-platform-controller/pkg/metrics"
 	"os"
 	"time"
+
+	mpcmetrics "github.com/konflux-ci/multi-platform-controller/pkg/metrics"
 
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
