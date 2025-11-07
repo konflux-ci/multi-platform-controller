@@ -68,7 +68,7 @@ var _ = Describe("TaskRun metrics exporter", func() {
 				Name:      "tr-waiting-ns1",
 				Namespace: "ns1",
 				Labels: map[string]string{
-					TargetPlatformLabel: platformLabel(platform),
+					WaitingForPlatformLabel: platform,
 				},
 			},
 		}
