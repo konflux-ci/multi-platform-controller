@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/go-logr/logr"
-	. "github.com/konflux-ci/multi-platform-controller/pkg/constant"
+	"github.com/konflux-ci/multi-platform-controller/pkg/constant"
 	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -20,7 +20,7 @@ func (l Local) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *pipelinev1
 	log := logr.FromContextOrDiscard(ctx)
 
 	log.Info("Task set to run locally in the cluster")
-	tr.Labels[AssignedHost] = "localhost"
+	tr.Labels[constant.AssignedHost] = "localhost"
 	controllerutil.AddFinalizer(tr, PipelineFinalizer)
 	if err = r.client.Update(ctx, tr); err != nil {
 		return reconcile.Result{}, err

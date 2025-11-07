@@ -10,7 +10,7 @@ import (
 	"knative.dev/pkg/kmeta"
 
 	"github.com/go-logr/logr"
-	. "github.com/konflux-ci/multi-platform-controller/pkg/constant"
+	"github.com/konflux-ci/multi-platform-controller/pkg/constant"
 	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v12 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -40,14 +40,14 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 
 	//get all existing runs that are assigned to a host
 	taskList := v1.TaskRunList{}
-	err := r.client.List(ctx, &taskList, client.HasLabels{AssignedHost})
+	err := r.client.List(ctx, &taskList, client.HasLabels{constant.AssignedHost})
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 	hostCount := map[string]int{}
 	for _, tr := range taskList.Items {
 		if tr.Labels[TaskTypeLabel] == "" {
-			host := tr.Labels[AssignedHost]
+			host := tr.Labels[constant.AssignedHost]
 			hostCount[host] = hostCount[host] + 1
 		}
 	}
@@ -100,7 +100,7 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 		return reconcile.Result{}, fmt.Errorf("%w: %s", ErrAllHostsFailed, failedString)
 	}
 	if selected == nil {
-		if tr.Labels[WaitingForPlatformLabel] == platformLabel(hp.targetPlatform) {
+		if tr.Labels[constant.WaitingForPlatformLabel] == platformLabel(hp.targetPlatform) {
 			//we are already in a waiting state
 			return reconcile.Result{}, nil
 		}
@@ -109,7 +109,7 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 		//add the waiting label
 		//TODO: is the requeue actually a good idea?
 		//TODO: timeout
-		tr.Labels[WaitingForPlatformLabel] = platformLabel(hp.targetPlatform)
+		tr.Labels[constant.WaitingForPlatformLabel] = platformLabel(hp.targetPlatform)
 		err = UpdateTaskRunWithRetry(ctx, r.client, r.apiReader, tr)
 		if err != nil {
 			return reconcile.Result{}, err
@@ -118,8 +118,8 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 	}
 
 	log.Info("allocated host", "host", selected.Name)
-	tr.Labels[AssignedHost] = selected.Name
-	delete(tr.Labels, WaitingForPlatformLabel)
+	tr.Labels[constant.AssignedHost] = selected.Name
+	delete(tr.Labels, constant.WaitingForPlatformLabel)
 	//add a finalizer to clean up the secret
 	controllerutil.AddFinalizer(tr, PipelineFinalizer)
 	err = UpdateTaskRunWithRetry(ctx, r.client, r.apiReader, tr)
@@ -132,7 +132,7 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 	if err != nil {
 		//ugh, try and unassign
 		log.Error(err, "failed to launch provisioning task, unassigning host")
-		delete(tr.Labels, AssignedHost)
+		delete(tr.Labels, constant.AssignedHost)
 		controllerutil.RemoveFinalizer(tr, PipelineFinalizer)
 		updateErr := UpdateTaskRunWithRetry(ctx, r.client, r.apiReader, tr)
 		if updateErr != nil {
@@ -148,7 +148,7 @@ func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.T
 	log := logr.FromContextOrDiscard(ctx)
 	selected := hp.hosts[selectedHost]
 	if selected != nil {
-		labelMap := map[string]string{TaskTypeLabel: TaskTypeClean, UserTaskName: tr.Name, UserTaskNamespace: tr.Namespace, TargetPlatformLabel: platformLabel(hp.targetPlatform)}
+		labelMap := map[string]string{TaskTypeLabel: TaskTypeClean, UserTaskName: tr.Name, UserTaskNamespace: tr.Namespace, constant.TargetPlatformLabel: platformLabel(hp.targetPlatform)}
 		list := v1.TaskRunList{}
 		err := r.client.List(ctx, &list, client.MatchingLabels(labelMap))
 		if err != nil {

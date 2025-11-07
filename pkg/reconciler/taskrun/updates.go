@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	. "github.com/konflux-ci/multi-platform-controller/pkg/constant"
+	"github.com/konflux-ci/multi-platform-controller/pkg/constant"
 	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v12 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -81,7 +81,7 @@ func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.L
 			provision := v1.TaskRun{}
 			provision.GenerateName = "update-task"
 			provision.Namespace = operatorNamespace
-			provision.Labels = map[string]string{TaskTypeLabel: TaskTypeUpdate, AssignedHost: realHostName}
+			provision.Labels = map[string]string{TaskTypeLabel: TaskTypeUpdate, constant.AssignedHost: realHostName}
 			provision.Spec.TaskRef = &v1.TaskRef{Name: "update-host"}
 			provision.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: host.Secret}}}
 			compute := map[v12.ResourceName]resource.Quantity{v12.ResourceCPU: resource.MustParse("100m"), v12.ResourceMemory: resource.MustParse("256Mi")}
