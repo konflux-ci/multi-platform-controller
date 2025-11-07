@@ -984,7 +984,8 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 	}
 
 	provision := tektonapi.TaskRun{}
-	provision.Name = kmeta.ChildName(tr.Name, fmt.Sprintf("-provision-%x", md5.Sum([]byte(address)))[0:5]) //nolint:gosec // No strong cryptography needed.
+	//nolint:gosec // No strong cryptography needed.
+	provision.Name = kmeta.ChildName(tr.Name, fmt.Sprintf("-provision-%x", md5.Sum([]byte(address)))[:5])
 	provision.Namespace = r.operatorNamespace
 	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, TargetPlatformLabel: platformLabel(platform), UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name, AssignedHost: tr.Labels[AssignedHost]}
 	provision.Spec.TaskRef = &tektonapi.TaskRef{Name: "provision-shared-host"}
