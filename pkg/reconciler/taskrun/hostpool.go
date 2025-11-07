@@ -2,6 +2,7 @@ package taskrun
 
 import (
 	"context"
+	"crypto/md5"
 	"errors"
 	"fmt"
 	"strings"
@@ -162,7 +163,7 @@ func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.T
 		log.Info("starting cleanup task")
 		//kick off the clean task
 		cleanup := v1.TaskRun{}
-		cleanup.Name = kmeta.ChildName(tr.Name, "-cleanup")
+		cleanup.Name = kmeta.ChildName(tr.Name, fmt.Sprintf("-cleanup-%x", md5.Sum([]byte(selected.Address)))[0:5])
 		cleanup.Namespace = r.operatorNamespace
 		cleanup.Labels = labelMap
 		cleanup.Spec.TaskRef = &v1.TaskRef{Name: "clean-shared-host"}

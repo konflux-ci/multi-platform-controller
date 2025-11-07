@@ -2,6 +2,7 @@ package taskrun
 
 import (
 	"context"
+	"crypto/md5"
 	"errors"
 	"fmt"
 	"runtime"
@@ -302,9 +303,6 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 				if err != nil {
 					return reconcile.Result{}, err
 				}
-				// there is no way to restart existing provision TaskRun. We have to remove it & create a new one for next available host
-				err := r.client.Delete(ctx, tr)
-				return reconcile.Result{}, err
 			}
 		}
 	} else {
@@ -986,7 +984,7 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 	}
 
 	provision := tektonapi.TaskRun{}
-	provision.Name = kmeta.ChildName(tr.Name, "-provision")
+	provision.Name = kmeta.ChildName(tr.Name, fmt.Sprintf("-provision-%x", md5.Sum([]byte(address)))[0:5])
 	provision.Namespace = r.operatorNamespace
 	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, TargetPlatformLabel: platformLabel(platform), UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name, AssignedHost: tr.Labels[AssignedHost]}
 	provision.Spec.TaskRef = &tektonapi.TaskRef{Name: "provision-shared-host"}
