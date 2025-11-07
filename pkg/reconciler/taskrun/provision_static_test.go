@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	. "github.com/konflux-ci/multi-platform-controller/pkg/constant"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"

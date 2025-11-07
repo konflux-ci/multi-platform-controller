@@ -16,6 +16,7 @@ import (
 	"github.com/konflux-ci/multi-platform-controller/pkg/aws"
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
 	"github.com/konflux-ci/multi-platform-controller/pkg/config"
+	. "github.com/konflux-ci/multi-platform-controller/pkg/constant"
 	"github.com/konflux-ci/multi-platform-controller/pkg/ibm"
 	tektonapi "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	kubecore "k8s.io/api/core/v1"
@@ -44,7 +45,6 @@ const (
 
 	MultiPlatformSecretLabel = "build.appstudio.redhat.com/multi-platform-secret"
 
-	AssignedHost           = "build.appstudio.redhat.com/assigned-host"
 	FailedHosts            = "build.appstudio.redhat.com/failed-hosts"
 	CloudInstanceId        = "build.appstudio.redhat.com/cloud-instance-id"
 	CloudFailures          = "build.appstudio.redhat.com/cloud-failure-count"
@@ -61,11 +61,9 @@ const (
 	UserTaskName      = "build.appstudio.redhat.com/user-task-name"
 	UserTaskNamespace = "build.appstudio.redhat.com/user-task-namespace"
 
-	TargetPlatformLabel     = "build.appstudio.redhat.com/target-platform"
-	WaitingForPlatformLabel = "build.appstudio.redhat.com/waiting-for-platform"
-	FinishedWaitingLabel    = "build.appstudio.redhat.com/finished-waiting"
-	PipelineFinalizer       = "appstudio.io/multi-platform-finalizer"
-	HostConfig              = "host-config"
+	FinishedWaitingLabel = "build.appstudio.redhat.com/finished-waiting"
+	PipelineFinalizer    = "appstudio.io/multi-platform-finalizer"
+	HostConfig           = "host-config"
 
 	TaskTypeLabel     = "build.appstudio.redhat.com/task-type"
 	TaskTypeProvision = "provision"

@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	. "github.com/konflux-ci/multi-platform-controller/pkg/constant"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -32,8 +33,8 @@ var _ = Describe("TaskRun metrics exporter", func() {
 				Name:      "tr-running-ns1",
 				Namespace: "ns1",
 				Labels: map[string]string{
-					assignedHostLabel:   "host-1",
-					targetPlatformLabel: platform,
+					AssignedHost:        "host-1",
+					TargetPlatformLabel: platform,
 				},
 			},
 		}
@@ -42,8 +43,8 @@ var _ = Describe("TaskRun metrics exporter", func() {
 				Name:      "tr-completed",
 				Namespace: "ns1",
 				Labels: map[string]string{
-					assignedHostLabel:   "host-2",
-					targetPlatformLabel: platform,
+					AssignedHost:        "host-2",
+					TargetPlatformLabel: platform,
 				},
 			},
 			Status: pipelinev1.TaskRunStatus{
@@ -57,8 +58,8 @@ var _ = Describe("TaskRun metrics exporter", func() {
 				Name:      "tr-running-ns2",
 				Namespace: "ns2",
 				Labels: map[string]string{
-					assignedHostLabel:   "host-3",
-					targetPlatformLabel: platform,
+					AssignedHost:        "host-3",
+					TargetPlatformLabel: platform,
 				},
 			},
 		}
@@ -67,7 +68,7 @@ var _ = Describe("TaskRun metrics exporter", func() {
 				Name:      "tr-waiting-ns1",
 				Namespace: "ns1",
 				Labels: map[string]string{
-					waitingForPlatformLabel: platformLabel(platform),
+					TargetPlatformLabel: platformLabel(platform),
 				},
 			},
 		}

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	. "github.com/konflux-ci/multi-platform-controller/pkg/constant"
 	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
@@ -13,15 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
-	"sync"
-
 	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
-)
-
-const (
-	assignedHostLabel       = "build.appstudio.redhat.com/assigned-host"
-	targetPlatformLabel     = "build.appstudio.redhat.com/target-platform"
-	waitingForPlatformLabel = "build.appstudio.redhat.com/waiting-for-platform"
 )
 
 var (
@@ -36,11 +29,12 @@ var (
 		Name:      "waiting_tasks",
 		Help:      "The number of tasks waiting for an executor to be available to run",
 	}, []string{"platform", "taskrun_namespace"})
-
-	// Protect gauge reset+increment sequences from concurrent exporter runs
-	runningGaugeMu sync.Mutex
-	waitingGaugeMu sync.Mutex
 )
+
+type metricLabels struct {
+	platform  string
+	namespace string
+}
 
 // AddTaskRunMetricsExporter starts a periodic exporter that updates RunningTasks and WaitingTasks gauges every minute.
 // It relies on per-platform metrics having been registered by the reconciler; if not registered yet, updates are skipped.
@@ -53,7 +47,7 @@ func AddTaskRunMetricsExporter(mgr ctrl.Manager) error {
 		// Register exporter gauges (idempotent register attempts will error; ignore AlreadyRegistered)
 		_ = metrics.Registry.Register(runningTasksGauge)
 		_ = metrics.Registry.Register(waitingTasksGauge)
-		ticker := time.NewTicker(time.Minute)
+		ticker := time.NewTicker(15 * time.Second)
 		defer ticker.Stop()
 		log.Info("starting taskrun metrics exporter")
 		for {
@@ -76,7 +70,7 @@ func AddTaskRunMetricsExporter(mgr ctrl.Manager) error {
 func exportRunningTasks(ctx context.Context, c client.Client) error {
 	log := logr.FromContextOrDiscard(ctx)
 	var trList pipelinev1.TaskRunList
-	req, err := labels.NewRequirement(assignedHostLabel, selection.Exists, []string{})
+	req, err := labels.NewRequirement(AssignedHost, selection.Exists, []string{})
 	if err != nil {
 		return err
 	}
@@ -84,19 +78,24 @@ func exportRunningTasks(ctx context.Context, c client.Client) error {
 	if err := c.List(ctx, &trList, &client.ListOptions{LabelSelector: ls}); err != nil {
 		return err
 	}
-	runningGaugeMu.Lock()
-	defer runningGaugeMu.Unlock()
 	runningTasksGauge.Reset()
+	rts := map[metricLabels]float64{}
 	for _, tr := range trList.Items {
 		if tr.Status.CompletionTime != nil {
 			continue
 		}
-		platform := tr.Labels[targetPlatformLabel]
+		platform := tr.Labels[TargetPlatformLabel]
 		if platform == "" {
 			continue
 		}
-		p := platformLabel(platform)
-		runningTasksGauge.WithLabelValues(p, tr.Namespace).Inc()
+		k := metricLabels{platform: platformLabel(platform), namespace: tr.Namespace}
+		if _, ok := rts[k]; !ok {
+			rts[k] = .0
+		}
+		rts[k]++
+	}
+	for k, v := range rts {
+		runningTasksGauge.WithLabelValues(k.platform, k.namespace).Set(v)
 	}
 	log.V(1).Info("exported running tasks", "items", len(trList.Items))
 	return nil
@@ -105,7 +104,7 @@ func exportRunningTasks(ctx context.Context, c client.Client) error {
 func exportWaitingTasks(ctx context.Context, c client.Client) error {
 	log := logr.FromContextOrDiscard(ctx)
 	var trList pipelinev1.TaskRunList
-	req, err := labels.NewRequirement(waitingForPlatformLabel, selection.Exists, []string{})
+	req, err := labels.NewRequirement(WaitingForPlatformLabel, selection.Exists, []string{})
 	if err != nil {
 		return err
 	}
@@ -113,16 +112,21 @@ func exportWaitingTasks(ctx context.Context, c client.Client) error {
 	if err := c.List(ctx, &trList, &client.ListOptions{LabelSelector: ls}); err != nil {
 		return err
 	}
-	waitingGaugeMu.Lock()
-	defer waitingGaugeMu.Unlock()
 	waitingTasksGauge.Reset()
+	wts := map[metricLabels]float64{}
 	for _, tr := range trList.Items {
-		platform := tr.Labels[waitingForPlatformLabel]
+		platform := tr.Labels[WaitingForPlatformLabel]
 		if platform == "" {
 			continue
 		}
-		p := platformLabel(platform)
-		waitingTasksGauge.WithLabelValues(p, tr.Namespace).Inc()
+		k := metricLabels{platform: platformLabel(platform), namespace: tr.Namespace}
+		if _, ok := wts[k]; !ok {
+			wts[k] = .0
+		}
+		wts[k]++
+	}
+	for k, v := range wts {
+		waitingTasksGauge.WithLabelValues(k.platform, k.namespace).Set(v)
 	}
 	log.V(1).Info("exported waiting tasks", "items", len(trList.Items))
 	return nil
