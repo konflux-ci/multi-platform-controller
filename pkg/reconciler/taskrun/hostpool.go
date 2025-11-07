@@ -2,7 +2,8 @@ package taskrun
 
 import (
 	"context"
-	"crypto/md5" //nolint:gosec // No strong cryptography needed.
+	// #nosec G501 -- MD5 used only for non-cryptographic uniqueness
+	"crypto/md5"
 	"errors"
 	"fmt"
 	"strings"
