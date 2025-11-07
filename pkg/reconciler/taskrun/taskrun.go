@@ -298,15 +298,13 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 				failed = append(failed, assigned)
 				userTr.Annotations[FailedHosts] = strings.Join(failed, ",")
 				delete(userTr.Labels, AssignedHost)
-				err = r.client.Update(ctx, &userTr)
+				err = UpdateTaskRunWithRetry(ctx, r.client, r.apiReader, &userTr)
 				if err != nil {
 					return reconcile.Result{}, err
 				}
-				delete(tr.Labels, AssignedHost)
-				err := r.client.Update(ctx, tr)
-				if err != nil {
-					return reconcile.Result{}, err
-				}
+				// there is no way to restart existing provision TaskRun. We have to remove it & create a new one for next available host
+				err := r.client.Delete(ctx, tr)
+				return reconcile.Result{}, err
 			}
 		}
 	} else {
