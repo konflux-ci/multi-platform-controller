@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	. "github.com/konflux-ci/multi-platform-controller/pkg/constant"
+	"github.com/konflux-ci/multi-platform-controller/pkg/constant"
 	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
@@ -70,7 +70,7 @@ func AddTaskRunMetricsExporter(mgr ctrl.Manager) error {
 func exportRunningTasks(ctx context.Context, c client.Client) error {
 	log := logr.FromContextOrDiscard(ctx)
 	var trList pipelinev1.TaskRunList
-	req, err := labels.NewRequirement(AssignedHost, selection.Exists, []string{})
+	req, err := labels.NewRequirement(constant.AssignedHost, selection.Exists, []string{})
 	if err != nil {
 		return err
 	}
@@ -84,7 +84,7 @@ func exportRunningTasks(ctx context.Context, c client.Client) error {
 		if tr.Status.CompletionTime != nil {
 			continue
 		}
-		platform := tr.Labels[TargetPlatformLabel]
+		platform := tr.Labels[constant.TargetPlatformLabel]
 		if platform == "" {
 			continue
 		}
@@ -104,7 +104,7 @@ func exportRunningTasks(ctx context.Context, c client.Client) error {
 func exportWaitingTasks(ctx context.Context, c client.Client) error {
 	log := logr.FromContextOrDiscard(ctx)
 	var trList pipelinev1.TaskRunList
-	req, err := labels.NewRequirement(WaitingForPlatformLabel, selection.Exists, []string{})
+	req, err := labels.NewRequirement(constant.WaitingForPlatformLabel, selection.Exists, []string{})
 	if err != nil {
 		return err
 	}
@@ -115,7 +115,7 @@ func exportWaitingTasks(ctx context.Context, c client.Client) error {
 	waitingTasksGauge.Reset()
 	wts := map[metricLabels]float64{}
 	for _, tr := range trList.Items {
-		platform := tr.Labels[WaitingForPlatformLabel]
+		platform := tr.Labels[constant.WaitingForPlatformLabel]
 		if platform == "" {
 			continue
 		}
