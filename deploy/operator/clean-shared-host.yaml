@@ -31,13 +31,12 @@ spec:
         cp $(workspaces.ssh.path)/id_rsa /tmp/master_key
         chmod 0400 /tmp/master_key
         export SSH_HOST=$(params.USER)@$(params.HOST)
-
         export USERNAME=u-$(echo $(params.TASKRUN_NAME)$(params.NAMESPACE) | md5sum | cut -b-28)
 
         # Obfuscate USERNAME for logging
         obfuscated_username="${USERNAME:0:2}**********${USERNAME: -3:3}"
 
-        SSH_OPTS="-i /tmp/master_key -o StrictHostKeyChecking=no"
+        SSH_OPTS="-i /tmp/master_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
         # check user exists
         if ssh $SSH_OPTS "$SSH_HOST" id -u "$USERNAME" > /dev/null 2>&1; then
