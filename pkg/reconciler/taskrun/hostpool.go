@@ -39,7 +39,7 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 
 	//get all existing runs that are assigned to a host
 	taskList := v1.TaskRunList{}
-	err := r.client.List(ctx, &taskList, client.HasLabels{AssignedHost})
+	err := ListWithRetry(ctx, r.client, &taskList, client.HasLabels{AssignedHost})
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -149,7 +149,7 @@ func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.T
 	if selected != nil {
 		labelMap := map[string]string{TaskTypeLabel: TaskTypeClean, UserTaskName: tr.Name, UserTaskNamespace: tr.Namespace, TargetPlatformLabel: platformLabel(hp.targetPlatform)}
 		list := v1.TaskRunList{}
-		err := r.client.List(ctx, &list, client.MatchingLabels(labelMap))
+		err := ListWithRetry(ctx, r.client, &list, client.MatchingLabels(labelMap))
 		if err != nil {
 			log.Error(err, "failed to check for existing cleanup task")
 		} else {

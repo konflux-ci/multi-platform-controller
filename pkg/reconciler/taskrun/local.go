@@ -21,7 +21,7 @@ func (l Local) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *pipelinev1
 	log.Info("Task set to run locally in the cluster")
 	tr.Labels[AssignedHost] = "localhost"
 	controllerutil.AddFinalizer(tr, PipelineFinalizer)
-	if err = r.client.Update(ctx, tr); err != nil {
+	if err = UpdateTaskRunWithRetry(ctx, r.client, r.apiReader, tr); err != nil {
 		return reconcile.Result{}, err
 	}
 
@@ -47,7 +47,10 @@ func createUserTaskSecret(r *ReconcileTaskRun, ctx context.Context, tr *pipeline
 	if err := controllerutil.SetOwnerReference(tr, &secret, r.scheme); err != nil {
 		return err
 	}
-	if err := r.client.Create(ctx, &secret); err != nil {
+	err := RetryOnTransientAPIError(ctx, func() error {
+		return r.client.Create(ctx, &secret)
+	})
+	if err != nil {
 		if errors.IsAlreadyExists(err) {
 			return nil
 		}
