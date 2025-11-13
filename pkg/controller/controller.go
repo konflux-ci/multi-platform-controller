@@ -7,6 +7,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
+	mpcmetrics "github.com/konflux-ci/multi-platform-controller/pkg/metrics"
 	"github.com/konflux-ci/multi-platform-controller/pkg/reconciler/taskrun"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -113,6 +114,10 @@ func NewManager(cfg *rest.Config, managerOptions ctrl.Options, controllerOptions
 		//update the nodes on startup
 		taskrun.UpdateHostPools(operatorNamespace, mgr.GetClient(), &controllerLog)
 	}()
+
+	if err := mpcmetrics.AddTaskRunMetricsExporter(mgr); err != nil {
+		return nil, err
+	}
 
 	return mgr, nil
 }

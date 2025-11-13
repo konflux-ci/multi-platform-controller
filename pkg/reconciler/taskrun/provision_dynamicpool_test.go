@@ -10,6 +10,7 @@ import (
 
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
 
+	. "github.com/konflux-ci/multi-platform-controller/pkg/constant"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"

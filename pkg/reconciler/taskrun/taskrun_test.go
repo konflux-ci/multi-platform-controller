@@ -9,6 +9,7 @@ import (
 	"errors"
 	"time"
 
+	. "github.com/konflux-ci/multi-platform-controller/pkg/constant"
 	mpcmetrics "github.com/konflux-ci/multi-platform-controller/pkg/metrics"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

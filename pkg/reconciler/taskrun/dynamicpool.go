@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
+	"github.com/konflux-ci/multi-platform-controller/pkg/constant"
 	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -94,7 +95,7 @@ func (a DynamicHostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr
 
 func (a DynamicHostPool) isHostIdle(r *ReconcileTaskRun, ctx context.Context, selectedHost string) (bool, error) {
 	trs := v1.TaskRunList{}
-	err := r.client.List(ctx, &trs, client.MatchingLabels{AssignedHost: selectedHost})
+	err := r.client.List(ctx, &trs, client.MatchingLabels{constant.AssignedHost: selectedHost})
 	if err != nil {
 		return false, err
 	}
@@ -115,7 +116,7 @@ func (a DynamicHostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *
 			log.Error(allocationErr, "could not allocate host from pool")
 			return reconcile.Result{}, allocationErr
 		}
-		if allocationErr == nil && (tr.Labels == nil || tr.Labels[WaitingForPlatformLabel] == "") {
+		if allocationErr == nil && (tr.Labels == nil || tr.Labels[constant.WaitingForPlatformLabel] == "") {
 			log.Info("successfully allocated host from existing pool")
 			return reconcile.Result{}, nil
 		}
@@ -139,7 +140,7 @@ func (a DynamicHostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *
 		return reconcile.Result{}, err
 	}
 
-	delete(tr.Labels, WaitingForPlatformLabel)
+	delete(tr.Labels, constant.WaitingForPlatformLabel)
 	// Counter intuitively we don't need the instance id
 	// It will be picked up on the list call
 	log.Info("launching instance " + name)

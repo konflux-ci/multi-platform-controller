@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	. "github.com/konflux-ci/multi-platform-controller/pkg/constant"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"

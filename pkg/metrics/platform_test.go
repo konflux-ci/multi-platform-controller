@@ -14,23 +14,12 @@ var _ = Describe("PlatformMetrics", func() {
 
 	Describe("Gauges", func() {
 		var (
-			platform              = "ibm_p"
-			runTasksMetricName    = "multi_platform_controller_running_tasks"
-			waitingTaskMetricName = "multi_platform_controller_waiting_tasks"
-			poolSizeMetricName    = "multi_platform_controller_platform_pool_size"
-			poolSize              = rand.Intn(100)
-			expectedValue         = 1
+			platform           = "ibm_p"
+			poolSizeMetricName = "multi_platform_controller_platform_pool_size"
+			poolSize           = rand.Intn(100)
 		)
 		BeforeEach(func(ctx SpecContext) {
 			Expect(RegisterPlatformMetrics(ctx, platform, poolSize)).NotTo(HaveOccurred())
-			//resetting counters
-			HandleMetrics(platform, func(m *PlatformMetrics) {
-				m.RunningTasks.WithLabelValues("test-namespace").Set(0)
-			})
-			HandleMetrics(platform, func(m *PlatformMetrics) {
-				m.WaitingTasks.WithLabelValues("test-namespace").Set(0)
-			})
-
 		})
 		When("When appropriate condition happened", func() {
 
@@ -38,24 +27,6 @@ var _ = Describe("PlatformMetrics", func() {
 				result, err := getGaugeValue(platform, poolSizeMetricName, "")
 				Expect(err).ToNot(HaveOccurred())
 				Expect(result).To(Equal(poolSize))
-			})
-
-			It("should increment running_tasks metric", func() {
-				HandleMetrics(platform, func(m *PlatformMetrics) {
-					m.RunningTasks.WithLabelValues("test-namespace").Inc()
-				})
-				result, err := getGaugeValue(platform, runTasksMetricName, "test-namespace")
-				Expect(err).ToNot(HaveOccurred())
-				Expect(result).To(Equal(expectedValue))
-			})
-
-			It("should increment waiting_tasks metric", func() {
-				HandleMetrics(platform, func(m *PlatformMetrics) {
-					m.WaitingTasks.WithLabelValues("test-namespace").Inc()
-				})
-				result, err := getGaugeValue(platform, waitingTaskMetricName, "test-namespace")
-				Expect(err).ToNot(HaveOccurred())
-				Expect(result).To(Equal(expectedValue))
 			})
 		})
 
