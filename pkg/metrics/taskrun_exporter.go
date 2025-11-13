@@ -111,7 +111,6 @@ func exportWaitingTasks(ctx context.Context, c client.Client) error {
 	if err := c.List(ctx, &trList, &client.ListOptions{LabelSelector: ls}); err != nil {
 		return err
 	}
-	waitingTasksGauge.Reset()
 	wts := map[metricLabels]float64{}
 	for _, tr := range trList.Items {
 		platform := tr.Labels[constant.WaitingForPlatformLabel]
