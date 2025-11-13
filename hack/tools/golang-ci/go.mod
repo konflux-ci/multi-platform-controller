@@ -9,7 +9,7 @@ require (
 	4d63.com/gochecknoglobals v0.2.2 // indirect
 	codeberg.org/chavacava/garif v0.2.0 // indirect
 	dev.gaijin.team/go/exhaustruct/v4 v4.0.0 // indirect
-	dev.gaijin.team/go/golib v0.6.0 // indirect
+	dev.gaijin.team/go/golib v0.7.0 // indirect
 	github.com/4meepo/tagalign v1.4.3 // indirect
 	github.com/Abirdcfly/dupword v0.1.6 // indirect
 	github.com/AlwxSin/noinlineerr v1.0.5 // indirect
@@ -168,7 +168,7 @@ require (
 	github.com/ssgreg/nlreturn/v2 v2.2.1 // indirect
 	github.com/stbenjam/no-sprintf-host-port v0.2.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
-	github.com/stretchr/testify v1.10.0 // indirect
+	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/tdakkota/asciicheck v0.4.1 // indirect
 	github.com/tetafro/godot v1.5.1 // indirect
