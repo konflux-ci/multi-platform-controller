@@ -78,7 +78,6 @@ func exportRunningTasks(ctx context.Context, c client.Client) error {
 	if err := c.List(ctx, &trList, &client.ListOptions{LabelSelector: ls}); err != nil {
 		return err
 	}
-	runningTasksGauge.Reset()
 	rts := map[metricLabels]float64{}
 	for _, tr := range trList.Items {
 		if tr.Status.CompletionTime != nil {
