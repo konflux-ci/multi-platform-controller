@@ -2,7 +2,6 @@ package ibm
 
 import (
 	"fmt"
-	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -17,37 +16,36 @@ var _ = Describe("IBM s390x Helper Functions", func() {
 
 	// A unit test for createInstanceName which serves both ibmz.go and ibmp.go use to create virtual machines.
 	// Includes:
-	// 	1. A simple happy-path test to verify the logic of creating an instance name.
-	//	2. A uniqueness test to verify createInstanceName provides a unique-enough instance name within reasonable
+	// 	1. Happy-path tests to verify the logic of creating and sanitizing instance names.
+	//	2. Validation tests to ensure createInstanceName rejects special characters.
+	//	3. A uniqueness test to verify createInstanceName provides a unique-enough instance name within reasonable
 	//	   repeats. This test also checks the robustness of createInstanceName's code to verify it does not fail more
-	//	   than twice when run 10,000 times.
-	// These test cases were chosen because there's not much more room to try and break or abuse this function:
-	// Enforcing legal characters is not necessarily createInstanceName's responsibility. An instance name beginning
-	// with a hyphen is perfectly legal in IBM Cloud so an empty instanceTag input are edge cases that are not relevant.
-	// Trying to make createInstanceName return an error involves heavy mocking of a golang package, and downstream
-	// from createInstanceName there's a tolerance of up to 2 failed instance creation fails so there isn't too much
-	// point in forcing this heavy-duty test.
+	//	   than twice when run 100,000 times.
 	Describe("The createInstanceName function", func() {
-		When("generating a single instance name with a given tag", func() {
-			const instanceTag = "test-tag"
+		DescribeTable("sanitization and validation of instanceTag input",
+			func(tag, description string, shouldError bool) {
+				name, err := createInstanceName(tag)
 
-			It("should return a name in the correct format without any errors", func() {
-				name, err := createInstanceName(instanceTag)
+				if shouldError {
+					Expect(err).Should(HaveOccurred())
+					Expect(err.Error()).Should(ContainSubstring("invalid characters"))
+					Expect(name).Should(BeEmpty())
+				} else {
+					Expect(err).ShouldNot(HaveOccurred())
+					// Verify the entire generated name matches IBM naming rules
+					Expect(name).Should(MatchRegexp("^[a-z0-9-]+x$"),
+						"The entire instance name should contain only lowercase alphanumeric characters and hyphens, ending with 'x'")
+				}
+			},
+			Entry("lowercase with hyphens", "test-tag", "valid lowercase with hyphens", false),
+			Entry("uppercase letters are sanitized", "MyInstanceTag", "uppercase converted to lowercase", false),
+			Entry("underscores are sanitized", "my_test_instance", "underscores replaced with hyphens", false),
+			Entry("mixed case and underscores are sanitized", "Test_Instance_123", "mixed case and underscores sanitized", false),
+			Entry("special characters rejected", "moshe_kipod_Funky-Tag*!@#", "contains multiple invalid characters", true),
+			Entry("empty string rejected", "", "empty tag", true),
+		)
 
-				Expect(err).ShouldNot(HaveOccurred())
-				Expect(name).Should(HavePrefix(instanceTag + "-"))
-				Expect(name).Should(HaveSuffix("x"))
-
-				// Extract the ID part: tag-IDx, then shave off the "x" suffix
-				parts := strings.SplitN(name, "-", 2) // Split on the first hyphen
-				Expect(parts).Should(HaveLen(2), "Name should contain the tag and the ID part separated by a hyphen")
-				idPart := parts[1][:20]
-				Expect(idPart).Should(MatchRegexp("^[a-z0-9-]+$"),
-					"ID part should consist of lowercase alphanumeric characters and hyphens")
-			})
-		})
-
-		When("generating a large batch of 10,000 instance names with the same tag", func() {
+		When("generating a large batch of 100,000 instance names with the same tag", func() {
 			var instanceTagForBatch = "tag-uniqueness-tag"
 
 			It("should produce unique names each time and encounter no more than two errors in the process", func() {
