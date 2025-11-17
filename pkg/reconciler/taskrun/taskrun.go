@@ -18,6 +18,7 @@ import (
 	"github.com/konflux-ci/multi-platform-controller/pkg/aws"
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
 	"github.com/konflux-ci/multi-platform-controller/pkg/config"
+	"github.com/konflux-ci/multi-platform-controller/pkg/constant"
 	"github.com/konflux-ci/multi-platform-controller/pkg/ibm"
 	tektonapi "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	kubecore "k8s.io/api/core/v1"
@@ -46,7 +47,6 @@ const (
 
 	MultiPlatformSecretLabel = "build.appstudio.redhat.com/multi-platform-secret"
 
-	AssignedHost           = "build.appstudio.redhat.com/assigned-host"
 	FailedHosts            = "build.appstudio.redhat.com/failed-hosts"
 	CloudInstanceId        = "build.appstudio.redhat.com/cloud-instance-id"
 	CloudFailures          = "build.appstudio.redhat.com/cloud-failure-count"
@@ -63,11 +63,9 @@ const (
 	UserTaskName      = "build.appstudio.redhat.com/user-task-name"
 	UserTaskNamespace = "build.appstudio.redhat.com/user-task-namespace"
 
-	TargetPlatformLabel     = "build.appstudio.redhat.com/target-platform"
-	WaitingForPlatformLabel = "build.appstudio.redhat.com/waiting-for-platform"
-	FinishedWaitingLabel    = "build.appstudio.redhat.com/finished-waiting"
-	PipelineFinalizer       = "appstudio.io/multi-platform-finalizer"
-	HostConfig              = "host-config"
+	FinishedWaitingLabel = "build.appstudio.redhat.com/finished-waiting"
+	PipelineFinalizer    = "appstudio.io/multi-platform-finalizer"
+	HostConfig           = "host-config"
 
 	TaskTypeLabel     = "build.appstudio.redhat.com/task-type"
 	TaskTypeProvision = "provision"
@@ -143,8 +141,8 @@ func (r *ReconcileTaskRun) Reconcile(ctx context.Context, request reconcile.Requ
 		if tr.Annotations[CloudInstanceId] != "" {
 			log = log.WithValues(CloudInstanceId, tr.Annotations[CloudInstanceId])
 		}
-		if tr.Annotations[AssignedHost] != "" {
-			log = log.WithValues(AssignedHost, tr.Annotations[AssignedHost])
+		if tr.Annotations[constant.AssignedHost] != "" {
+			log = log.WithValues(constant.AssignedHost, tr.Annotations[constant.AssignedHost])
 		}
 	}
 	ctx = logr.NewContext(ctx, log)
@@ -223,8 +221,8 @@ func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, tr *tektonapi.Ta
 	if !success {
 		log := logr.FromContextOrDiscard(ctx)
 		log.Info("cleanup task failed", "task", tr.Name)
-		if tr.Labels != nil && tr.Labels[TargetPlatformLabel] != "" {
-			mpcmetrics.HandleMetrics(tr.Labels[TargetPlatformLabel], func(metrics *mpcmetrics.PlatformMetrics) {
+		if tr.Labels != nil && tr.Labels[constant.TargetPlatformLabel] != "" {
+			mpcmetrics.HandleMetrics(tr.Labels[constant.TargetPlatformLabel], func(metrics *mpcmetrics.PlatformMetrics) {
 				metrics.CleanupFailures.Inc()
 			})
 		}
@@ -268,8 +266,8 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 	}
 	userNamespace := tr.Labels[UserTaskNamespace]
 	userTaskName := tr.Labels[UserTaskName]
-	assigned := tr.Labels[AssignedHost]
-	targetPlatform := tr.Labels[TargetPlatformLabel]
+	assigned := tr.Labels[constant.AssignedHost]
+	targetPlatform := tr.Labels[constant.TargetPlatformLabel]
 	log = log.WithValues(
 		"success", success,
 		"userTask", fmt.Sprintf("%s/%s", userNamespace, userTaskName),
@@ -358,7 +356,7 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 				if pod.Annotations == nil {
 					pod.Annotations = map[string]string{}
 				}
-				pod.Annotations[AssignedHost] = assigned
+				pod.Annotations[constant.AssignedHost] = assigned
 				err = r.client.Update(ctx, &pod)
 				if err != nil {
 					log.Error(err, "unable to annotate task pod")
@@ -428,7 +426,7 @@ func (r *ReconcileTaskRun) createErrorSecret(ctx context.Context, tr *tektonapi.
 func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *tektonapi.TaskRun) (reconcile.Result, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	secretName := SecretPrefix + tr.Name
-	if tr.Labels != nil && tr.Labels[AssignedHost] != "" {
+	if tr.Labels != nil && tr.Labels[constant.AssignedHost] != "" {
 		return r.handleHostAssigned(ctx, tr, secretName)
 	}
 	//if the TR is done we ignore it
@@ -453,8 +451,8 @@ func (r *ReconcileTaskRun) handleUserTask(ctx context.Context, tr *tektonapi.Tas
 	}
 
 	// Set platform label in memory - it will be persisted during allocation
-	if tr.Labels[TargetPlatformLabel] == "" {
-		tr.Labels[TargetPlatformLabel] = platformLabel(targetPlatform)
+	if tr.Labels[constant.TargetPlatformLabel] == "" {
+		tr.Labels[constant.TargetPlatformLabel] = platformLabel(targetPlatform)
 	}
 
 	res, err := r.handleHostAllocation(ctx, tr, secretName, targetPlatform)
@@ -499,7 +497,7 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektona
 	}
 
 	// Track waiting state and allocation timing
-	wasWaiting := tr.Labels[WaitingForPlatformLabel] != ""
+	wasWaiting := tr.Labels[constant.WaitingForPlatformLabel] != ""
 	startTime := time.Now().Unix()
 
 	// Parse existing allocation start time if available
@@ -512,7 +510,7 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektona
 	}
 
 	ret, err := hosts.Allocate(r, ctx, tr, secretName)
-	isWaiting := tr.Labels[WaitingForPlatformLabel] != ""
+	isWaiting := tr.Labels[constant.WaitingForPlatformLabel] != ""
 
 	if err != nil {
 		log.Error(err, "host allocation failed")
@@ -522,14 +520,13 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektona
 		return ret, err
 	}
 
-	log.Info("host allocation completed", "isWaiting", isWaiting, "assignedHost", tr.Labels[AssignedHost])
+	log.Info("host allocation completed", "isWaiting", isWaiting, "assignedHost", tr.Labels[constant.AssignedHost])
 
 	// Host successfully assigned
-	if assignedHost := tr.Labels[AssignedHost]; assignedHost != "" {
+	if assignedHost := tr.Labels[constant.AssignedHost]; assignedHost != "" {
 		log.Info("host assigned successfully", "host", assignedHost)
 		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
 			metrics.AllocationTime.Observe(float64(time.Now().Unix() - startTime))
-			metrics.RunningTasks.WithLabelValues(tr.Namespace).Inc()
 		})
 	}
 
@@ -538,13 +535,9 @@ func (r *ReconcileTaskRun) handleHostAllocation(ctx context.Context, tr *tektona
 		log.Info("task no longer waiting - host allocated")
 		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
 			metrics.WaitTime.Observe(float64(time.Now().Unix() - tr.CreationTimestamp.Unix()))
-			metrics.WaitingTasks.WithLabelValues(tr.Namespace).Dec()
 		})
 	} else if !wasWaiting && isWaiting {
 		log.Info("task now waiting for host")
-		mpcmetrics.HandleMetrics(targetPlatform, func(metrics *mpcmetrics.PlatformMetrics) {
-			metrics.WaitingTasks.WithLabelValues(tr.Namespace).Inc()
-		})
 	} else if wasWaiting && isWaiting {
 		log.V(1).Info("task still waiting for host")
 	}
@@ -556,7 +549,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 	log := logr.FromContextOrDiscard(ctx).WithValues("secretName", secretName)
 
 	// Safe access to assigned host
-	assignedHost := tr.Labels[AssignedHost]
+	assignedHost := tr.Labels[constant.AssignedHost]
 	log = log.WithValues("assignedHost", assignedHost)
 
 	// Check if TaskRun is completed or being deleted
@@ -602,7 +595,7 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 	// Clean up TaskRun labels and finalizers
 	controllerutil.RemoveFinalizer(tr, PipelineFinalizer)
 	if tr.Labels != nil {
-		delete(tr.Labels, AssignedHost)
+		delete(tr.Labels, constant.AssignedHost)
 	}
 
 	// Update TaskRun with cleanup changes
@@ -618,7 +611,6 @@ func (r *ReconcileTaskRun) handleHostAssigned(ctx context.Context, tr *tektonapi
 	taskRunDuration := time.Since(tr.CreationTimestamp.Time)
 	mpcmetrics.HandleMetrics(platform, func(metrics *mpcmetrics.PlatformMetrics) {
 		metrics.TaskRunTime.Observe(taskRunDuration.Seconds())
-		metrics.RunningTasks.WithLabelValues(tr.Namespace).Dec()
 	})
 
 	// Handle secret cleanup
@@ -665,7 +657,7 @@ func (r *ReconcileTaskRun) handleWaitingTasks(ctx context.Context, platform stri
 	//try and requeue a waiting task if one exists
 	taskList := tektonapi.TaskRunList{}
 
-	err := r.client.List(ctx, &taskList, client.MatchingLabels{WaitingForPlatformLabel: platformLabel(platform)})
+	err := r.client.List(ctx, &taskList, client.MatchingLabels{constant.WaitingForPlatformLabel: platformLabel(platform)})
 	if err != nil {
 		log.Error(err, "failed to list waiting tasks")
 		return reconcile.Result{}, fmt.Errorf("failed to list waiting tasks: %w", err)
@@ -988,7 +980,7 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 	// #nosec G401 -- MD5 used only for non-cryptographic uniqueness
 	provision.Name = kmeta.ChildName(tr.Name, fmt.Sprintf("-provision-%x", md5.Sum([]byte(address)))[:5])
 	provision.Namespace = r.operatorNamespace
-	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, TargetPlatformLabel: platformLabel(platform), UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name, AssignedHost: tr.Labels[AssignedHost]}
+	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, constant.TargetPlatformLabel: platformLabel(platform), UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name, constant.AssignedHost: tr.Labels[constant.AssignedHost]}
 	provision.Spec.TaskRef = &tektonapi.TaskRef{Name: "provision-shared-host"}
 	provision.Spec.Workspaces = []tektonapi.WorkspaceBinding{{Name: "ssh", Secret: &kubecore.SecretVolumeSource{SecretName: sshSecret}}}
 	computeRequests := map[kubecore.ResourceName]resource.Quantity{kubecore.ResourceCPU: resource.MustParse("100m"), kubecore.ResourceMemory: resource.MustParse("256Mi")}
@@ -1064,11 +1056,11 @@ func UpdateTaskRunWithRetry(ctx context.Context, cli client.Client, apiReader cl
 
 var (
 	managedLabels = []string{
-		AssignedHost,
+		constant.AssignedHost,
 		UserTaskName,
 		UserTaskNamespace,
-		TargetPlatformLabel,
-		WaitingForPlatformLabel,
+		constant.TargetPlatformLabel,
+		constant.WaitingForPlatformLabel,
 		TaskTypeLabel,
 	}
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
+	"github.com/konflux-ci/multi-platform-controller/pkg/constant"
 	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -38,7 +39,7 @@ func (r DynamicResolver) Deallocate(taskRun *ReconcileTaskRun, ctx context.Conte
 		return err
 	}
 	delete(tr.Annotations, CloudInstanceId)
-	delete(tr.Labels, AssignedHost)
+	delete(tr.Labels, constant.AssignedHost)
 	delete(tr.Labels, CloudDynamicPlatform)
 	return nil
 }
@@ -95,7 +96,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 			}
 			return reconcile.Result{}, err
 		} else if address != "" { // An IP address was successfully retrieved for the the VM
-			tr.Labels[AssignedHost] = tr.Annotations[CloudInstanceId]
+			tr.Labels[constant.AssignedHost] = tr.Annotations[CloudInstanceId]
 			tr.Annotations[CloudAddress] = address
 			err := UpdateTaskRunWithRetry(ctx, taskRun.client, taskRun.apiReader, tr)
 			if err != nil {
@@ -160,19 +161,19 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 		message := fmt.Sprintf("%d of %d maxInstances running for %s, waiting for existing tasks to finish before provisioning for ", instanceCount, r.maxInstances, r.instanceTag)
 		r.eventRecorder.Event(tr, "Warning", "Pending", message)
 		log.Info(message)
-		if tr.Labels[WaitingForPlatformLabel] == platformLabel(r.platform) {
+		if tr.Labels[constant.WaitingForPlatformLabel] == platformLabel(r.platform) {
 			//we are already in a waiting state
 			return reconcile.Result{RequeueAfter: time.Minute}, nil
 		}
 		//no host available
 		//add the waiting label
-		tr.Labels[WaitingForPlatformLabel] = platformLabel(r.platform)
+		tr.Labels[constant.WaitingForPlatformLabel] = platformLabel(r.platform)
 		if err := UpdateTaskRunWithRetry(ctx, taskRun.client, taskRun.apiReader, tr); err != nil {
 			log.Error(err, "Failed to update task with waiting label. Will retry.")
 		}
 		return reconcile.Result{RequeueAfter: time.Minute}, nil
 	}
-	delete(tr.Labels, WaitingForPlatformLabel)
+	delete(tr.Labels, constant.WaitingForPlatformLabel)
 	startTime := time.Now().Unix()
 	tr.Annotations[AllocationStartTimeAnnotation] = strconv.FormatInt(startTime, 10)
 
@@ -233,7 +234,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 
 // Tries to remove the instance information from the task and returns a non-nil error if it was unable to.
 func (dr DynamicResolver) removeInstanceFromTask(reconcileTaskRun *ReconcileTaskRun, ctx context.Context, taskRun *v1.TaskRun) error {
-	delete(taskRun.Labels, AssignedHost)
+	delete(taskRun.Labels, constant.AssignedHost)
 	delete(taskRun.Annotations, CloudInstanceId)
 	delete(taskRun.Annotations, CloudDynamicPlatform)
 	return UpdateTaskRunWithRetry(ctx, reconcileTaskRun.client, reconcileTaskRun.apiReader, taskRun)

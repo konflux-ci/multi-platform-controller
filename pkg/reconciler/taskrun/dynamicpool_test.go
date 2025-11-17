@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 
+	. "github.com/konflux-ci/multi-platform-controller/pkg/constant"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
