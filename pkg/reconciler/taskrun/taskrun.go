@@ -297,7 +297,7 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 				}
 				failed = append(failed, assigned)
 				userTr.Annotations[FailedHosts] = strings.Join(failed, ",")
-				delete(userTr.Labels, AssignedHost)
+				delete(userTr.Labels, constant.AssignedHost)
 				err = UpdateTaskRunWithRetry(ctx, r.client, r.apiReader, &userTr)
 				if err != nil {
 					return reconcile.Result{}, err
