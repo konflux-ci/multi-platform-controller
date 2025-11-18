@@ -78,22 +78,19 @@ spec:
 
         rm -f $USERNAME $USERNAME.pub
 
-        # Obfuscate user for logging
-        obfuscated_username="${USERNAME:0:2}**********${USERNAME: -3:3}"
-
         # Retry useradd command as sometimes it hits a "cannot lock /etc/passwd; try again later" error
         for i in {10..1}; do
           sudo useradd -m $USERNAME -p $(openssl rand -base64 12)
           if [ $? -eq 0 ]; then
-            echo "{message: "User $obfuscated_username added successfully.", level: "INFO}"
+            echo "{message: "User $USERNAME added successfully.", level: "INFO}"
             break
           fi
           ATTEMPTS_REMAINING=$((i - 1))
           if [ "$ATTEMPTS_REMAINING" -gt 0 ]; then
-            echo "{message: "User $obfuscated_username addition attempt failed, retrying $ATTEMPTS_REMAINING more times...", level: "WARNING}"
+            echo "{message: "User $USERNAME addition attempt failed, retrying $ATTEMPTS_REMAINING more times...", level: "WARNING}"
             sleep 1
           else
-            echo "{message: "Failed to add user $obfuscated_username after 10 total attempts.", level: "ERROR"}"
+            echo "{message: "Failed to add user $USERNAME after 10 total attempts.", level: "ERROR"}"
             exit 1
           fi
         done
@@ -104,7 +101,7 @@ spec:
         sudo mv $USERNAME.pub /home/$USERNAME/.ssh/authorized_keys
         sudo chown $USERNAME /home/$USERNAME/.ssh/authorized_keys
         sudo restorecon -FRvv /home/$USERNAME/.ssh
-        echo "{message: "Successfully created and configured a new SSH key for $obfuscated_username.", level: "INFO"}"
+        echo "{message: "Successfully created and configured a new SSH key for $USERNAME.", level: "INFO"}"
         EOF
 
         # Add sudo access (if needed) to the script
