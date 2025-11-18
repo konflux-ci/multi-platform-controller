@@ -27,8 +27,7 @@ var _ = Describe("IBM s390x Helper Functions", func() {
 				name, err := createInstanceName(tag)
 
 				if shouldError {
-					Expect(err).Should(HaveOccurred())
-					Expect(err.Error()).Should(ContainSubstring("invalid characters"))
+					Expect(err).Should(MatchError(ContainSubstring("invalid characters")))
 					Expect(name).Should(BeEmpty())
 				} else {
 					Expect(err).ShouldNot(HaveOccurred())
