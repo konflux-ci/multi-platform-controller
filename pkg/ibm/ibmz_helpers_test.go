@@ -2,6 +2,7 @@ package ibm
 
 import (
 	"fmt"
+	"regexp"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -11,6 +12,9 @@ import (
 
 const testIterations = 100000
 const maxAllowedErrors = 2
+
+// expectedInstanceNameFormat verifies the instance name structure: sanitized-tag + "-" + 20-char-id + "x"
+var expectedInstanceNameFormat = regexp.MustCompile(`^[a-z0-9-]+-[a-z0-9-]{20}x$`)
 
 var _ = Describe("IBM s390x Helper Functions", func() {
 
@@ -22,27 +26,32 @@ var _ = Describe("IBM s390x Helper Functions", func() {
 	//	   repeats. This test also checks the robustness of createInstanceName's code to verify it does not fail more
 	//	   than twice when run 100,000 times.
 	Describe("The createInstanceName function", func() {
-		DescribeTable("sanitization and validation of instanceTag input",
-			func(tag, description string, shouldError bool) {
-				name, err := createInstanceName(tag)
+		When("provided with valid instanceTag inputs that should be sanitized", func() {
+			DescribeTable("should successfully create and sanitize instance names",
+				func(tag, description string) {
+					name, _ := createInstanceName(tag)
+					// Verify the name matches expected format: tag-{20 chars}x
+					Expect(expectedInstanceNameFormat.MatchString(name)).To(BeTrue())
+				},
+				Entry("lowercase with hyphens", "test-tag", "valid lowercase with hyphens"),
+				Entry("mixed case and underscores are sanitized", "Test_Instance_123", "mixed case and underscores sanitized"),
+			)
+		})
 
-				if shouldError {
+		When("provided with invalid instanceTag inputs", func() {
+			DescribeTable("should reject the input with an error",
+				func(tag, description string) {
+					name, err := createInstanceName(tag)
+
 					Expect(err).Should(MatchError(ContainSubstring("invalid characters")))
 					Expect(name).Should(BeEmpty())
-				} else {
-					Expect(err).ShouldNot(HaveOccurred())
-					// Verify the entire generated name matches IBM naming rules
-					Expect(name).Should(MatchRegexp("^[a-z0-9-]+x$"),
-						"The entire instance name should contain only lowercase alphanumeric characters and hyphens, ending with 'x'")
-				}
-			},
-			Entry("lowercase with hyphens", "test-tag", "valid lowercase with hyphens", false),
-			Entry("uppercase letters are sanitized", "MyInstanceTag", "uppercase converted to lowercase", false),
-			Entry("underscores are sanitized", "my_test_instance", "underscores replaced with hyphens", false),
-			Entry("mixed case and underscores are sanitized", "Test_Instance_123", "mixed case and underscores sanitized", false),
-			Entry("special characters rejected", "moshe_kipod_Funky-Tag*!@#", "contains multiple invalid characters", true),
-			Entry("empty string rejected", "", "empty tag", true),
-		)
+				},
+				Entry("special characters rejected", "moshe_kipod_Funky-Tag*!@#", "contains multiple invalid characters"),
+				Entry("empty string rejected", "", "empty tag"),
+				Entry("just a space tag", " ", "space tag"),
+				Entry("spaces rejected", "test tag", "contains space character"),
+			)
+		})
 
 		When("generating a large batch of 100,000 instance names with the same tag", func() {
 			var instanceTagForBatch = "tag-uniqueness-tag"

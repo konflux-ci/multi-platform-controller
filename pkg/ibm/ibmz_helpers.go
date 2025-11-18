@@ -26,6 +26,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// validInstanceNamePattern validates instance tag input for IBM Cloud naming requirements.
+// Only alphanumeric characters, hyphens, and underscores are allowed.
+var validInstanceNamePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
 // createInstanceName returns a unique instance name in the
 // format  <instance_tag>-<instance_id> where the 'instance_id'
 // is a 20 character universally unique ID generated using the
@@ -38,8 +42,7 @@ import (
 // Used in for Both IBM System Z & IBM Power PC.
 func createInstanceName(instanceTag string) (string, error) {
 	// Validate instanceTag contains only alphanumeric characters, hyphens, and underscores
-	validNamePattern := regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
-	if !validNamePattern.MatchString(instanceTag) {
+	if !validInstanceNamePattern.MatchString(instanceTag) {
 		return "", fmt.Errorf("instance tag contains invalid characters, only alphanumeric characters, hyphens, and underscores are allowed, got: %s", instanceTag)
 	}
 
