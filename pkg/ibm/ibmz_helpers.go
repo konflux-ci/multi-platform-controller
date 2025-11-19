@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -25,13 +26,27 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// validInstanceNamePattern validates instance tag input for IBM Cloud naming requirements.
+// Only alphanumeric characters, hyphens, and underscores are allowed.
+// Must not start with a hyphen.
+var validInstanceNamePattern = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9_-]*$`)
+
 // createInstanceName returns a unique instance name in the
 // format  <instance_tag>-<instance_id> where the 'instance_id'
 // is a 20 character universally unique ID generated using the
 // md5 cryptographic hash function.
 //
+// The instanceTag is sanitized to comply with IBM Cloud instance naming requirements:
+// uppercase letters are converted to lowercase, and underscores are replaced with hyphens.
+// Special characters (other than alphanumeric, hyphens, and underscores) are not allowed.
+//
 // Used in for Both IBM System Z & IBM Power PC.
 func createInstanceName(instanceTag string) (string, error) {
+	// Validate instanceTag contains only alphanumeric characters, hyphens, and underscores
+	if !validInstanceNamePattern.MatchString(instanceTag) {
+		return "", fmt.Errorf("instance tag contains invalid characters, only alphanumeric characters, hyphens, and underscores are allowed, got: %s", instanceTag)
+	}
+
 	binary, err := uuid.New().MarshalBinary()
 	if err != nil {
 		return "", fmt.Errorf("failed to create a UUID for the instance name: %w", err)
@@ -40,8 +55,10 @@ func createInstanceName(instanceTag string) (string, error) {
 	// strength doesn't matter here
 	md5EncodedBinary := md5.New().Sum(binary) //#nosec
 	md5EncodedString := base64.URLEncoding.EncodeToString(md5EncodedBinary)[0:20]
-	instanceId := strings.ReplaceAll(strings.ToLower(md5EncodedString), "_", "-")
-	return fmt.Sprintf("%s-%sx", instanceTag, instanceId), nil
+
+	// Build instance name and sanitize: lowercase and replace underscores with hyphens
+	instanceName := fmt.Sprintf("%s-%sx", instanceTag, md5EncodedString)
+	return strings.ReplaceAll(strings.ToLower(instanceName), "_", "-"), nil
 }
 
 // checkIfIpIsLive tries to connect to the IP address ip. An

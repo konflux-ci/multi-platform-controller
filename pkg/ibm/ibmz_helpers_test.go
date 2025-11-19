@@ -2,7 +2,7 @@ package ibm
 
 import (
 	"fmt"
-	"strings"
+	"regexp"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -13,41 +13,49 @@ import (
 const testIterations = 100000
 const maxAllowedErrors = 2
 
+// expectedInstanceNameFormat verifies the instance name structure: sanitized-tag + "-" + 20-char-id + "x"
+var expectedInstanceNameFormat = regexp.MustCompile(`^[a-z0-9-]+-[a-z0-9-]{20}x$`)
+
 var _ = Describe("IBM s390x Helper Functions", func() {
 
 	// A unit test for createInstanceName which serves both ibmz.go and ibmp.go use to create virtual machines.
 	// Includes:
-	// 	1. A simple happy-path test to verify the logic of creating an instance name.
-	//	2. A uniqueness test to verify createInstanceName provides a unique-enough instance name within reasonable
+	// 	1. Happy-path tests to verify the logic of creating and sanitizing instance names.
+	//	2. Validation tests to ensure createInstanceName rejects special characters.
+	//	3. A uniqueness test to verify createInstanceName provides a unique-enough instance name within reasonable
 	//	   repeats. This test also checks the robustness of createInstanceName's code to verify it does not fail more
-	//	   than twice when run 10,000 times.
-	// These test cases were chosen because there's not much more room to try and break or abuse this function:
-	// Enforcing legal characters is not necessarily createInstanceName's responsibility. An instance name beginning
-	// with a hyphen is perfectly legal in IBM Cloud so an empty instanceTag input are edge cases that are not relevant.
-	// Trying to make createInstanceName return an error involves heavy mocking of a golang package, and downstream
-	// from createInstanceName there's a tolerance of up to 2 failed instance creation fails so there isn't too much
-	// point in forcing this heavy-duty test.
+	//	   than twice when run 100,000 times.
 	Describe("The createInstanceName function", func() {
-		When("generating a single instance name with a given tag", func() {
-			const instanceTag = "test-tag"
-
-			It("should return a name in the correct format without any errors", func() {
-				name, err := createInstanceName(instanceTag)
-
-				Expect(err).ShouldNot(HaveOccurred())
-				Expect(name).Should(HavePrefix(instanceTag + "-"))
-				Expect(name).Should(HaveSuffix("x"))
-
-				// Extract the ID part: tag-IDx, then shave off the "x" suffix
-				parts := strings.SplitN(name, "-", 2) // Split on the first hyphen
-				Expect(parts).Should(HaveLen(2), "Name should contain the tag and the ID part separated by a hyphen")
-				idPart := parts[1][:20]
-				Expect(idPart).Should(MatchRegexp("^[a-z0-9-]+$"),
-					"ID part should consist of lowercase alphanumeric characters and hyphens")
-			})
+		When("provided with valid instanceTag inputs that should be sanitized", func() {
+			DescribeTable("should successfully create and sanitize instance names",
+				func(tag, description string) {
+					name, _ := createInstanceName(tag)
+					// Verify the name matches expected format: tag-{20 chars}x
+					Expect(expectedInstanceNameFormat.MatchString(name)).To(BeTrue())
+				},
+				Entry("lowercase with hyphens", "test-tag", "valid lowercase with hyphens"),
+				Entry("mixed case and underscores are sanitized", "Test_Instance_123", "mixed case and underscores sanitized"),
+			)
 		})
 
-		When("generating a large batch of 10,000 instance names with the same tag", func() {
+		When("provided with invalid instanceTag inputs", func() {
+			DescribeTable("should reject the input with an error",
+				func(tag, description string) {
+					name, err := createInstanceName(tag)
+
+					Expect(err).Should(MatchError(ContainSubstring("invalid characters")))
+					Expect(name).Should(BeEmpty())
+				},
+				Entry("special characters rejected", "moshe_kipod_Funky-Tag*!@#", "contains multiple invalid characters"),
+				Entry("empty string rejected", "", "empty tag"),
+				Entry("just a space tag", " ", "space tag"),
+				Entry("spaces rejected", "test tag", "contains space character"),
+				Entry("space in the beginning of the tag rejected", " test-tag", "contains space character"),
+				Entry("tag name starting with hyphen rejected", "-koko-hazamar", "contains space character"),
+			)
+		})
+
+		When("generating a large batch of 100,000 instance names with the same tag", func() {
 			var instanceTagForBatch = "tag-uniqueness-tag"
 
 			It("should produce unique names each time and encounter no more than two errors in the process", func() {
