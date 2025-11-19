@@ -28,7 +28,8 @@ import (
 
 // validInstanceNamePattern validates instance tag input for IBM Cloud naming requirements.
 // Only alphanumeric characters, hyphens, and underscores are allowed.
-var validInstanceNamePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+// Must not start with a hyphen.
+var validInstanceNamePattern = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9_-]*$`)
 
 // createInstanceName returns a unique instance name in the
 // format  <instance_tag>-<instance_id> where the 'instance_id'

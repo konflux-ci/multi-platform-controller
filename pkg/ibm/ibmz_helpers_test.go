@@ -50,6 +50,8 @@ var _ = Describe("IBM s390x Helper Functions", func() {
 				Entry("empty string rejected", "", "empty tag"),
 				Entry("just a space tag", " ", "space tag"),
 				Entry("spaces rejected", "test tag", "contains space character"),
+				Entry("space in the beginning of the tag rejected", " test-tag", "contains space character"),
+				Entry("tag name starting with hyphen rejected", "-koko-hazamar", "contains space character"),
 			)
 		})
 
