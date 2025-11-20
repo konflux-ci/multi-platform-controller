@@ -2,6 +2,8 @@ package taskrun
 
 import (
 	"context"
+	"encoding/hex"
+
 	// #nosec G501 -- MD5 used only for non-cryptographic uniqueness
 	"crypto/md5"
 	"errors"
@@ -166,7 +168,9 @@ func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.T
 		//kick off the clean task
 		cleanup := v1.TaskRun{}
 		// #nosec G401 -- MD5 used only for non-cryptographic uniqueness
-		cleanup.Name = kmeta.ChildName(tr.Name, fmt.Sprintf("-cleanup-%x", md5.Sum([]byte(selected.Address)))[:5])
+		hash := md5.Sum([]byte(selected.Address))
+		short := hex.EncodeToString(hash[:])[:5]
+		cleanup.Name = kmeta.ChildName(tr.Name, "-cleanup-"+short)
 		cleanup.Namespace = r.operatorNamespace
 		cleanup.Labels = labelMap
 		cleanup.Spec.TaskRef = &v1.TaskRef{Name: "clean-shared-host"}
