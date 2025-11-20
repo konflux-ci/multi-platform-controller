@@ -4,7 +4,7 @@ metadata:
   name: clean-shared-host
 spec:
   description: >-
-    This task will clean up after a build
+    This task will clean up the temporary user after a build.
   params:
     - name: SECRET_NAME
       type: string
@@ -20,51 +20,75 @@ spec:
     - name: ssh
 
   steps:
-    - name: provision
+    - name: cleanup
       image: quay.io/redhat-appstudio/multi-platform-runner:01c7670e81d5120347cf0ad13372742489985e5f@sha256:246adeaaba600e207131d63a7f706cffdcdc37d8f600c56187123ec62823ff44
       imagePullPolicy: IfNotPresent
       script: |
         #!/bin/bash
-        cd /tmp
         set -o verbose
         set -eu
+
+        # --- Error Handling Function ---
+        handle_error() {
+            local EXIT_CODE=$?
+            local FAILED_COMMAND=$BASH_COMMAND
+
+            echo "{message: "'$FAILED_COMMAND' failed with exit code $EXIT_CODE.", level: "ERROR"}" >&2
+
+            # The trap handler runs, and then the script exits due to set -e
+        }
+        # ------------------------------
+
+        trap 'handle_error' ERR
+        trap 'ssh -O exit $SSH_HOST 2>/dev/null || true' EXIT
+
+        cd /tmp
         cp $(workspaces.ssh.path)/id_rsa /tmp/master_key
         chmod 0400 /tmp/master_key
         export SSH_HOST=$(params.USER)@$(params.HOST)
+        SSH_MULTIPLEX_OPTS="-o ControlMaster=auto -o ControlPath=/tmp/ssh-%r@%h:%p"
+        SSH_OPTS="-i /tmp/master_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $SSH_MULTIPLEX_OPTS"
+
         export USERNAME=u-$(echo $(params.TASKRUN_NAME)$(params.NAMESPACE) | md5sum | cut -b-28)
 
-        # Obfuscate USERNAME for logging
-        obfuscated_username="${USERNAME:0:2}**********${USERNAME: -3:3}"
+        # Check if the user exists
+        SSH_USER_CHK_OUTPUT=$(
+            ssh $SSH_OPTS $SSH_HOST id -u "$USERNAME" > /dev/null 2>&1
+        ) || {
+            # If the command fails, the `||` block executes.
+            # Note: Using `||` suppresses set -e for this line.
+            exit_code=$?
+            if [ $exit_code -eq 1 ]; then
+              echo "{message: "User $USERNAME already deleted, exiting...", level: "INFO"}"
+              exit 0
+            fi
+            echo "{message: "Remote User Check Output: $SSH_USER_CHK_OUTPUT", level: "WARNING"}" >&2
+            exit $exit_code
+        }
+        echo "{message: "User $USERNAME exists, proceeding with cleanup.", level: "INFO"}"
 
-        SSH_OPTS="-i /tmp/master_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-
-        # check user exists
-        if ssh $SSH_OPTS "$SSH_HOST" id -u "$USERNAME" > /dev/null 2>&1; then
-           echo "User $obfuscated_username exists, proceeding with cleanup"
-        else
-           exit_code=$?
-           if [ $exit_code -eq 1 ]; then
-             echo "User $obfuscated_username already deleted, exiting"
-             exit 0
-           else
-             echo "SSH error (exit code $exit_code)" >&2
-             exit $exit_code
-           fi
-        fi
-
-        # kill all processes associated with $USERNAME
-        ssh $SSH_OPTS "$SSH_HOST" sudo killall -9 -u "$USERNAME" || true
+        # Kill all processes associated with user
+        SSH_KILL_OUTPUT=$(
+            ssh $SSH_OPTS $SSH_HOST sudo killall -9 -u "$USERNAME" 2>&1
+        ) || {
+            # If the command fails, the `||` block executes.
+            # Note: Using `||` suppresses set -e for this line.
+            echo "{message: "Remote Kill Output: $SSH_KILL_OUTPUT", level: "WARNING"}" >&2
+            exit 1
+        }
 
         for i in {10..1}; do
           if ssh $SSH_OPTS "$SSH_HOST" sudo userdel -f -r -Z "$USERNAME"; then
-            echo "User $obfuscated_username successfully deleted"
+            echo "{message: "User $USERNAME successfully deleted.", level: "INFO"}"
+            # Close SSH multiplex connection
             exit 0
           fi
           ATTEMPTS_REMAINING=$((i - 1))
           if [ "$ATTEMPTS_REMAINING" -gt 0 ]; then
-            echo "User $obfuscated_username deletion attempt failed, retrying $ATTEMPTS_REMAINING more times..."
+            echo "{message: "User $USERNAME deletion attempt failed, retrying $ATTEMPTS_REMAINING more times...", level: "WARNING"}"
             sleep 1
           fi
         done
-        echo "ERROR: Failed to delete user $obfuscated_username on $SSH_HOST after 10 total attempts."
+        echo "{message: "Failed to delete user $USERNAME on $SSH_HOST after 10 total attempts.", level: "ERROR"}"
+        # Close SSH multiplex connection
         exit 1
