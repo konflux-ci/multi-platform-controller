@@ -168,7 +168,7 @@ func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.T
 		// #nosec G401 -- MD5 used only for non-cryptographic uniqueness
 		hash := md5.Sum([]byte(selected.Address))
 		short := fmt.Sprintf("%x", hash)[:5]
-		cleanup.Name = kmeta.ChildName(tr.Name, short)
+		cleanup.Name = kmeta.ChildName(tr.Name, fmt.Sprintf("-cleanup-%s", short))
 		cleanup.Namespace = r.operatorNamespace
 		cleanup.Labels = labelMap
 		cleanup.Spec.TaskRef = &v1.TaskRef{Name: "clean-shared-host"}
