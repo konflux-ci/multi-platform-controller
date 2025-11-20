@@ -978,7 +978,9 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 
 	provision := tektonapi.TaskRun{}
 	// #nosec G401 -- MD5 used only for non-cryptographic uniqueness
-	provision.Name = kmeta.ChildName(tr.Name, fmt.Sprintf("-provision-%x", md5.Sum([]byte(address)))[:5])
+	hash := md5.Sum([]byte(address))
+	short := fmt.Sprintf("%x", hash)[:5]
+	provision.Name = kmeta.ChildName(tr.Name, fmt.Sprintf("-provision-%s", short))
 	provision.Namespace = r.operatorNamespace
 	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, constant.TargetPlatformLabel: platformLabel(platform), UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name, constant.AssignedHost: tr.Labels[constant.AssignedHost]}
 	provision.Spec.TaskRef = &tektonapi.TaskRef{Name: "provision-shared-host"}
