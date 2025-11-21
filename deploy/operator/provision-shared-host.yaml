@@ -76,18 +76,18 @@ spec:
         cat >script.sh <<EOF
         sudo dnf install podman -y
 
-        rm -f $USERNAME $USERNAME.pub
+        rm -f "$USERNAME" "$USERNAME".pub
 
         # Retry useradd command as sometimes it hits a "cannot lock /etc/passwd; try again later" error
         for i in {10..1}; do
-          sudo useradd -m $USERNAME -p $(openssl rand -base64 12)
+          sudo useradd -m "$USERNAME" -p $(openssl rand -base64 12)
           if [ $? -eq 0 ]; then
             echo "{message: "User $USERNAME added successfully.", level: "INFO}"
             break
           fi
           ATTEMPTS_REMAINING=$((i - 1))
-          if [ "$ATTEMPTS_REMAINING" -gt 0 ]; then
-            echo "{message: "User $USERNAME addition attempt failed, retrying $ATTEMPTS_REMAINING more times...", level: "WARNING}"
+          if [ "\$ATTEMPTS_REMAINING" -gt 0 ]; then
+            echo "{message: "User $USERNAME addition attempt failed, retrying $\ATTEMPTS_REMAINING more times...", level: "WARNING}"
             sleep 1
           else
             echo "{message: "Failed to add user $USERNAME after 10 total attempts.", level: "ERROR"}"
@@ -95,12 +95,12 @@ spec:
           fi
         done
 
-        ssh-keygen -N '' -f $USERNAME
-        sudo su $USERNAME -c 'mkdir /home/$USERNAME/.ssh'
-        sudo su $USERNAME -c 'mkdir /home/$USERNAME/build'
-        sudo mv $USERNAME.pub /home/$USERNAME/.ssh/authorized_keys
-        sudo chown $USERNAME /home/$USERNAME/.ssh/authorized_keys
-        sudo restorecon -FRvv /home/$USERNAME/.ssh
+        ssh-keygen -N '' -f "$USERNAME"
+        sudo su "$USERNAME" -c 'mkdir /home/"$USERNAME"/.ssh'
+        sudo su "$USERNAME" -c 'mkdir /home/"$USERNAME"/build'
+        sudo mv "$USERNAME".pub /home/"$USERNAME"/.ssh/authorized_keys
+        sudo chown "$USERNAME" /home/"$USERNAME"/.ssh/authorized_keys
+        sudo restorecon -FRvv /home/"$USERNAME"/.ssh
         echo "{message: "Successfully created and configured a new SSH key for $USERNAME.", level: "INFO"}"
         EOF
 
@@ -114,7 +114,7 @@ spec:
 
         # Execute provision script on VM
         SSH_PROVISION_OUTPUT=$(
-            ssh $SSH_OPTS $SSH_HOST "bash -s" <script.sh 2>&1
+            ssh "$SSH_OPTS" "$SSH_HOST" "bash -s" <script.sh 2>&1
         ) || {
             # If the command fails, the `||` block executes.
             # Note: Using `||` suppresses set -e for this line.
@@ -126,7 +126,7 @@ spec:
 
         # Copy/configure remotely-generated SSH key and then delete on VM
         SSH_KEY_CP_OUTPUT=$(
-            ssh $SSH_OPTS $SSH_HOST cat $USERNAME  >id_rsa 2>&1
+            ssh "$SSH_OPTS" "$SSH_HOST" cat $USERNAME  >id_rsa 2>&1
         ) || {
             # If the command fails, the `||` block executes.
             # Note: Using `||` suppresses set -e for this line.
@@ -135,7 +135,7 @@ spec:
         }
         echo "{message: "Successfully copied remotely-generated SSH key from VM.", level: "INFO"}"
         SSH_KEY_RM_OUTPUT=$(
-            ssh $SSH_OPTS $SSH_HOST rm $USERNAME 2>&1
+            ssh "$SSH_OPTS" "$SSH_HOST" rm $USERNAME 2>&1
         ) || {
             # If the command fails, the `||` block executes.
             # Note: Using `||` suppresses set -e for this line.
@@ -146,7 +146,7 @@ spec:
 
         chmod 0400 id_rsa
         HOST=$(echo "$USERNAME@$HOST" | base64 -w 0)
-        DIR=$(echo /home/$USERNAME | base64 -w 0)
+        DIR=$(echo /home/"$USERNAME" | base64 -w 0)
 
         # Generate a Kubernetes Secret file based on the existence of a certificate
         if [ -e "/tls/tls.crt" ]; then
@@ -160,8 +160,8 @@ spec:
           apiVersion: v1
           data:
             otp-ca: "$(cat /tls/tls.crt | base64 -w 0)"
-            otp: "$OTP"
-            otp-server: "$OTP_SERVER"
+            otp: "\$OTP"
+            otp-server: "\$OTP_SERVER"
             host: "$HOST"
             user-dir: "$DIR"
           kind: Secret

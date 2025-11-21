@@ -53,7 +53,7 @@ spec:
 
         # Check if the user exists
         SSH_USER_CHK_OUTPUT=$(
-            ssh $SSH_OPTS $SSH_HOST id -u "$USERNAME" > /dev/null 2>&1
+            ssh "$SSH_OPTS" "$SSH_HOST" id -u "$USERNAME" > /dev/null 2>&1
         ) || {
             # If the command fails, the `||` block executes.
             # Note: Using `||` suppresses set -e for this line.
@@ -69,7 +69,7 @@ spec:
 
         # Kill all processes associated with user
         SSH_KILL_OUTPUT=$(
-            ssh $SSH_OPTS $SSH_HOST sudo killall -9 -u "$USERNAME" 2>&1
+            ssh "$SSH_OPTS" "$SSH_HOST" sudo killall -9 -u "$USERNAME" 2>&1
         ) || {
             # If the command fails, the `||` block executes.
             # Note: Using `||` suppresses set -e for this line.
@@ -78,9 +78,8 @@ spec:
         }
 
         for i in {10..1}; do
-          if ssh $SSH_OPTS "$SSH_HOST" sudo userdel -f -r -Z "$USERNAME"; then
+          if ssh "$SSH_OPTS" "$SSH_HOST" sudo userdel -f -r -Z "$USERNAME"; then
             echo "{message: "User $USERNAME successfully deleted.", level: "INFO"}"
-            # Close SSH multiplex connection
             exit 0
           fi
           ATTEMPTS_REMAINING=$((i - 1))
@@ -90,5 +89,4 @@ spec:
           fi
         done
         echo "{message: "Failed to delete user $USERNAME on $SSH_HOST after 10 total attempts.", level: "ERROR"}"
-        # Close SSH multiplex connection
         exit 1
