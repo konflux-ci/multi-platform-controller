@@ -32,13 +32,13 @@ jobs:
           exit 1
       - name: Check out pull request head code - on pull_request event
         if: env.on-event == 'pull_request'
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v4
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v4
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}  
           ref: ${{ github.event.pull_request.head.ref }}  
       - name: Check out main code - on push event
         if: env.on-event == 'push'
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v4
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v4
       - name: Install Go
         uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v5
         with:
