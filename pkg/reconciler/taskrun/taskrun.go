@@ -2,6 +2,10 @@ package taskrun
 
 import (
 	"context"
+	"encoding/hex"
+
+	// #nosec G501 -- MD5 used only for non-cryptographic uniqueness
+	"crypto/md5"
 	"errors"
 	"fmt"
 	"runtime"
@@ -296,12 +300,7 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 				failed = append(failed, assigned)
 				userTr.Annotations[FailedHosts] = strings.Join(failed, ",")
 				delete(userTr.Labels, constant.AssignedHost)
-				err = r.client.Update(ctx, &userTr)
-				if err != nil {
-					return reconcile.Result{}, err
-				}
-				delete(tr.Labels, constant.AssignedHost)
-				err := r.client.Update(ctx, tr)
+				err = UpdateTaskRunWithRetry(ctx, r.client, r.apiReader, &userTr)
 				if err != nil {
 					return reconcile.Result{}, err
 				}
@@ -980,7 +979,10 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 	}
 
 	provision := tektonapi.TaskRun{}
-	provision.Name = kmeta.ChildName(tr.Name, "-provision")
+	// #nosec G401 -- MD5 used only for non-cryptographic uniqueness
+	hash := md5.Sum([]byte(address))
+	short := hex.EncodeToString(hash[:])[:5]
+	provision.Name = kmeta.ChildName(tr.Name, "-prov-"+short)
 	provision.Namespace = r.operatorNamespace
 	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, constant.TargetPlatformLabel: platformLabel(platform), UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name, constant.AssignedHost: tr.Labels[constant.AssignedHost]}
 	provision.Spec.TaskRef = &tektonapi.TaskRef{Name: "provision-shared-host"}

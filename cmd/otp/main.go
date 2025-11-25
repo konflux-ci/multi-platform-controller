@@ -4,6 +4,7 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -36,11 +37,7 @@ func main() {
 
 	mainLog = logger.WithName("main")
 	klog.SetLogger(mainLog)
-	// load tls certificates
-	serverTLSCert, err := tls.LoadX509KeyPair(CertFilePath, KeyFilePath)
-	if err != nil {
-		log.Fatalf("Error loading certificate and key file: %v", err)
-	}
+
 	otp := NewOtp(&logger)
 	store := NewStoreKey(&logger)
 	mux := http.NewServeMux()
@@ -48,8 +45,14 @@ func main() {
 	mux.Handle("/otp", otp)
 
 	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{serverTLSCert},
-		MinVersion:   tls.VersionTLS12,
+		MinVersion: tls.VersionTLS12,
+		GetCertificate: func(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			cert, err := tls.LoadX509KeyPair(CertFilePath, KeyFilePath)
+			if err != nil {
+				return nil, fmt.Errorf("could not load TLS certs: %w", err)
+			}
+			return &cert, nil
+		},
 	}
 	logger.Info("starting HTTP server")
 	server := http.Server{
