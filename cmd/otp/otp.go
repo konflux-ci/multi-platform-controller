@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/go-logr/logr"
+	"golang.org/x/crypto/ssh"
 )
 
 var mutex = sync.Mutex{}
@@ -23,6 +24,30 @@ func (s *storekey) ServeHTTP(writer http.ResponseWriter, request *http.Request) 
 	body, err := io.ReadAll(request.Body)
 	if err != nil {
 		s.logger.Error(err, "failed to read request body", "address", request.RemoteAddr)
+		writer.WriteHeader(500)
+		return
+	}
+
+	// Check if body is empty
+	if len(body) == 0 {
+		s.logger.Error(nil, "request body is empty", "address", request.RemoteAddr)
+		writer.WriteHeader(500)
+		return
+	}
+
+	// Validate SSH key format
+	pubKey, _, _, _, err := ssh.ParseAuthorizedKey(body)
+	if err != nil {
+		s.logger.Error(err, "invalid SSH key format", "address", request.RemoteAddr)
+		writer.WriteHeader(500)
+		return
+	}
+
+	// Validate that the prefix matches the actual key type
+	bodyStr := string(body)
+	actualKeyType := pubKey.Type()
+	if !startsWithKeyType(bodyStr, actualKeyType) {
+		s.logger.Error(nil, "SSH key prefix mismatch", "address", request.RemoteAddr, "expected", actualKeyType, "body", bodyStr)
 		writer.WriteHeader(500)
 		return
 	}
@@ -45,7 +70,18 @@ func (s *storekey) ServeHTTP(writer http.ResponseWriter, request *http.Request) 
 	}
 }
 
-// NewOtp returns the otp service implementation.
+// startsWithKeyType checks if the SSH key string starts with the correct key type prefix
+func startsWithKeyType(keyStr string, expectedType string) bool {
+	// Trim leading whitespace
+	keyStr = string([]byte(keyStr))
+	// Check if it starts with the expected type followed by a space
+	if len(keyStr) < len(expectedType)+1 {
+		return false
+	}
+	return keyStr[:len(expectedType)] == expectedType && keyStr[len(expectedType)] == ' '
+}
+
+// NewStoreKey returns the storekey service implementation.
 func NewStoreKey(logger *logr.Logger) *storekey {
 	return &storekey{logger}
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/go-logr/stdr"
 	"github.com/pkg/errors"
+	"golang.org/x/crypto/ssh"
 
 	"crypto/ed25519"
 	"crypto/rand"
@@ -19,7 +20,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"golang.org/x/crypto/ssh"
 )
 
 // A unit test for storekey.ServeHTTP and otp.ServeHTTP.
@@ -130,6 +130,51 @@ var _ = Describe("ServeHTTP handlers", Serial, func() {
 				Entry("very long key", func() string { return rsaKey + rsaKey + rsaKey }, "a very long rsa key"),
 				Entry("ed25519 key", func() string { return edKey }, "an ed25519 key"),
 			)
+		})
+
+		Context("with invalid ssh key (storekey)", func() {
+			badPrefixKey := "ssh-xyz123 AAAAB3NzaC1yc2EAAAADAQABAAABAQCe72TIPRwW/tDWPbNdJg3a6Rqy1/9kM002NLCx82fAN8GTvUj6VAD4Nl9om5BT7o0tfCcYgpDmTDrl7QPhBGd5ew0VKHO8o++SwhG6QI2mR+867qIdXP1B1ZdxO8eYndIn+ssOZcmbp4XxrI5/xWSNAU2XMckuSeUFZRTDNUVoKYmDMgnZL+BV6eQKO4jJmtuctDku4yb7YjcJYw7L+LOU7fBnsEpzvPJ/P9pGckpVI5nYIdQIUBxmVloa6BiKCGbu4yzPZ2zWISPODyvv6cmKk3s+YGild/TrVC+aRRN4TpiYq5NVT0lkkHpzhShVPukOR4xXoqZQLWYwAPLuUIBn"
+
+			It("returns 500 for empty string", func() {
+				GinkgoWriter.Printf("Running test for: empty string\n")
+
+				req := httptest.NewRequest("POST", "/store", strings.NewReader(""))
+				testStorekey.ServeHTTP(rr, req)
+
+				Expect(rr.Code).To(Equal(http.StatusInternalServerError))
+				Expect(logCapture.Contains("failed to read request body")).To(BeTrue(), "Log should indicate empty body")
+			})
+
+			It("returns 500 for non-ssh string", func() {
+				GinkgoWriter.Printf("Running test for: non-ssh string\n")
+
+				req := httptest.NewRequest("POST", "/store", strings.NewReader("not-an-SSH-key"))
+				testStorekey.ServeHTTP(rr, req)
+
+				Expect(rr.Code).To(Equal(http.StatusInternalServerError))
+				Expect(logCapture.Contains("invalid SSH key format")).To(BeTrue(), "Log should indicate invalid SSH key format")
+			})
+
+			It("returns 500 for bad prefix", func() {
+				GinkgoWriter.Printf("Running test for: bad prefix\n")
+				GinkgoWriter.Printf("Invalid key value is: `%s`\n", badPrefixKey)
+
+				req := httptest.NewRequest("POST", "/store", strings.NewReader(badPrefixKey))
+				testStorekey.ServeHTTP(rr, req)
+
+				Expect(rr.Code).To(Equal(http.StatusInternalServerError))
+				Expect(logCapture.Contains("SSH key prefix mismatch")).To(BeTrue(), "Log should indicate prefix mismatch")
+			})
+
+			It("returns 500 for truncated SSH key", func() {
+				GinkgoWriter.Printf("Running test for: truncated SSH key\n")
+
+				req := httptest.NewRequest("POST", "/store", strings.NewReader("ssh-rsa AAAAB3Nz"))
+				testStorekey.ServeHTTP(rr, req)
+
+				Expect(rr.Code).To(Equal(http.StatusInternalServerError))
+				Expect(logCapture.Contains("invalid SSH key format")).To(BeTrue(), "Log should indicate invalid SSH key format")
+			})
 		})
 	})
 
