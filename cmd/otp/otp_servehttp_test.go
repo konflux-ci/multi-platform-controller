@@ -142,7 +142,7 @@ var _ = Describe("ServeHTTP handlers", Serial, func() {
 				testStorekey.ServeHTTP(rr, req)
 
 				Expect(rr.Code).To(Equal(http.StatusInternalServerError))
-				Expect(logCapture.Contains("failed to read request body")).To(BeTrue(), "Log should indicate empty body")
+				Expect(logCapture.Contains("request body is empty")).To(BeTrue(), "Log should indicate empty body")
 			})
 
 			It("returns 500 for non-ssh string", func() {
