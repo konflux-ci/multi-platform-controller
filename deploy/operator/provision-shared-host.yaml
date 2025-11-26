@@ -80,14 +80,14 @@ spec:
 
         # Retry useradd command as sometimes it hits a "cannot lock /etc/passwd; try again later" error
         for i in {10..1}; do
-          sudo useradd -m "$USERNAME" -p \$(openssl rand -base64 12)
-          if [ \$? -eq 0 ]; then
+          sudo useradd -m "$USERNAME" -p $(openssl rand -base64 12)
+          if [ $? -eq 0 ]; then
             echo "{message: "User $USERNAME added successfully.", level: "INFO}"
             break
           fi
-          ATTEMPTS_REMAINING=\$((i - 1))
+          ATTEMPTS_REMAINING=$((i - 1))
           if [ "\$ATTEMPTS_REMAINING" -gt 0 ]; then
-            echo "{message: "User $USERNAME addition attempt failed, retrying \$ATTEMPTS_REMAINING more times...", level: "WARNING}"
+            echo "{message: "User $USERNAME addition attempt failed, retrying $\ATTEMPTS_REMAINING more times...", level: "WARNING}"
             sleep 1
           else
             echo "{message: "Failed to add user $USERNAME after 10 total attempts.", level: "ERROR"}"
@@ -160,8 +160,8 @@ spec:
           apiVersion: v1
           data:
             otp-ca: "$(cat /tls/tls.crt | base64 -w 0)"
-            otp: "$OTP"
-            otp-server: "$OTP_SERVER"
+            otp: "\$OTP"
+            otp-server: "\$OTP_SERVER"
             host: "$HOST"
             user-dir: "$DIR"
           kind: Secret
