@@ -18,75 +18,31 @@ spec:
       type: string
   workspaces:
     - name: ssh
-
+  stepTemplate:
+    env:
+      - name: SECRET_NAME
+        value: $(params.SECRET_NAME)
+      - name: TASKRUN_NAME
+        value: $(params.TASKRUN_NAME)
+      - name: NAMESPACE
+        value: $(params.NAMESPACE)
+      - name: HOST
+        value: $(params.HOST)
+      - name: USER
+        value: $(params.USER)
+      - name: SSH_WORKSPACE_PATH
+        value: $(workspaces.ssh.path)
   steps:
     - name: cleanup
       image: quay.io/redhat-appstudio/multi-platform-runner:01c7670e81d5120347cf0ad13372742489985e5f@sha256:246adeaaba600e207131d63a7f706cffdcdc37d8f600c56187123ec62823ff44
       imagePullPolicy: IfNotPresent
-      script: |
-        #!/bin/bash
-        set -o verbose
-        set -eu
-
-        # --- Error Handling Function ---
-        handle_error() {
-            local EXIT_CODE=$?
-            local FAILED_COMMAND=$BASH_COMMAND
-
-            echo "{message: "'$FAILED_COMMAND' failed with exit code $EXIT_CODE.", level: "ERROR"}" >&2
-
-            # The trap handler runs, and then the script exits due to set -e
-        }
-        # ------------------------------
-
-        trap 'handle_error' ERR
-        trap 'ssh -O exit $SSH_HOST 2>/dev/null || true' EXIT
-
-        cd /tmp
-        cp $(workspaces.ssh.path)/id_rsa /tmp/master_key
-        chmod 0400 /tmp/master_key
-        export SSH_HOST=$(params.USER)@$(params.HOST)
-        SSH_MULTIPLEX_OPTS="-o ControlMaster=auto -o ControlPath=/tmp/ssh-%r@%h:%p"
-        SSH_OPTS="-i /tmp/master_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $SSH_MULTIPLEX_OPTS"
-
-        export USERNAME=u-$(echo $(params.TASKRUN_NAME)$(params.NAMESPACE) | md5sum | cut -b-28)
-
-        # Check if the user exists
-        SSH_USER_CHK_OUTPUT=$(
-            ssh "$SSH_OPTS" "$SSH_HOST" id -u "$USERNAME" > /dev/null 2>&1
-        ) || {
-            # If the command fails, the `||` block executes.
-            # Note: Using `||` suppresses set -e for this line.
-            exit_code=$?
-            if [ $exit_code -eq 1 ]; then
-              echo "{message: "User $USERNAME already deleted, exiting...", level: "INFO"}"
-              exit 0
-            fi
-            echo "{message: "Remote User Check Output: $SSH_USER_CHK_OUTPUT", level: "WARNING"}" >&2
-            exit $exit_code
-        }
-        echo "{message: "User $USERNAME exists, proceeding with cleanup.", level: "INFO"}"
-
-        # Kill all processes associated with user
-        SSH_KILL_OUTPUT=$(
-            ssh "$SSH_OPTS" "$SSH_HOST" sudo killall -9 -u "$USERNAME" 2>&1
-        ) || {
-            # If the command fails, the `||` block executes.
-            # Note: Using `||` suppresses set -e for this line.
-            echo "{message: "Remote Kill Output: $SSH_KILL_OUTPUT", level: "WARNING"}" >&2
-            exit 1
-        }
-
-        for i in {10..1}; do
-          if ssh "$SSH_OPTS" "$SSH_HOST" sudo userdel -f -r -Z "$USERNAME"; then
-            echo "{message: "User $USERNAME successfully deleted.", level: "INFO"}"
-            exit 0
-          fi
-          ATTEMPTS_REMAINING=$((i - 1))
-          if [ "$ATTEMPTS_REMAINING" -gt 0 ]; then
-            echo "{message: "User $USERNAME deletion attempt failed, retrying $ATTEMPTS_REMAINING more times...", level: "WARNING"}"
-            sleep 1
-          fi
-        done
-        echo "{message: "Failed to delete user $USERNAME on $SSH_HOST after 10 total attempts.", level: "ERROR"}"
-        exit 1
+      volumeMounts:
+        - mountPath: /scripts
+          name: script
+      command: ["/bin/bash"]
+      args: ["/scripts/clean-shared-host.sh"]
+  volumes:
+    - name: script
+      configMap:
+        name: clean-shared-host-script
+        defaultMode: 0755
