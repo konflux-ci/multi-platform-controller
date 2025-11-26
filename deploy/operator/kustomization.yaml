@@ -12,6 +12,19 @@ resources:
   - openshift-specific-rbac.yaml
   - update-host.yaml
   - metrics_service.yaml
+configMapGenerator:
+  - name: provision-shared-host-script
+    namespace: multi-platform-controller
+    files:
+      - provision-shared-host.sh
+  - name: clean-shared-host-script
+    namespace: multi-platform-controller
+    files:
+      - clean-shared-host.sh
+  - name: update-host-script
+    namespace: multi-platform-controller
+    files:
+      - update-host.sh
 patches:
   - target:
       kind: ClusterRole
