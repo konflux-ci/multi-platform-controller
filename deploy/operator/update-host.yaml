@@ -69,16 +69,16 @@ spec:
 
             # try to kill all processes associated with $user_dir
             sudo killall -9 -u "\$user_dir"
-            KILL_STATUS=$?
-            if [ $KILL_STATUS -ne 0 ]; then
+            KILL_STATUS=\$?
+            if [ \$KILL_STATUS -ne 0 ]; then
               echo "{message: "Could not kill all processes associated with user `\$user_dir` (exit code \$KILL_STATUS).", level: "WARNING"}"
             fi
 
             echo "{message: "Deleting old home directory '\$user_dir' & its associated user...", level: "INFO"}"
             sudo userdel -f -r -Z "\$user_dir"
             # Confirm deletion of user and user directory (0) or just user directory (6)
-            DELETE_STATUS=$? # Capture status immediately
-            if [ $DELETE_STATUS -eq 0 ] || [ $DELETE_STATUS -eq 6 ]; then
+            DELETE_STATUS=\$? # Capture status immediately
+            if [ \$DELETE_STATUS -eq 0 ] || [ \$DELETE_STATUS -eq 6 ]; then
                 echo "{message: "User \$user_dir was successfully deleted.", level: "INFO"}"
             else
                 echo "{message: User \$user_dir deletion failed (exit code \$DELETE_STATUS).", level: "WARNING"}"
