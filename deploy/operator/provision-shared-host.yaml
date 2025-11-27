@@ -19,6 +19,8 @@ spec:
       type: string
     - name: SUDO_COMMANDS
       type: string
+    - name: PLATFORM
+      type: string
   workspaces:
     - name: ssh
   stepTemplate:
@@ -35,6 +37,8 @@ spec:
         value: $(params.USER)
       - name: SUDO_COMMANDS
         value: $(params.SUDO_COMMANDS)
+      - name: PLATFORM
+        value: $(params.PLATFORM)
   steps:
     - name: provision
       image: quay.io/redhat-appstudio/multi-platform-runner:01c7670e81d5120347cf0ad13372742489985e5f@sha256:246adeaaba600e207131d63a7f706cffdcdc37d8f600c56187123ec62823ff44
@@ -42,6 +46,8 @@ spec:
       volumeMounts:
         - mountPath: /tls
           name: tls
+        - mountPath: /etc/otelcol
+          name: otelcol-config
       script: |
         #!/bin/bash
         cd /tmp
@@ -52,7 +58,7 @@ spec:
         cp $(workspaces.ssh.path)/id_rsa /tmp/master_key
         chmod 0400 /tmp/master_key
         export SSH_HOST="$USER@$HOST"
-        
+        export PLATFORM="${PLATFORM//-/_}"
         export USERNAME=u-$(echo "$TASKRUN_NAME$NAMESPACE" | md5sum | cut -b-28)
         
         cat >script.sh <<EOF
@@ -67,6 +73,16 @@ spec:
 
         sudo dnf install podman -y
         rm -f $USERNAME $USERNAME.pub
+        
+        if command -v otelcol >/dev/null 2>&1; then
+          echo "Found Opentelemetry, skipping..."
+        else
+          PKG="otelcol_0.140.0_${PLATFORM}.rpm"
+          URL="https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.140.0/$PKG"
+          echo "Downloading: $URL"
+          wget "$URL" && sudo rpm -ivh "$PKG"
+        fi
+        
         # sometimes it hits  "useradd: cannot lock /etc/passwd; try again later" error, so need to repeat
         for i in {10..1}; do
           sudo useradd -m $USERNAME -p $(openssl rand -base64 12) && break
@@ -138,3 +154,7 @@ spec:
       secret:
         optional: true
         secretName: otp-tls-secrets
+    - name: otelcol-config
+      secret:
+        optional: true
+        secretName: otel-collector-config

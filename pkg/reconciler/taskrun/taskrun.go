@@ -89,6 +89,7 @@ const (
 	ParamHost              = "HOST"
 	ParamUser              = "USER"
 	ParamSudoCommands      = "SUDO_COMMANDS"
+	ParamPlatform          = "PLATFORM"
 )
 
 type ReconcileTaskRun struct {
@@ -1016,6 +1017,10 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 		{
 			Name:  ParamSudoCommands,
 			Value: *tektonapi.NewStructuredValues(sudoCommands),
+		},
+		{
+			Name:  ParamPlatform,
+			Value: *tektonapi.NewStructuredValues(platformLabel(platform)),
 		},
 	}
 
