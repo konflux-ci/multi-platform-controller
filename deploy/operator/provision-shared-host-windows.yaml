@@ -1,0 +1,108 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: provision-shared-host-windows
+  namespace: multi-platform-controller
+spec:
+  description: >-
+    This task will retrieve SSH Private Key from a Windows host and create the relevant secret.
+  params:
+    - name: SECRET_NAME
+      type: string
+    - name: TASKRUN_NAME
+      type: string
+    - name: NAMESPACE
+      type: string
+    - name: HOST
+      type: string
+    - name: USER
+      type: string
+    - name: SUDO_COMMANDS
+      type: string
+  workspaces:
+    - name: ssh
+  stepTemplate:
+    env:
+      - name: SECRET_NAME
+        value: $(params.SECRET_NAME)
+      - name: TASKRUN_NAME
+        value: $(params.TASKRUN_NAME)
+      - name: NAMESPACE
+        value: $(params.NAMESPACE)
+      - name: HOST
+        value: $(params.HOST)
+      - name: USER
+        value: $(params.USER)
+      - name: SUDO_COMMANDS
+        value: $(params.SUDO_COMMANDS)
+  steps:
+    - name: provision
+      image: quay.io/redhat-appstudio/multi-platform-runner:01c7670e81d5120347cf0ad13372742489985e5f@sha256:246adeaaba600e207131d63a7f706cffdcdc37d8f600c56187123ec62823ff44
+      imagePullPolicy: IfNotPresent
+      volumeMounts:
+        - mountPath: /tls
+          name: tls
+      script: |
+        #!/bin/bash
+        cd /tmp
+        set -o verbose
+        set -eu
+        set -o pipefail
+        mkdir -p /root/.ssh
+        cp $(workspaces.ssh.path)/id_rsa /tmp/master_key
+        chmod 0400 /tmp/master_key
+        export SSH_HOST="${USER}@${HOST}"
+
+        export USERNAME=konflux-builder
+        ssh -i /tmp/master_key -o StrictHostKeyChecking=no "${SSH_HOST}" "powershell -Command cat C:\\Users\\Administrator\\${USERNAME}" > id_rsa
+        ssh -i /tmp/master_key -o StrictHostKeyChecking=no "${SSH_HOST}" "powershell -Command rm C:\\Users\\Administrator\\${USERNAME}"
+
+        chmod 0400 id_rsa
+        HOST=$(echo "${USERNAME}@${HOST}" | base64 -w 0)
+        DIR=$(echo 'C:\\User\\'"${USERNAME}" | base64 -w 0)
+
+        if [ -e "/tls/tls.crt" ]; then
+          KEY=$(cat id_rsa)
+          OTP=$(curl --cacert /tls/tls.crt -XPOST -d "$KEY" https://multi-platform-otp-server.multi-platform-controller.svc.cluster.local/store-key | base64 -w 0)
+          OTP_SERVER="$(echo https://multi-platform-otp-server.multi-platform-controller.svc.cluster.local/otp | base64 -w 0)"
+          echo $OTP | base64 -d
+          cat >secret.yaml <<EOF
+          apiVersion: v1
+          data:
+            otp-ca: "$(cat /tls/tls.crt | base64 -w 0)"
+            otp: "$OTP"
+            otp-server: "$OTP_SERVER"
+            host: "$HOST"
+            user-dir: "$DIR"
+          kind: Secret
+          metadata:
+            name: "$SECRET_NAME"
+            namespace: "$NAMESPACE"
+            labels:
+              build.appstudio.redhat.com/multi-platform-secret: "true"
+          type: Opaque
+        EOF
+        else
+          KEY=$(cat id_rsa | base64 -w 0)
+          cat >secret.yaml <<EOF
+          apiVersion: v1
+          data:
+            id_rsa: "$KEY"
+            host: "$HOST"
+            user-dir: "$DIR"
+          kind: Secret
+          metadata:
+            name: "$SECRET_NAME"
+            namespace: "$NAMESPACE"
+            labels:
+              build.appstudio.redhat.com/multi-platform-secret: "true"
+          type: Opaque
+        EOF
+        fi
+
+        kubectl create -f secret.yaml
+  volumes:
+    - name: tls
+      secret:
+        optional: true
+        secretName: otp-tls-secrets

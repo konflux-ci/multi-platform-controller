@@ -986,6 +986,9 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 	provision.Namespace = r.operatorNamespace
 	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, constant.TargetPlatformLabel: platformLabel(platform), UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name, constant.AssignedHost: tr.Labels[constant.AssignedHost]}
 	provision.Spec.TaskRef = &tektonapi.TaskRef{Name: "provision-shared-host"}
+	if strings.HasPrefix(platform, "windows/") {
+		provision.Spec.TaskRef.Name = "provision-shared-host-windows"
+	}
 	provision.Spec.Workspaces = []tektonapi.WorkspaceBinding{{Name: "ssh", Secret: &kubecore.SecretVolumeSource{SecretName: sshSecret}}}
 	computeRequests := map[kubecore.ResourceName]resource.Quantity{kubecore.ResourceCPU: resource.MustParse("100m"), kubecore.ResourceMemory: resource.MustParse("256Mi")}
 	computeLimits := map[kubecore.ResourceName]resource.Quantity{kubecore.ResourceCPU: resource.MustParse("100m"), kubecore.ResourceMemory: resource.MustParse("512Mi")}
