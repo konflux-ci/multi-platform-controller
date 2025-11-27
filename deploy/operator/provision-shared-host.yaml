@@ -19,7 +19,7 @@ spec:
       type: string
     - name: SUDO_COMMANDS
       type: string
-    - name: PLATFORM
+    - name: RAW_PLATFORM
       type: string
   workspaces:
     - name: ssh
@@ -37,8 +37,8 @@ spec:
         value: $(params.USER)
       - name: SUDO_COMMANDS
         value: $(params.SUDO_COMMANDS)
-      - name: PLATFORM
-        value: $(params.PLATFORM)
+      - name: RAW_PLATFORM
+        value: $(params.RAW_PLATFORM)
   steps:
     - name: provision
       image: quay.io/redhat-appstudio/multi-platform-runner:01c7670e81d5120347cf0ad13372742489985e5f@sha256:246adeaaba600e207131d63a7f706cffdcdc37d8f600c56187123ec62823ff44
@@ -58,7 +58,7 @@ spec:
         cp $(workspaces.ssh.path)/id_rsa /tmp/master_key
         chmod 0400 /tmp/master_key
         export SSH_HOST="$USER@$HOST"
-        export PLATFORM="${PLATFORM//-/_}"
+        export PLATFORM="${RAW_PLATFORM//-/_}"
         export USERNAME=u-$(echo "$TASKRUN_NAME$NAMESPACE" | md5sum | cut -b-28)
         
         cat >script.sh <<EOF
