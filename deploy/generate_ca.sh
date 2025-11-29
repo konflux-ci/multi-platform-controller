@@ -14,7 +14,7 @@ echo "Generating CA bundle"
 mkdir -p "${GENCERTS_DIR}"
 
 openssl genrsa -out ${GENCERTS_DIR}/ca.key 2048
-openssl req -x509 -new -nodes -key ${GENCERTS_DIR}/ca.key -subj "/CN=otp-service.mpc.svc" -days 365 -out ${GENCERTS_DIR}/ca.crt
+openssl req -x509 -new -nodes -key ${GENCERTS_DIR}/ca.key -subj "/CN=multi-platform-otp-ca" -addext "subjectAltName=DNS:multi-platform-otp-server,DNS:multi-platform-otp-server.multi-platform-controller,DNS:multi-platform-otp-server.multi-platform-controller.svc,DNS:multi-platform-otp-server.multi-platform-controller.svc.cluster.local" -days 365 -out ${GENCERTS_DIR}/ca.crt
 
 # verify created
 cat ${GENCERTS_DIR}/ca.crt >/dev/null
