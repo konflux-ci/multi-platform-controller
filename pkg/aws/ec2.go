@@ -67,6 +67,7 @@ func CreateEc2CloudConfig(platformName string, config map[string]string, systemN
 		MaxSpotInstancePrice:    config["dynamic."+platformName+".spot-price"],
 		InstanceProfileName:     config["dynamic."+platformName+".instance-profile-name"],
 		InstanceProfileArn:      config["dynamic."+platformName+".instance-profile-arn"],
+		StrictPublicAddress:     config["dynamic."+platformName+".strict-public-address"] == "true",
 		SystemNamespace:         systemNamespace,
 		Disk:                    int32(disk),
 		Iops:                    iops,
@@ -426,4 +427,8 @@ type AWSEc2DynamicConfig struct {
 	// LicenseConfigurationArn is the ARN of the license configuration to
 	// associate with the instance.
 	LicenseConfigurationArn string
+
+	// StrictPublicAddress specifies whether the instance must use a public IP address.
+	// If false, it would be also possible for the instance to use a private IP address.
+	StrictPublicAddress bool
 }
