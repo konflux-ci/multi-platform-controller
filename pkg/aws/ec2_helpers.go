@@ -40,7 +40,9 @@ func (ec AWSEc2DynamicConfig) validateIPAddress(ctx context.Context, instance *t
 	var err error
 	if instance.PublicDnsName != nil && *instance.PublicDnsName != "" {
 		ip = *instance.PublicDnsName
-	} else if instance.PrivateIpAddress != nil && *instance.PrivateIpAddress != "" {
+	} else if instance.PublicIpAddress != nil && *instance.PublicIpAddress != "" {
+		ip = *instance.PublicIpAddress
+	} else if instance.PrivateIpAddress != nil && *instance.PrivateIpAddress != "" && !ec.StrictPublicAddress {
 		ip = *instance.PrivateIpAddress
 	}
 
@@ -239,6 +241,7 @@ func (r SecretCredentialsProvider) Retrieve(ctx context.Context) (aws.Credential
 		return aws.Credentials{
 			AccessKeyID:     os.Getenv("MULTI_ARCH_ACCESS_KEY"),
 			SecretAccessKey: os.Getenv("MULTI_ARCH_SECRET_KEY"),
+			SessionToken:    os.Getenv("MULTI_ARCH_SESSION_TOKEN"),
 		}, nil
 	}
 
@@ -251,8 +254,16 @@ func (r SecretCredentialsProvider) Retrieve(ctx context.Context) (aws.Credential
 			fmt.Errorf("failed to retrieve the secret %v from the Kubernetes client: %w", nameSpacedSecret, err)
 	}
 
+	accessKeyID := string(s.Data["access-key-id"])
+	secretAccessKey := string(s.Data["secret-access-key"])
+	sessionToken := ""
+	if sessionTokenData, ok := s.Data["session-token"]; ok {
+		sessionToken = string(sessionTokenData)
+	}
+
 	return aws.Credentials{
-		AccessKeyID:     string(s.Data["access-key-id"]),
-		SecretAccessKey: string(s.Data["secret-access-key"]),
+		AccessKeyID:     accessKeyID,
+		SecretAccessKey: secretAccessKey,
+		SessionToken:    sessionToken,
 	}, nil
 }
