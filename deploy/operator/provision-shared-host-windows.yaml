@@ -57,7 +57,7 @@ spec:
         export SSH_HOST="Administrator@${HOST}"
 
         export USERNAME=konflux-builder
-        ssh -i /tmp/master_key -o StrictHostKeyChecking=no "${SSH_HOST}" "powershell -Command cat C:\\Users\\Administrator\\${USERNAME}" > id_rsa
+        ssh -i /tmp/master_key -o StrictHostKeyChecking=no "${SSH_HOST}" "powershell -Command cat C:\\Users\\Administrator\\${USERNAME}" | sed 's/\r$//' > id_rsa
         ssh -i /tmp/master_key -o StrictHostKeyChecking=no "${SSH_HOST}" "powershell -Command rm C:\\Users\\Administrator\\${USERNAME}"
 
         chmod 0400 id_rsa
