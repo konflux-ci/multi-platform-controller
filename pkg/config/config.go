@@ -239,10 +239,10 @@ func ParseDynamicPlatformConfig(data map[string]string, platform string) (Dynami
 		if err != nil {
 			return DynamicPlatformConfig{}, fmt.Errorf("dynamic platform '%s': invalid check-interval '%s': %w", platform, intervalStr, err)
 		}
-		dynamicConfig.CheckInterval = int32(interval)
+		dynamicConfig.CheckInterval = int64(interval)
 	} else {
 		// Default to 60 sec if not specified
-		dynamicConfig.CheckInterval = int32(defaultCheckInterval)
+		dynamicConfig.CheckInterval = int64(defaultCheckInterval)
 	}
 
 	// SSH secret (required)
@@ -415,7 +415,7 @@ type DynamicPlatformConfig struct {
 	MaxInstances      int    `mapstructure:"max-instances"`
 	InstanceTag       string `mapstructure:"instance-tag,omitempty"`
 	AllocationTimeout int64  `mapstructure:"allocation-timeout,omitempty"`
-	CheckInterval     int32  `mapstructure:"check-interval,omitempty"`
+	CheckInterval     int64  `mapstructure:"check-interval,omitempty"`
 	SSHSecret         string `mapstructure:"ssh-secret"`
 	SudoCommands      string `mapstructure:"sudo-commands,omitempty"`
 }

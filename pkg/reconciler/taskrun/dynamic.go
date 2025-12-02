@@ -23,7 +23,7 @@ type DynamicResolver struct {
 	maxInstances           int
 	instanceTag            string
 	timeout                int64
-	checkInterval          int32
+	checkInterval          int64
 	sudoCommands           string
 	additionalInstanceTags map[string]string
 	eventRecorder          record.EventRecorder
