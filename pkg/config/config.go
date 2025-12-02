@@ -8,6 +8,8 @@ import (
 var (
 	// Default allocation timeout for dynamic platforms in seconds (10 minutes)
 	defaultAllocationTimeout = 600
+	defaultCheckInterval     = 60
+
 	// Default concurrency for static hosts
 	defaultStaticHostsConcurrency = 0
 )
@@ -230,6 +232,18 @@ func ParseDynamicPlatformConfig(data map[string]string, platform string) (Dynami
 		dynamicConfig.AllocationTimeout = int64(defaultAllocationTimeout)
 	}
 
+	// Check interval
+	if intervalStr := data[prefix+"check-interval"]; intervalStr != "" {
+		interval, err := validateNonZeroPositiveNumber(intervalStr)
+		if err != nil {
+			return DynamicPlatformConfig{}, fmt.Errorf("dynamic platform '%s': invalid check-interval '%s': %w", platform, intervalStr, err)
+		}
+		dynamicConfig.CheckInterval = int32(interval)
+	} else {
+		// Default to 60 sec if not specified
+		dynamicConfig.CheckInterval = int32(defaultCheckInterval)
+	}
+
 	// SSH secret (required)
 	sshSecret, err := parseRequiredSSHSecretField(data, prefix, platform, "dynamic platform", dynamicConfig.Type)
 	if err != nil {
@@ -400,6 +414,7 @@ type DynamicPlatformConfig struct {
 	MaxInstances      int    `mapstructure:"max-instances"`
 	InstanceTag       string `mapstructure:"instance-tag,omitempty"`
 	AllocationTimeout int64  `mapstructure:"allocation-timeout,omitempty"`
+	CheckInterval     int32  `mapstructure:"check-interval,omitempty"` // seconds between IP checks
 	SSHSecret         string `mapstructure:"ssh-secret"`
 	SudoCommands      string `mapstructure:"sudo-commands,omitempty"`
 }

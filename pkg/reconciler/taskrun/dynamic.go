@@ -23,6 +23,7 @@ type DynamicResolver struct {
 	maxInstances           int
 	instanceTag            string
 	timeout                int64
+	checkInterval          int32
 	sudoCommands           string
 	additionalInstanceTags map[string]string
 	eventRecorder          record.EventRecorder
@@ -124,7 +125,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 			return reconcile.Result{}, nil
 		} else { // A transient error (that wasn't returned) occurred when fetching the IP address for the VM
 			state, err := r.GetState(taskRun.client, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
-			requeueTime := time.Minute
+			requeueTime := time.Duration(r.checkInterval) * time.Second
 			if err != nil { //An error occurred while getting the VM state; re-queue quickly since random API errors are prominent
 				log.Error(
 					err,
