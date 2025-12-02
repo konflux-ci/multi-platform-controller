@@ -257,7 +257,7 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 				Expect(dynamicConfig.SSHSecret).Should(Equal("aws-secret"))
 				Expect(dynamicConfig.InstanceTag).Should(BeEmpty()) // optional field
 				Expect(dynamicConfig.SudoCommands).Should(Equal("yum install -y docker"))
-				Expect(dynamicConfig.CheckInterval).Should(Equal(int32(70)))
+				Expect(dynamicConfig.CheckInterval).Should(Equal(int64(70)))
 			})
 
 			It("should parse IBM platform with default timeout", func(ctx SpecContext) {
