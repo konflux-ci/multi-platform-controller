@@ -8,7 +8,8 @@ import (
 var (
 	// Default allocation timeout for dynamic platforms in seconds (10 minutes)
 	defaultAllocationTimeout = 600
-	defaultCheckInterval     = 60
+	// Default IP check interval for dynamic VM
+	defaultCheckInterval = 60
 
 	// Default concurrency for static hosts
 	defaultStaticHostsConcurrency = 0
@@ -414,7 +415,7 @@ type DynamicPlatformConfig struct {
 	MaxInstances      int    `mapstructure:"max-instances"`
 	InstanceTag       string `mapstructure:"instance-tag,omitempty"`
 	AllocationTimeout int64  `mapstructure:"allocation-timeout,omitempty"`
-	CheckInterval     int32  `mapstructure:"check-interval,omitempty"` // seconds between IP checks
+	CheckInterval     int32  `mapstructure:"check-interval,omitempty"`
 	SSHSecret         string `mapstructure:"ssh-secret"`
 	SudoCommands      string `mapstructure:"sudo-commands,omitempty"`
 }
