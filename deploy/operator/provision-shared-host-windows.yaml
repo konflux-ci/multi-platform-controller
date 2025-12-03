@@ -62,7 +62,7 @@ spec:
 
         chmod 0400 id_rsa
         HOST=$(echo "${USERNAME}@${HOST}" | base64 -w 0)
-        DIR=$(echo 'C:\\User\\'"${USERNAME}" | base64 -w 0)
+        DIR=$(echo 'C:\\Users\\'"${USERNAME}" | base64 -w 0)
 
         if [ -e "/tls/tls.crt" ]; then
           KEY=$(cat id_rsa)
