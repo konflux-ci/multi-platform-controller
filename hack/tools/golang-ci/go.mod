@@ -107,7 +107,7 @@ require (
 	github.com/kunwardeep/paralleltest v1.0.15 // indirect
 	github.com/lasiar/canonicalheader v1.1.2 // indirect
 	github.com/ldez/exptostd v0.4.5 // indirect
-	github.com/ldez/gomoddirectives v0.7.1 // indirect
+	github.com/ldez/gomoddirectives v0.8.0 // indirect
 	github.com/ldez/grignotin v0.10.1 // indirect
 	github.com/ldez/tagliatelle v0.7.2 // indirect
 	github.com/ldez/usetesting v0.5.0 // indirect
@@ -196,11 +196,11 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/exp v0.0.0-20251002181428-27f1f14c8bb9 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20251113190631-e25ba8c21ef6 // indirect
-	golang.org/x/mod v0.29.0 // indirect
-	golang.org/x/sync v0.17.0 // indirect
-	golang.org/x/sys v0.37.0 // indirect
+	golang.org/x/mod v0.30.0 // indirect
+	golang.org/x/sync v0.18.0 // indirect
+	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/text v0.30.0 // indirect
-	golang.org/x/tools v0.38.0 // indirect
+	golang.org/x/tools v0.39.0 // indirect
 	google.golang.org/protobuf v1.36.8 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
