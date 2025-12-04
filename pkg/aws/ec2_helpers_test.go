@@ -202,7 +202,8 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 
 		When("configuring basic instance details", func() {
 			It("should correctly set KeyName, AMI, and InstanceType", func() {
-				runInput := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
+				runInput, err := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
+				Expect(err).ShouldNot(HaveOccurred())
 				Expect(runInput.KeyName).To(Equal(&ecConfig.KeyName))
 				Expect(runInput.ImageId).To(Equal(&ecConfig.Ami))
 				Expect(runInput.InstanceType).To(Equal(types.InstanceType(ecConfig.InstanceType)))
@@ -210,7 +211,8 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 
 			It("should set MinCount, MaxCount, EbsOptimized, ShutdownBehavior with valid and default properties",
 				func() {
-					runInput := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
+					runInput, err := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
+					Expect(err).ShouldNot(HaveOccurred())
 					By("Verifying the current specific values")
 					Expect(runInput.MinCount).To(Equal(aws.Int32(1)))
 					Expect(runInput.MaxCount).To(Equal(aws.Int32(1)))
@@ -233,7 +235,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 				// of the ecConfig after going through configureInstance
 				func(setupConfig func() AWSEc2DynamicConfig, verify func(input *ec2.RunInstancesInput)) {
 					currentConfig := setupConfig()
-					runInput := currentConfig.configureInstance(taskRunName, instanceTag, additionalTags)
+					runInput, _ := currentConfig.configureInstance(taskRunName, instanceTag, additionalTags)
 					verify(runInput)
 				},
 				Entry("using baseline SubnetId and SecurityGroupId",
@@ -279,7 +281,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 				//content of the ecConfig after going through configureInstance
 				func(setupConfig func() AWSEc2DynamicConfig, verify func(input *ec2.RunInstancesInput)) {
 					currentConfig := setupConfig()
-					runInput := currentConfig.configureInstance(taskRunName, instanceTag, additionalTags)
+					runInput, _ := currentConfig.configureInstance(taskRunName, instanceTag, additionalTags)
 					verify(runInput)
 				},
 				Entry("using baseline InstanceProfileArn",
@@ -319,7 +321,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 		When("configuring spot instances", func() {
 			It("should configure InstanceMarketOptions if MaxSpotInstancePrice is set", func() {
 				ecConfig.MaxSpotInstancePrice = "0.075"
-				runInput := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
+				runInput, _ := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
 				Expect(runInput.InstanceMarketOptions).NotTo(BeNil())
 				Expect(runInput.InstanceMarketOptions.MarketType).To(Equal(types.MarketTypeSpot))
 				Expect(runInput.InstanceMarketOptions.SpotOptions).NotTo(BeNil())
@@ -330,14 +332,14 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 
 			It("should not set InstanceMarketOptions if MaxSpotInstancePrice is empty", func() {
 				ecConfig.MaxSpotInstancePrice = ""
-				runInput := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
+				runInput, _ := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
 				Expect(runInput.InstanceMarketOptions).To(BeNil())
 			})
 		})
 
 		When("configuring tags", func() {
 			It("should include default and Name tags correctly with baseline config", func() {
-				runInput := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
+				runInput, _ := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
 				Expect(runInput.TagSpecifications).To(HaveLen(1))
 				Expect(runInput.TagSpecifications[0].ResourceType).To(Equal(types.ResourceTypeInstance))
 				tags := runInput.TagSpecifications[0].Tags
@@ -348,7 +350,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 
 			It("should include default and additional tags when provided", func() {
 				additionalTags["CostCenter"] = "AlphaTeam"
-				runInput := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
+				runInput, _ := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
 				tags := runInput.TagSpecifications[0].Tags
 				Expect(tags).To(HaveLen(3 + len(additionalTags)))
 				Expect(tags).To(ContainElement(SatisfyAll(HaveField("Key", PointTo(Equal("CostCenter"))), HaveField("Value", PointTo(Equal("AlphaTeam"))))))
@@ -357,7 +359,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 
 		When("configuring EBS block device mappings", func() {
 			It("should set EBS properties correctly based on baseline config", func() {
-				runInput := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
+				runInput, _ := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
 				Expect(runInput.BlockDeviceMappings).To(HaveLen(1))
 				bdMapping := runInput.BlockDeviceMappings[0]
 				Expect(bdMapping.DeviceName).To(PointTo(Equal("/dev/sda1")))
@@ -371,7 +373,7 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 				func(iops *int32, throughput *int32) {
 					ecConfig.Iops = iops
 					ecConfig.Throughput = throughput
-					runInput := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
+					runInput, _ := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
 					ebsDevice := runInput.BlockDeviceMappings[0].Ebs
 					Expect(ebsDevice.Iops).To(Equal(iops))
 					Expect(ebsDevice.Throughput).To(Equal(throughput))
@@ -389,15 +391,61 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 				// commonUserData is from aws_test.go (raw script)
 				encodedCommonUserData := base64.StdEncoding.EncodeToString([]byte(commonUserData))
 				ecConfig.UserData = &encodedCommonUserData
-				runInput := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
+				runInput, _ := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
 				Expect(runInput.UserData).To(Equal(ecConfig.UserData))
 			})
 
 			It("should be nil if ecConfig.UserData is set to nil (overriding baseline if it had UserData)", func() {
 				ecConfig.UserData = nil
-				runInput := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
+				runInput, _ := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
 				Expect(runInput.UserData).To(Equal(ecConfig.UserData))
 			})
+		})
+
+		When("configuring MacOS dedicated host instances", func() {
+			It("should successfully configure when all three MacOS fields are set", func() {
+				ecConfig.Tenancy = "host"
+				ecConfig.HostResourceGroupArn = "arn:aws:resource-groups:us-east-1:123456789012:group/mac-hosts"
+				ecConfig.LicenseConfigurationArn = "arn:aws:license-manager:us-east-1:123456789012:license-configuration:lic-macos"
+				runInput, err := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
+
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(runInput.Placement).ShouldNot(BeNil())
+				Expect(runInput.Placement.Tenancy).Should(Equal(types.TenancyHost))
+				Expect(runInput.Placement.HostResourceGroupArn).Should(PointTo(Equal("arn:aws:resource-groups:us-east-1:123456789012:group/mac-hosts")))
+				Expect(runInput.LicenseSpecifications).Should(HaveLen(1))
+				Expect(runInput.LicenseSpecifications[0].LicenseConfigurationArn).Should(PointTo(Equal("arn:aws:license-manager:us-east-1:123456789012:license-configuration:lic-macos")))
+			})
+
+			DescribeTable("should return validation error when only one MacOS field is set",
+				func(setupConfig func() AWSEc2DynamicConfig) {
+					currentConfig := setupConfig()
+					_, err := currentConfig.configureInstance(taskRunName, instanceTag, additionalTags)
+					Expect(err).Should(HaveOccurred())
+					Expect(err.Error()).Should(ContainSubstring("MacOS"))
+				},
+				Entry("with only Tenancy set",
+					func() AWSEc2DynamicConfig {
+						conf := newDefaultValidEC2ConfigForInstance()
+						conf.Tenancy = "host"
+						return conf
+					},
+				),
+				Entry("with only HostResourceGroupArn set",
+					func() AWSEc2DynamicConfig {
+						conf := newDefaultValidEC2ConfigForInstance()
+						conf.HostResourceGroupArn = "arn:aws:resource-groups:us-east-1:123456789012:group/mac-host-group"
+						return conf
+					},
+				),
+				Entry("with only LicenseConfigurationArn set",
+					func() AWSEc2DynamicConfig {
+						conf := newDefaultValidEC2ConfigForInstance()
+						conf.LicenseConfigurationArn = "arn:aws:license-manager:us-east-1:123456789012:license-configuration:lic-abc123"
+						return conf
+					},
+				),
+			)
 		})
 	})
 
