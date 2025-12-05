@@ -13,6 +13,7 @@ resources:
   - openshift-specific-rbac.yaml
   - update-host.yaml
   - metrics_service.yaml
+  - provision-host-macos.yaml
 patches:
   - target:
       kind: ClusterRole
