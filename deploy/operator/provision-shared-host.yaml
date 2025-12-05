@@ -46,7 +46,7 @@ spec:
       volumeMounts:
         - mountPath: /tls
           name: tls
-        - mountPath: /etc/otelcol
+        - mountPath: /otelcol
           name: otelcol-config
       script: |
         #!/bin/bash
@@ -81,6 +81,9 @@ spec:
           URL="https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.140.0/$PKG"
           echo "Downloading: $URL"
           wget "$URL" && sudo rpm -ivh "$PKG"
+          // Patch config file name
+          echo "OTELCOL_OPTIONS=/etc/otelcol/config_mpc.yaml" >> /etc/otelcol/otelcol.conf
+          sudo systemctl start otelconf
         fi
         
         # sometimes it hits  "useradd: cannot lock /etc/passwd; try again later" error, so need to repeat
@@ -102,6 +105,7 @@ spec:
         echo "$USERNAME ALL=(ALL) NOPASSWD: $SUDO_COMMANDS" | sudo tee /etc/sudoers
         EOF
         fi
+        ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST "mkdir -p /etc/otelcol && cat > /etc/otelcol/config_mpc.yaml" < /otelcol/config.yaml
         ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST "bash -s" <script.sh
         ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST cat $USERNAME  >id_rsa
         ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST rm $USERNAME
