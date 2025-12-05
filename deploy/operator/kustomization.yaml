@@ -8,7 +8,7 @@ resources:
   - namespace.yaml
   - deployment.yaml
   - provision-shared-host.yaml
-  - provision-shared-host-windows.yaml
+  - provision-host-windows.yaml
   - clean-shared-host.yaml
   - openshift-specific-rbac.yaml
   - update-host.yaml

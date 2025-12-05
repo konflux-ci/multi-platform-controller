@@ -989,7 +989,7 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 	provision.Spec.TaskRef = &tektonapi.TaskRef{Name: "provision-shared-host"}
 	switch {
 	case strings.HasPrefix(platform, "windows"):
-		provision.Spec.TaskRef.Name = "provision-shared-host-windows"
+		provision.Spec.TaskRef.Name = "provision-host-windows"
 	case strings.HasPrefix(platform, "macos"):
 		provision.Spec.TaskRef.Name = "provision-host-macos"
 	default:
