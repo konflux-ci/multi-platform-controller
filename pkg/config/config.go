@@ -174,7 +174,7 @@ func parseRequiredSSHSecretField(data map[string]string, prefix, platform, platf
 	}
 }
 
-// parseDynamicPlatformConfig parses and validates a single dynamic platform configuration
+// ParseDynamicPlatformConfig parses and validates a single dynamic platform configuration
 // This function extracts configuration for a dynamic platform from the ConfigMap data,
 // validates all required and optional fields, and returns a structured DynamicPlatformConfig.
 // Dynamic platforms support on-demand cloud instances (AWS EC2, IBM Cloud PowerPC and s390x) for now.
