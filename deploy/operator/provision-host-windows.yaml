@@ -1,7 +1,7 @@
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
-  name: provision-shared-host-windows
+  name: provision-host-windows
   namespace: multi-platform-controller
 spec:
   description: >-
