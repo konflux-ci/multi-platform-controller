@@ -1,7 +1,7 @@
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
-  name: provision-shared-host-macos
+  name: provision-host-macos
   namespace: multi-platform-controller
 spec:
   description: >-
@@ -53,6 +53,9 @@ spec:
         chmod 0400 /tmp/master_key
         export SSH_HOST="$USER@$HOST"
         
+        # MacOS Instance sometimes takes a little longer to be ready, so we need to wait for it
+        sleep 30
+
         export USERNAME=konflux-builder
         ssh -i /tmp/master_key -o StrictHostKeyChecking=no "${SSH_HOST}" "cat /Users/${USER}/${USERNAME}" > id_rsa
         ssh -i /tmp/master_key -o StrictHostKeyChecking=no "${SSH_HOST}" "sudo rm /Users/${USER}/${USERNAME}"
