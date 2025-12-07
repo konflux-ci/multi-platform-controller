@@ -97,8 +97,8 @@ jobs:
 
       - name: Delete AWS EC2 Instances
         if: always()
-        run: ./hack/cleanup-ec2-instances.sh ${{ env.INSTANCE_TAG }}
+        run: ./out/devsetup cleanup-instances ${{ env.INSTANCE_TAG }}
 
       - name: Delete AWS EC2 Key Pair
         if: always()
-        run: ./hack/cleanup-ec2-keypair.sh ${{ github.run_id }}
+        run: ./out/devsetup cleanup-keypair ${{ github.run_id }}

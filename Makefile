@@ -43,6 +43,10 @@ build: fmt vet clean manifests
 build-otp:
 	env GOOS=linux GOARCH=amd64 go build -o out/otp-server ./cmd/otp
 
+.PHONY: build-devsetup
+build-devsetup:
+	go build -o out/devsetup ./cmd/devsetup
+
 .PHONY: clean
 clean:
 	rm -rf out
@@ -55,8 +59,8 @@ dev-image: build build-otp
 	docker push quay.io/$(QUAY_USERNAME)/multi-platform-otp:dev
 
 .PHONY: dev
-dev: dev-image
-	./deploy/development.sh
+dev: dev-image build-devsetup
+	./out/devsetup deploy
 
 .PHONY: dev-minikube
 dev-minikube: dev-image
@@ -64,8 +68,8 @@ dev-minikube: dev-image
 	./deploy/minikube-development.sh
 
 .PHONY: deploy
-deploy:
-	./deploy/development.sh
+deploy: build-devsetup
+	./out/devsetup deploy
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v4.4.1
