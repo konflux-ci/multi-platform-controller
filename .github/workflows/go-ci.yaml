@@ -2,6 +2,8 @@ name: Validate PR - golang CI
 on:
   pull_request:
     branches: [ main ]
+  merge_group:
+    types: [checks_requested]
 permissions:
   checks: read
   contents: read
@@ -59,6 +61,7 @@ jobs:
           make fmt
   trigger_unit_test_workflow:
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' }}
     steps: 
       - name: Check out code
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v4
