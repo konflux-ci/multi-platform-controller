@@ -130,11 +130,11 @@ test-e2e: test-e2e-deployment test-e2e-taskrun ## Run all e2e tests: deployment 
 
 .PHONY: test-e2e-deployment
 test-e2e-deployment: ## Run deployment validation e2e tests
-	$(GINKGO) -v ./test/e2e/deployment/
+	$(GINKGO) --github-output -coverprofile cover.out -covermode atomic -v ./test/e2e/deployment/
 
 .PHONY: test-e2e-taskrun
 test-e2e-taskrun: ## Run TaskRun execution e2e tests in parallel
-	$(GINKGO) -v -procs=4 ./test/e2e/taskrun/
+	$(GINKGO) --github-output -coverprofile cover.out -covermode atomic -v -procs=4 ./test/e2e/taskrun/
 
 # go-get-tool will 'go get' any package $2 and install it to $1.
 PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))

@@ -74,7 +74,7 @@ func VerifyControllerPodRunning(g Gomega) string {
 	g.Expect(podName).To(ContainSubstring("multi-platform-controller"))
 
 	// Validate the pod's status
-	cmd = exec.Command("kubectl", "get", //nolint:gosec // G204: variables are controlled internally
+	cmd = exec.Command("kubectl", "get", //gosec:disable G204 -- variables are controlled internally
 		"pods", podName, "-o", "jsonpath={.status.phase}",
 		"-n", MPCNamespace,
 	)
@@ -90,7 +90,7 @@ func DumpPodsLogs(nsName string, podNamesOutput string) {
 	podNames := utils.GetNonEmptyLines(podNamesOutput)
 	for _, podName := range podNames {
 		By(fmt.Sprintf("Fetching logs for pod %s in test namespace", podName))
-		cmd := exec.Command("kubectl", "logs", podName, "-n", nsName, "--all-containers=true") //nolint:gosec // G204: variables are controlled internally
+		cmd := exec.Command("kubectl", "logs", podName, "-n", nsName, "--all-containers=true") //gosec:disable G204 -- variables are controlled internally
 		podLogs, err := utils.Run(cmd)
 		if err == nil {
 			_, _ = fmt.Fprintf(GinkgoWriter, "Logs for pod %s:\n%s\n", podName, podLogs)
@@ -142,7 +142,7 @@ func CollectDebugInfo(testContext *TestContext, testNamespace string) {
 	if specReport.Failed() {
 		if testContext.ControllerPodName != "" {
 			By(fmt.Sprintf("Fetching %s pod logs", testContext.ControllerPodName))
-			cmd := exec.Command("kubectl", "logs", testContext.ControllerPodName, "-n", MPCNamespace) //nolint:gosec // G204: variables are controlled internally
+			cmd := exec.Command("kubectl", "logs", testContext.ControllerPodName, "-n", MPCNamespace) //gosec:disable G204 -- variables are controlled internally
 			logs, err := utils.Run(cmd)
 			if err == nil {
 				_, _ = fmt.Fprintf(GinkgoWriter, "pod logs:\n %s", logs)
@@ -151,7 +151,7 @@ func CollectDebugInfo(testContext *TestContext, testNamespace string) {
 			}
 
 			By(fmt.Sprintf("Fetching %s description\n", testContext.ControllerPodName))
-			cmd = exec.Command("kubectl", "describe", "pod", testContext.ControllerPodName, "-n", MPCNamespace) //nolint:gosec // G204: variables are controlled internally
+			cmd = exec.Command("kubectl", "describe", "pod", testContext.ControllerPodName, "-n", MPCNamespace) //gosec:disable G204 -- variables are controlled internally
 			podDescription, err := utils.Run(cmd)
 			if err == nil {
 				_, _ = fmt.Fprintf(GinkgoWriter, "Pod description: %s\n", podDescription)
@@ -180,7 +180,7 @@ func CollectDebugInfo(testContext *TestContext, testNamespace string) {
 
 		for _, ns := range []string{MPCNamespace, testNamespace} {
 			By("Fetching Pods in " + ns + " namespace")
-			cmd = exec.Command("kubectl", "get", "pods", "-n", ns, "-o", "yaml") //nolint:gosec // G204: variables are controlled internally
+			cmd = exec.Command("kubectl", "get", "pods", "-n", ns, "-o", "yaml") //gosec:disable G204 -- variables are controlled internally
 			pods, err := utils.Run(cmd)
 			if err == nil {
 				_, _ = fmt.Fprintf(GinkgoWriter, "pods:\n %s", pods)
@@ -209,7 +209,7 @@ func CollectDebugInfo(testContext *TestContext, testNamespace string) {
 		}
 
 		By("Fetching logs of all pods in the " + testNamespace + " namespace")
-		cmd = exec.Command("kubectl", "get", "pods", "-n", testNamespace, "-o", "jsonpath={range .items[*]}{.metadata.name}{\"\\n\"}{end}") //nolint:gosec // G204: variables are controlled internally
+		cmd = exec.Command("kubectl", "get", "pods", "-n", testNamespace, "-o", "jsonpath={range .items[*]}{.metadata.name}{\"\\n\"}{end}") //gosec:disable G204 -- variables are controlled internally
 		podNamesOutput, err = utils.Run(cmd)
 		if err == nil {
 			DumpPodsLogs(testNamespace, podNamesOutput)
