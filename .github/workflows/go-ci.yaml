@@ -32,7 +32,7 @@ jobs:
           args: "--timeout=10m --build-tags='normal periodic' --output.sarif.path=out/go-lint.sarif"
       - name: Upload sarif report
         uses: github/codeql-action/upload-sarif@v4.31.7
-        if: always()
+        if: ${{ github.event_name != "merge_group" }}
         with:
           sarif_file: out/go-lint.sarif
   go:
