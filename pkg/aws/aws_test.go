@@ -26,7 +26,7 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 	Describe("Testing Ec2Provider", func() {
 
 		DescribeTable("Testing the creation of AwsDynamicConfig properly no matter the values",
-			func(platformName string, testConfig map[string]string, expectedDisk int, expectedIops *int32, expectedThroughput *int32, expectedUserData *string) {
+			func(platformName string, testConfig map[string]string, expectedDisk int, expectedIops *int32, expectedThroughput *int32, expectedUserData *string, expectedStrictPublicAddress bool) {
 				config := map[string]string{
 					"dynamic." + platformName + ".region":                "test-region",
 					"dynamic." + platformName + ".ami":                   "test-ami",
@@ -43,6 +43,7 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 					"dynamic." + platformName + ".iops":                  testConfig["iops"],
 					"dynamic." + platformName + ".throughput":            testConfig["throughput"],
 					"dynamic." + platformName + ".user-data":             testConfig["user-data"],
+					"dynamic." + platformName + ".strict-public-address": testConfig["strict-public-address"],
 				}
 				provider := CreateEc2CloudConfig(platformName, config, systemNamespace)
 				Expect(provider).ToNot(BeNil())
@@ -64,31 +65,36 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 				Expect(providerConfig.Iops).To(Equal(expectedIops))
 				Expect(providerConfig.Throughput).To(Equal(expectedThroughput))
 				Expect(providerConfig.UserData).Should(SatisfyAny(Equal(stringEncode(expectedUserData)), BeNil()))
+				Expect(providerConfig.StrictPublicAddress).To(Equal(expectedStrictPublicAddress))
 			},
 			Entry("Positive - valid config map keys", "linux-largecpu-x86_64", map[string]string{
-				"disk":       "200",
-				"iops":       "100",
-				"throughput": "50",
-				"user-data":  commonUserData},
-				200, aws.Int32(100), aws.Int32(50), aws.String(commonUserData)),
+				"disk":                  "200",
+				"iops":                  "100",
+				"throughput":            "50",
+				"user-data":             commonUserData,
+				"strict-public-address": "true"},
+				200, aws.Int32(100), aws.Int32(50), aws.String(commonUserData), true),
 			Entry("Negative - nonexistant platform name", "koko-hazamar", map[string]string{
-				"disk":       "200",
-				"iops":       "100",
-				"throughput": "50",
-				"user-data":  commonUserData},
-				200, aws.Int32(100), aws.Int32(50), aws.String(commonUserData)),
+				"disk":                  "200",
+				"iops":                  "100",
+				"throughput":            "50",
+				"user-data":             commonUserData,
+				"strict-public-address": "false"},
+				200, aws.Int32(100), aws.Int32(50), aws.String(commonUserData), false),
 			Entry("Negative - missing config data", "linux-c4xlarge-arm64", map[string]string{
-				"disk":       "",
-				"iops":       "",
-				"throughput": "",
-				"user-data":  ""},
-				40, nil, nil, aws.String("")),
+				"disk":                  "",
+				"iops":                  "",
+				"throughput":            "",
+				"user-data":             "",
+				"strict-public-address": ""},
+				40, nil, nil, aws.String(""), false),
 			Entry("Negative - config data with bad data types", "linux-g6xlarge-amd64", map[string]string{
-				"disk":       "koko-hazamar",
-				"iops":       "koko-hazamar",
-				"throughput": "koko-hazamar",
-				"user-data":  commonUserData},
-				40, nil, nil, aws.String(commonUserData)),
+				"disk":                  "koko-hazamar",
+				"iops":                  "koko-hazamar",
+				"throughput":            "koko-hazamar",
+				"user-data":             commonUserData,
+				"strict-public-address": "invalid"},
+				40, nil, nil, aws.String(commonUserData), false),
 		)
 	})
 
@@ -105,7 +111,7 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 var commonUserData = `|-
 Content-Type: multipart/mixed; boundary="//"
 MIME-Version: 1.0
-  
+
 --//
 Content-Type: text/cloud-config; charset="us-ascii"
 MIME-Version: 1.0
@@ -115,7 +121,7 @@ Content-Disposition: attachment; filename="cloud-config.txt"
 #cloud-config
 cloud_final_modules:
   - [scripts-user, always]
-  
+
 --//
 Content-Type: text/x-shellscript; charset="us-ascii"
 MIME-Version: 1.0
@@ -123,7 +129,7 @@ Content-Transfer-Encoding: 7bit
 Content-Disposition: attachment; filename="userdata.txt"
 
 #!/bin/bash -ex
-  
+
 if lsblk -no FSTYPE /dev/nvme1n1 | grep -qE "\S"; then
  echo "File system exists on the disk."
 else
