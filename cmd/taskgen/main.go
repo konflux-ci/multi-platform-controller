@@ -57,7 +57,7 @@ func main() {
 	y := printers.YAMLPrinter{}
 	b := bytes.Buffer{}
 	_ = y.PrintObj(&task, &b)
-	err := os.WriteFile(buildahRemoteTask, b.Bytes(), 0660)
+	err := os.WriteFile(buildahRemoteTask, b.Bytes(), 0600)
 	if err != nil {
 		panic(err)
 	}

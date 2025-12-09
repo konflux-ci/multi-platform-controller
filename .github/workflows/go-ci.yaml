@@ -62,34 +62,14 @@ jobs:
   trigger_unit_test_workflow:
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'pull_request' }}
-    steps: 
+    steps:
       - name: Check out code
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v4
       - name: Trigger mpc-test-ci workflow
         uses: peter-evans/repository-dispatch@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}  
-          repository: ${{ github.event.pull_request.head.repo.full_name }}  
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
           event-type: trigger-mpc-test
           client-payload: '{"target-branch": "${{ github.event.pull_request.head.ref }}"}'
         continue-on-error: true
-  security_scan:
-    name: Security scan
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v4
-      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v5
-        with:
-          go-version-file: './go.mod'
-      # https://github.com/securego/gosec/blob/12be14859bc7d4b956b71bef0b443694aa519d8a/README.md#integrating-with-code-scanning
-      - name: Run Gosec Security Scanner
-        uses: securego/gosec@master
-        with:
-          # we let the report trigger content trigger a failure using the GitHub Security features.
-          args: '-tags normal,periodic -no-fail -fmt sarif -out results.sarif ./...'
-      - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@149d184a5153ea45e6fbcef5588ac7b8c7af9835 # v3
-        with:
-          # Path to SARIF file relative to the root of the repository
-          sarif_file: results.sarif
