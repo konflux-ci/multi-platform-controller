@@ -31,7 +31,7 @@ jobs:
           version: ${{ steps.golangci_version.outputs.version }}
           args: "--timeout=10m --build-tags='normal periodic' --output.sarif.path=out/go-lint.sarif"
       - name: Upload sarif report
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@v4.31.7
         if: always()
         with:
           sarif_file: out/go-lint.sarif
@@ -89,7 +89,7 @@ jobs:
           # we let the report trigger content trigger a failure using the GitHub Security features.
           args: '-tags normal,periodic -no-fail -fmt sarif -out results.sarif ./...'
       - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@755f44910c12a3d7ca0d8c6e42c048b3362f7cec # v3
+        uses: github/codeql-action/upload-sarif@149d184a5153ea45e6fbcef5588ac7b8c7af9835 # v3
         with:
           # Path to SARIF file relative to the root of the repository
           sarif_file: results.sarif
