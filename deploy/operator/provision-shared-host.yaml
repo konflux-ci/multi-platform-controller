@@ -35,6 +35,8 @@ spec:
         value: $(params.USER)
       - name: SUDO_COMMANDS
         value: $(params.SUDO_COMMANDS)
+      - name: SSH_WORKSPACE_PATH
+        value: $(workspaces.ssh.path)
   steps:
     - name: provision
       image: quay.io/redhat-appstudio/multi-platform-runner:01c7670e81d5120347cf0ad13372742489985e5f@sha256:246adeaaba600e207131d63a7f706cffdcdc37d8f600c56187123ec62823ff44
@@ -42,99 +44,16 @@ spec:
       volumeMounts:
         - mountPath: /tls
           name: tls
-      script: |
-        #!/bin/bash
-        cd /tmp
-        set -o verbose
-        set -eu
-        set -o pipefail
-        mkdir -p /root/.ssh
-        cp $(workspaces.ssh.path)/id_rsa /tmp/master_key
-        chmod 0400 /tmp/master_key
-        export SSH_HOST="$USER@$HOST"
-        
-        export USERNAME=u-$(echo "$TASKRUN_NAME$NAMESPACE" | md5sum | cut -b-28)
-        
-        cat >script.sh <<EOF
-        # resize the root partition & filesystem if needed (ppc64le only)
-        # if  [ "\$(uname -m)" == "ppc64le" ]; then
-        #   echo "Resizing root partition"
-        #   DRIVE="\$(sudo fdisk -l 2>/dev/null |awk '/^Disk \/dev\/mapper/ {print substr(\$2,0,length(\$2)-1)}')"
-        #   echo yes | sudo parted \$DRIVE ---pretend-input-tty resizepart 3 100%
-        #   sudo partprobe \$DRIVE
-        #   sudo xfs_growfs /
-        # fi
-
-        sudo dnf install podman -y
-        rm -f $USERNAME $USERNAME.pub
-        # sometimes it hits  "useradd: cannot lock /etc/passwd; try again later" error, so need to repeat
-        for i in {10..1}; do
-          sudo useradd -m $USERNAME -p $(openssl rand -base64 12) && break
-          sleep 1
-        done
-        ssh-keygen -N '' -f $USERNAME
-        sudo su $USERNAME -c 'mkdir /home/$USERNAME/.ssh'
-        sudo su $USERNAME -c 'mkdir /home/$USERNAME/build'
-        sudo mv $USERNAME.pub /home/$USERNAME/.ssh/authorized_keys
-        sudo chown $USERNAME /home/$USERNAME/.ssh/authorized_keys
-        sudo restorecon -FRvv /home/$USERNAME/.ssh
-        EOF
-        
-        if [ ! -z "$SUDO_COMMANDS" ]; then
-        #if we need sudo access add it to the script
-        cat >>script.sh <<EOF
-        echo "$USERNAME ALL=(ALL) NOPASSWD: $SUDO_COMMANDS" | sudo tee /etc/sudoers
-        EOF
-        fi
-        ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST "bash -s" <script.sh
-        ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST cat $USERNAME  >id_rsa
-        ssh -i /tmp/master_key -o StrictHostKeyChecking=no $SSH_HOST rm $USERNAME
-        chmod 0400 id_rsa
-        HOST=$(echo "$USERNAME@$HOST" | base64 -w 0)
-        DIR=$(echo /home/$USERNAME | base64 -w 0)
-        
-        if [ -e "/tls/tls.crt" ]; then
-          KEY=$(cat id_rsa)
-          OTP=$(curl --cacert /tls/tls.crt -XPOST -d "$KEY" https://multi-platform-otp-server.multi-platform-controller.svc.cluster.local/store-key | base64 -w 0)
-          OTP_SERVER="$(echo https://multi-platform-otp-server.multi-platform-controller.svc.cluster.local/otp | base64 -w 0)"
-          echo $OTP | base64 -d
-          cat >secret.yaml <<EOF
-          apiVersion: v1
-          data:
-            otp-ca: "$(cat /tls/tls.crt | base64 -w 0)"
-            otp: "$OTP"
-            otp-server: "$OTP_SERVER"
-            host: "$HOST"
-            user-dir: "$DIR"
-          kind: Secret
-          metadata:
-            name: "$SECRET_NAME"
-            namespace: "$NAMESPACE"
-            labels:
-              build.appstudio.redhat.com/multi-platform-secret: "true"
-          type: Opaque
-        EOF
-        else
-          KEY=$(cat id_rsa | base64 -w 0)
-          cat >secret.yaml <<EOF
-          apiVersion: v1
-          data:
-            id_rsa: "$KEY"
-            host: "$HOST"
-            user-dir: "$DIR"
-          kind: Secret
-          metadata:
-            name: "$SECRET_NAME"
-            namespace: "$NAMESPACE"
-            labels:
-              build.appstudio.redhat.com/multi-platform-secret: "true"
-          type: Opaque
-        EOF
-        fi
-        
-        kubectl create -f secret.yaml
+        - mountPath: /scripts
+          name: script
+      command: ["/bin/bash"]
+      args: ["/scripts/provision-shared-host.sh"]
   volumes:
     - name: tls
       secret:
         optional: true
         secretName: otp-tls-secrets
+    - name: script
+      configMap:
+        name: provision-shared-host-script
+        defaultMode: 0755
