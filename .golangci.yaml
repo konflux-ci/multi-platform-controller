@@ -18,6 +18,7 @@ linters:
     - staticcheck
     - unused
     - whitespace
+    - gosec
 formatters:
   enable:
     - gofmt
