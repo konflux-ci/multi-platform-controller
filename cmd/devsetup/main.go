@@ -427,7 +427,7 @@ func createKubernetesSecrets(cfg *Config) error {
 	_ = cmd.Run()
 
 	// Create awskeys secret
-	cmd = exec.Command("kubectl", "create", "secret", "generic", "awskeys",
+	cmd = exec.Command("kubectl", "create", "secret", "generic", "awskeys", //nolint:gosec // G204 - dev tool with trusted input
 		"--from-file=id_rsa="+cfg.IDRSAKeyPath)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -453,7 +453,7 @@ func createKubernetesSecrets(cfg *Config) error {
 
 	// Label secrets
 	for _, secret := range []string{"awsiam", "ibmiam", "awskeys"} {
-		cmd = exec.Command("kubectl", "label", "secrets", secret, "build.appstudio.redhat.com/multi-platform-secret=true")
+		cmd = exec.Command("kubectl", "label", "secrets", secret, "build.appstudio.redhat.com/multi-platform-secret=true") //nolint:gosec // G204 - dev tool with trusted input
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
@@ -557,13 +557,13 @@ func replaceInFiles(dir, old, new string) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".yaml") {
 			return err
 		}
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) //nolint:gosec // G304 - dev tool walking controlled directory
 		if err != nil {
 			return err
 		}
 		newData := strings.ReplaceAll(string(data), old, new)
 		if newData != string(data) {
-			return os.WriteFile(path, []byte(newData), 0644)
+			return os.WriteFile(path, []byte(newData), 0600)
 		}
 		return nil
 	})
@@ -634,7 +634,7 @@ func setupOTPCertificates(cfg *Config) (retErr error) {
 	fmt.Println("Creating OTP TLS secret")
 
 	// Create TLS secret
-	cmd := exec.Command("kubectl", "create", "secret", "tls", "otp-tls-secrets",
+	cmd := exec.Command("kubectl", "create", "secret", "tls", "otp-tls-secrets", //nolint:gosec // G204 - dev tool with trusted input
 		"--key", keyPath, "--cert", certPath, "--dry-run=client", "-o", "yaml")
 	output, err := cmd.Output()
 	if err != nil {
@@ -649,7 +649,7 @@ func setupOTPCertificates(cfg *Config) (retErr error) {
 }
 
 func writePrivateKey(path string, privateKey *rsa.PrivateKey) error {
-	keyFile, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	keyFile, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600) //nolint:gosec // G304 - dev tool writing to temp directory
 	if err != nil {
 		return fmt.Errorf("creating key file: %w", err)
 	}
@@ -669,7 +669,7 @@ func writePrivateKey(path string, privateKey *rsa.PrivateKey) error {
 }
 
 func writeCertificate(path string, certDER []byte) error {
-	certFile, err := os.Create(path)
+	certFile, err := os.Create(path) //nolint:gosec // G304 - dev tool writing to temp directory
 	if err != nil {
 		return fmt.Errorf("creating cert file: %w", err)
 	}
@@ -693,7 +693,7 @@ func deployOperator(cfg *Config) error {
 
 	developmentDir := filepath.Join(cfg.DeployDir, "overlays", "development")
 
-	cmd := exec.Command("kubectl", "apply", "-k", developmentDir)
+	cmd := exec.Command("kubectl", "apply", "-k", developmentDir) //nolint:gosec // G204 - dev tool with trusted input
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
