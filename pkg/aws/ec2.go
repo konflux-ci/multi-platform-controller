@@ -34,7 +34,7 @@ func CreateEc2CloudConfig(platformName string, config map[string]string, systemN
 	var iops *int32
 	iopsString := config["dynamic."+platformName+".iops"]
 	if iopsString != "" {
-		iopsTmp, err := strconv.Atoi(iopsString)
+		iopsTmp, err := strconv.ParseInt(iopsString, 10, 32)
 		if err == nil {
 			iops = aws.Int32(int32(iopsTmp))
 		}
@@ -43,7 +43,7 @@ func CreateEc2CloudConfig(platformName string, config map[string]string, systemN
 	var throughput *int32
 	throughputString := config["dynamic."+platformName+".throughput"]
 	if throughputString != "" {
-		throughputTmp, err := strconv.Atoi(throughputString)
+		throughputTmp, err := strconv.ParseInt(throughputString, 10, 32)
 		if err == nil {
 			throughput = aws.Int32(int32(throughputTmp))
 		}
