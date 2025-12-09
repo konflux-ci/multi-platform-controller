@@ -15,6 +15,7 @@ jobs:
       AWS_REGION: us-east-1
       AWS_ROLE_DURATION: 900 # 15 minutes
       INSTANCE_TAG: ${{ github.run_id }}-development
+      KIND_EXPERIMENTAL_PROVIDER: podman
     steps:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
@@ -55,32 +56,22 @@ jobs:
 
       - name: Create kind cluster
         run: kind create cluster
-        env:
-          KIND_EXPERIMENTAL_PROVIDER: podman
 
       - name: Build and load images
-        env:
-          KIND_EXPERIMENTAL_PROVIDER: podman
         run: |
           go mod tidy
           make load-image
           podman exec kind-control-plane crictl images
 
       - name: Install dependencies
-        env:
-          KIND_EXPERIMENTAL_PROVIDER: podman
         run: |
           make tekton
 
       - name: Deploy MPC
-        env:
-          KIND_EXPERIMENTAL_PROVIDER: podman
         run: |
           make deploy
 
       - name: Run Test e2e
-        env:
-          KIND_EXPERIMENTAL_PROVIDER: podman
         run: |
           make test-e2e
 

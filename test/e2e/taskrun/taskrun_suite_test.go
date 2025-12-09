@@ -36,11 +36,6 @@ func TestTaskRun(t *testing.T) {
 	RunSpecs(t, "taskrun suite")
 }
 
-func init() {
-	// Enable parallel execution for this suite
-	// This allows specs to run in parallel when invoked with -p flag
-}
-
 var _ = BeforeSuite(func() {
 	By("checking if Tekton is installed")
 	cmd := exec.Command("kubectl", "get", "crd", "taskruns.tekton.dev")
