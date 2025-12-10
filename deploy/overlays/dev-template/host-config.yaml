@@ -17,11 +17,11 @@ data:
   dynamic.linux-arm64.key-name: AWS_SSH_KEY_NAME
   dynamic.linux-arm64.aws-secret: awsiam
   dynamic.linux-arm64.ssh-secret: awskeys
-  dynamic.linux-arm64.security-group-id: sg-0c63301705fe79626
+  dynamic.linux-arm64.security-group-id: sg-0dac40dc35d0bf1c4
   dynamic.linux-arm64.max-instances: "2"
   dynamic.linux-arm64.concurrency: "2"
   dynamic.linux-arm64.max-age: "10"
-  dynamic.linux-arm64.subnet-id: subnet-0bb89a2fd4bc8bb4d
+  dynamic.linux-arm64.subnet-id: subnet-02b7d6698c619e5a2
   dynamic.linux-arm64.strict-public-address: "true"
 
   dynamic.linux-amd64.type: aws
@@ -31,9 +31,9 @@ data:
   dynamic.linux-amd64.key-name: AWS_SSH_KEY_NAME
   dynamic.linux-amd64.aws-secret: awsiam
   dynamic.linux-amd64.ssh-secret: awskeys
-  dynamic.linux-amd64.security-group-id: sg-0c63301705fe79626
+  dynamic.linux-amd64.security-group-id: sg-0dac40dc35d0bf1c4
   dynamic.linux-amd64.max-instances: "4"
-  dynamic.linux-amd64.subnet-id: subnet-0bb89a2fd4bc8bb4d
+  dynamic.linux-amd64.subnet-id: subnet-02b7d6698c619e5a2
   dynamic.linux-amd64.strict-public-address: "true"
 
   dynamic.windows-c4xlarge-amd64.type: aws
@@ -43,9 +43,9 @@ data:
   dynamic.windows-c4xlarge-amd64.key-name: AWS_SSH_KEY_NAME
   dynamic.windows-c4xlarge-amd64.aws-secret: awsiam
   dynamic.windows-c4xlarge-amd64.ssh-secret: awskeys
-  dynamic.windows-c4xlarge-amd64.security-group-id: sg-0c63301705fe79626
+  dynamic.windows-c4xlarge-amd64.security-group-id: sg-0dac40dc35d0bf1c4
   dynamic.windows-c4xlarge-amd64.max-instances: "4"
-  dynamic.windows-c4xlarge-amd64.subnet-id: subnet-0bb89a2fd4bc8bb4d
+  dynamic.windows-c4xlarge-amd64.subnet-id: subnet-02b7d6698c619e5a2
   dynamic.windows-c4xlarge-amd64.strict-public-address: "true"
   dynamic.windows-c4xlarge-amd64.user-data: |-
       <powershell>
@@ -233,10 +233,10 @@ data:
   dynamic.linux-root-amd64.key-name: AWS_SSH_KEY_NAME
   dynamic.linux-root-amd64.aws-secret: "awsiam"
   dynamic.linux-root-amd64.ssh-secret: "awskeys"
-  dynamic.linux-root-amd64.security-group-id: sg-0c63301705fe79626
+  dynamic.linux-root-amd64.security-group-id: sg-0dac40dc35d0bf1c4
   dynamic.linux-root-amd64.max-instances: "4"
   dynamic.linux-root-amd64.sudo-commands: "/usr/bin/podman"
-  dynamic.linux-root-amd64.subnet-id: subnet-0bb89a2fd4bc8bb4d
+  dynamic.linux-root-amd64.subnet-id: subnet-02b7d6698c619e5a2
   dynamic.linux-root-amd64.disk: "200"
   dynamic.linux-root-amd64.iops: "16000"
   dynamic.linux-root-amd64.throughput: "1000"

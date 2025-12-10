@@ -17,7 +17,7 @@ jobs:
     name: Run on Ubuntu
     runs-on: ubuntu-latest
     env:
-      AWS_ROLE_ARN: arn:aws:iam::489668258961:role/multi-platform-github-action
+      AWS_ROLE_ARN: arn:aws:iam::418272753558:role/multi-platform-github-action
       AWS_REGION: us-east-1
       AWS_ROLE_DURATION: 900 # 15 minutes
       INSTANCE_TAG: ${{ github.run_id }}-development
