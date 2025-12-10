@@ -43,6 +43,10 @@ build: fmt vet clean manifests
 build-otp:
 	env GOOS=linux GOARCH=amd64 go build -o out/otp-server ./cmd/otp
 
+.PHONY: build-devsetup
+build-devsetup:
+	go build -o out/devsetup ./cmd/devsetup
+
 .PHONY: clean
 clean:
 	rm -rf out
@@ -55,13 +59,17 @@ dev-image: build build-otp
 	docker push quay.io/$(QUAY_USERNAME)/multi-platform-otp:dev
 
 .PHONY: dev
-dev: dev-image
-	./deploy/development.sh
+dev: dev-image build-devsetup
+	./out/devsetup deploy
 
 .PHONY: dev-minikube
 dev-minikube: dev-image
 	./deploy/generate_ca.sh
 	./deploy/minikube-development.sh
+
+.PHONY: deploy
+deploy: build-devsetup
+	./out/devsetup deploy
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v4.4.1
@@ -76,6 +84,15 @@ $(LOCALBIN):
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
+CONTAINER_TOOL ?= podman
+TEKTON_VERSION ?= $(shell ./hack/get-module-version.sh github.com/tektoncd/pipeline)
+CERT_MANAGER_VERSION ?= v1.19.2
+KUBECTL ?= kubectl
+QUAY_USERNAME ?= konflux-ci
+CONTROLLER_IMAGE=quay.io/$(QUAY_USERNAME)/multi-platform-controller:dev
+OTP_IMAGE=quay.io/$(QUAY_USERNAME)/multi-platform-otp:dev
+
+KIND_CLUSTER ?= kind
 
 .PHONY: envtest
 envtest: ## Download envtest-setup locally if necessary.
@@ -87,6 +104,43 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 	test -s $(CONTROLLER_GEN) && $(CONTROLLER_GEN) --version | grep -q $(CONTROLLER_TOOLS_VERSION) || \
 	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
 
+.PHONY: tekton
+tekton:
+	$(KUBECTL) apply --server-side -f https://storage.googleapis.com/tekton-releases/pipeline/previous/$(TEKTON_VERSION)/release.yaml
+	$(KUBECTL) wait --for=condition=Available deployment --all -n tekton-pipelines --timeout=300s
+
+.PHONY: cert-manager
+cert-manager:
+	$(KUBECTL) apply --server-side -f https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
+	$(KUBECTL) wait --for=condition=Available deployment --all -n cert-manager --timeout=300s
+
+.PHONY: build-controller-image
+build-controller-image:
+	$(CONTAINER_TOOL) build -t $(CONTROLLER_IMAGE) -f Dockerfile .
+
+.PHONY: build-otp-image
+build-otp-image:
+	$(CONTAINER_TOOL) build -t $(OTP_IMAGE) -f Dockerfile.otp .
+
+.PHONY: load-image
+load-image: build-controller-image build-otp-image
+	dir=$$(mktemp -d) && \
+	$(CONTAINER_TOOL) save $(CONTROLLER_IMAGE) -o $${dir}/multi-platform-controller.tar && \
+	$(CONTAINER_TOOL) save $(OTP_IMAGE) -o $${dir}/otp-server.tar && \
+	kind load image-archive -n $(KIND_CLUSTER) $${dir}/multi-platform-controller.tar && \
+	kind load image-archive -n $(KIND_CLUSTER) $${dir}/otp-server.tar && \
+	rm -r $${dir}
+
+.PHONY: test-e2e
+test-e2e: test-e2e-deployment test-e2e-taskrun ## Run all e2e tests: deployment tests first, then taskrun tests in parallel
+
+.PHONY: test-e2e-deployment
+test-e2e-deployment: ## Run deployment validation e2e tests
+	$(GINKGO) --github-output -coverprofile cover.out -covermode atomic -v ./test/e2e/deployment/
+
+.PHONY: test-e2e-taskrun
+test-e2e-taskrun: ## Run TaskRun execution e2e tests in parallel
+	$(GINKGO) --github-output -coverprofile cover.out -covermode atomic -v -procs=4 ./test/e2e/taskrun/
 
 # go-get-tool will 'go get' any package $2 and install it to $1.
 PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
