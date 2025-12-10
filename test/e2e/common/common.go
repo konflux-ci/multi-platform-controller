@@ -19,7 +19,10 @@ package common
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:staticcheck
 
@@ -37,6 +40,9 @@ import (
 
 // MPCNamespace where the project is deployed in
 const MPCNamespace = "multi-platform-controller"
+
+// DebugLogDirEnvVar is the environment variable name for the debug log directory
+const DebugLogDirEnvVar = "E2E_DEBUG_LOG_DIR"
 
 // TestContext holds test context information
 type TestContext struct {
@@ -85,19 +91,45 @@ func VerifyControllerPodRunning(g Gomega) string {
 	return podName
 }
 
+// getDebugLogDir returns the debug log directory from environment variable.
+// If the environment variable is not set, it creates a temporary directory.
+func getDebugLogDir() (string, error) {
+	logDir := os.Getenv(DebugLogDirEnvVar)
+	if logDir != "" {
+		return logDir, nil
+	}
+	// Create a temporary directory if env var is not set
+	tempDir, err := os.MkdirTemp("", "e2e-debug-logs-*")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temporary log directory: %w", err)
+	}
+	return tempDir, nil
+}
+
+// writeToFile writes content to a file in the specified directory
+func writeToFile(logDir, filename, content string) error {
+	filePath := filepath.Join(logDir, filename)
+	return os.WriteFile(filePath, []byte(content), 0600)
+}
+
 // DumpPodsLogs fetches and prints logs for pods in the given namespace
-func DumpPodsLogs(nsName string, podNamesOutput string) {
+func DumpPodsLogs(nsName string, podNamesOutput string, logDir string) []string {
 	podNames := utils.GetNonEmptyLines(podNamesOutput)
+	var writtenFiles []string
 	for _, podName := range podNames {
-		By(fmt.Sprintf("Fetching logs for pod %s in test namespace", podName))
+		By(fmt.Sprintf("Fetching logs for pod %s in %s namespace", podName, nsName))
 		cmd := exec.Command("kubectl", "logs", podName, "-n", nsName, "--all-containers=true") //nolint:gosec // G204 - e2e test with controlled input
 		podLogs, err := utils.Run(cmd)
 		if err == nil {
-			_, _ = fmt.Fprintf(GinkgoWriter, "Logs for pod %s:\n%s\n", podName, podLogs)
+			filename := fmt.Sprintf("pod-logs-%s-%s.log", nsName, podName)
+			if writeErr := writeToFile(logDir, filename, podLogs); writeErr == nil {
+				writtenFiles = append(writtenFiles, filename)
+			}
 		} else {
 			_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get logs for pod %s: %s\n", podName, err)
 		}
 	}
+	return writtenFiles
 }
 
 // GetK8sClientOrDie creates a Kubernetes client or panics on failure
@@ -139,82 +171,194 @@ func GetK8sClientOrDie(ctx context.Context) client.Client {
 // CollectDebugInfo collects debug information when a test fails
 func CollectDebugInfo(testContext *TestContext, testNamespace string) {
 	specReport := CurrentSpecReport()
-	if specReport.Failed() {
-		if testContext.ControllerPodName != "" {
-			By(fmt.Sprintf("Fetching %s pod logs", testContext.ControllerPodName))
-			cmd := exec.Command("kubectl", "logs", testContext.ControllerPodName, "-n", MPCNamespace) //nolint:gosec // G204 - e2e test with controlled input
-			logs, err := utils.Run(cmd)
-			if err == nil {
-				_, _ = fmt.Fprintf(GinkgoWriter, "pod logs:\n %s", logs)
-			} else {
-				_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get pod logs: %s", err)
+	if !specReport.Failed() {
+		return
+	}
+
+	logDir, err := getDebugLogDir()
+	if err != nil {
+		_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get log directory: %s\n", err)
+		return
+	}
+	var writtenFiles []string
+
+	// Ensure log directory exists
+	if err := os.MkdirAll(logDir, 0750); err != nil {
+		_, _ = fmt.Fprintf(GinkgoWriter, "Failed to create log directory %s: %s\n", logDir, err)
+		return
+	}
+
+	By("Collecting debug information for failed test")
+
+	// Collect controller pod logs and description
+	if testContext.ControllerPodName != "" {
+		By(fmt.Sprintf("Fetching %s pod logs", testContext.ControllerPodName))
+		cmd := exec.Command("kubectl", "logs", testContext.ControllerPodName, "-n", MPCNamespace) //nolint:gosec // G204 - e2e test with controlled input
+		logs, err := utils.Run(cmd)
+		if err == nil {
+			filename := fmt.Sprintf("controller-pod-%s.log", testContext.ControllerPodName)
+			if writeErr := writeToFile(logDir, filename, logs); writeErr == nil {
+				writtenFiles = append(writtenFiles, filename)
 			}
+		} else {
+			_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get pod logs: %s\n", err)
+		}
 
-			By(fmt.Sprintf("Fetching %s description\n", testContext.ControllerPodName))
-			cmd = exec.Command("kubectl", "describe", "pod", testContext.ControllerPodName, "-n", MPCNamespace) //nolint:gosec // G204 - e2e test with controlled input
-			podDescription, err := utils.Run(cmd)
-			if err == nil {
-				_, _ = fmt.Fprintf(GinkgoWriter, "Pod description: %s\n", podDescription)
-			} else {
-				_, _ = fmt.Fprintf(GinkgoWriter, "Failed to describe pod %s\n", testContext.ControllerPodName)
+		By(fmt.Sprintf("Fetching %s description", testContext.ControllerPodName))
+		cmd = exec.Command("kubectl", "describe", "pod", testContext.ControllerPodName, "-n", MPCNamespace) //nolint:gosec // G204 - e2e test with controlled input
+		podDescription, err := utils.Run(cmd)
+		if err == nil {
+			filename := fmt.Sprintf("controller-pod-%s-describe.txt", testContext.ControllerPodName)
+			if writeErr := writeToFile(logDir, filename, podDescription); writeErr == nil {
+				writtenFiles = append(writtenFiles, filename)
 			}
-		}
-
-		By("Fetching Kubernetes events")
-		cmd := exec.Command("kubectl", "get", "events", "-n", MPCNamespace, "--sort-by=.lastTimestamp")
-		eventsOutput, err := utils.Run(cmd)
-		if err == nil {
-			_, _ = fmt.Fprintf(GinkgoWriter, "Kubernetes events:\n%s", eventsOutput)
 		} else {
-			_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get Kubernetes events: %s", err)
-		}
-
-		By("Fetching TaskRuns")
-		cmd = exec.Command("kubectl", "get", "-A", "-o", "yaml", "taskruns")
-		taskruns, err := utils.Run(cmd)
-		if err == nil {
-			_, _ = fmt.Fprintf(GinkgoWriter, "taskruns:\n %s", taskruns)
-		} else {
-			_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get taskruns: %s", err)
-		}
-
-		for _, ns := range []string{MPCNamespace, testNamespace} {
-			By("Fetching Pods in " + ns + " namespace")
-			cmd = exec.Command("kubectl", "get", "pods", "-n", ns, "-o", "yaml") //nolint:gosec // G204 - e2e test with controlled input
-			pods, err := utils.Run(cmd)
-			if err == nil {
-				_, _ = fmt.Fprintf(GinkgoWriter, "pods:\n %s", pods)
-			} else {
-				_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get pods: %s", err)
-			}
-		}
-
-		By("Fetching logs of taskruns pods in the " + MPCNamespace + " namespace")
-		cmd = exec.Command(
-			"kubectl",
-			"get",
-			"pods",
-			"-n",
-			MPCNamespace,
-			"-l",
-			"app.kubernetes.io/managed-by=tekton-pipelines",
-			"-o",
-			"jsonpath={range .items[*]}{.metadata.name}{\"\\n\"}{end}",
-		)
-		podNamesOutput, err := utils.Run(cmd)
-		if err == nil {
-			DumpPodsLogs(MPCNamespace, podNamesOutput)
-		} else {
-			_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get pod names in %s namespace: %s", MPCNamespace, err)
-		}
-
-		By("Fetching logs of all pods in the " + testNamespace + " namespace")
-		cmd = exec.Command("kubectl", "get", "pods", "-n", testNamespace, "-o", "jsonpath={range .items[*]}{.metadata.name}{\"\\n\"}{end}")
-		podNamesOutput, err = utils.Run(cmd)
-		if err == nil {
-			DumpPodsLogs(testNamespace, podNamesOutput)
-		} else {
-			_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get pod names in %s namespace: %s", MPCNamespace, err)
+			_, _ = fmt.Fprintf(GinkgoWriter, "Failed to describe pod %s\n", testContext.ControllerPodName)
 		}
 	}
+
+	// Collect Kubernetes events
+	By("Fetching Kubernetes events")
+	cmd := exec.Command("kubectl", "get", "events", "-n", MPCNamespace, "--sort-by=.lastTimestamp")
+	eventsOutput, err := utils.Run(cmd)
+	if err == nil {
+		filename := fmt.Sprintf("events-%s.txt", MPCNamespace)
+		if writeErr := writeToFile(logDir, filename, eventsOutput); writeErr == nil {
+			writtenFiles = append(writtenFiles, filename)
+		}
+	} else {
+		_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get Kubernetes events: %s\n", err)
+	}
+
+	// Collect TaskRuns (full YAML for files, summary for output)
+	By("Fetching TaskRuns")
+	cmd = exec.Command("kubectl", "get", "-A", "-o", "yaml", "taskruns")
+	taskrunsYaml, err := utils.Run(cmd)
+	if err == nil {
+		filename := "taskruns-all.yaml"
+		if writeErr := writeToFile(logDir, filename, taskrunsYaml); writeErr == nil {
+			writtenFiles = append(writtenFiles, filename)
+		}
+	} else {
+		_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get taskruns: %s\n", err)
+	}
+
+	// Get TaskRuns summary for console output
+	var failedTaskRuns []string
+	cmd = exec.Command("kubectl", "get", "taskruns", "-A", "-o", "custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,SUCCEEDED:.status.conditions[0].status,REASON:.status.conditions[0].reason")
+	taskrunsSummary, err := utils.Run(cmd)
+	if err == nil {
+		lines := strings.Split(taskrunsSummary, "\n")
+		for _, line := range lines[1:] { // Skip header
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			// Check for failed taskruns (SUCCEEDED != True)
+			fields := strings.Fields(line)
+			if len(fields) >= 3 && fields[2] != "True" {
+				failedTaskRuns = append(failedTaskRuns, fmt.Sprintf("  %s/%s (Status: %s)", fields[0], fields[1], strings.Join(fields[2:], " ")))
+			}
+		}
+	}
+
+	// Collect Pods for each namespace
+	var problematicPods []string
+	for _, ns := range []string{MPCNamespace, testNamespace} {
+		By("Fetching Pods in " + ns + " namespace")
+		cmd = exec.Command("kubectl", "get", "pods", "-n", ns, "-o", "yaml") //nolint:gosec // G204 - e2e test with controlled input
+		podsYaml, err := utils.Run(cmd)
+		if err == nil {
+			filename := fmt.Sprintf("pods-%s.yaml", ns)
+			if writeErr := writeToFile(logDir, filename, podsYaml); writeErr == nil {
+				writtenFiles = append(writtenFiles, filename)
+			}
+		} else {
+			_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get pods: %s\n", err)
+		}
+
+		// Get pods summary for console output
+		cmd = exec.Command("kubectl", "get", "pods", "-n", ns, "-o", "custom-columns=NAME:.metadata.name,STATUS:.status.phase,READY:.status.conditions[?(@.type=='Ready')].status") //nolint:gosec // G204 - e2e test with controlled input
+		podsSummary, err := utils.Run(cmd)
+		if err == nil {
+			lines := strings.Split(podsSummary, "\n")
+			for _, line := range lines[1:] { // Skip header
+				if strings.TrimSpace(line) == "" {
+					continue
+				}
+				fields := strings.Fields(line)
+				// Check for non-running or not-ready pods
+				if len(fields) >= 2 && (fields[1] != "Running" && fields[1] != "Succeeded") {
+					problematicPods = append(problematicPods, fmt.Sprintf("  %s/%s (Status: %s)", ns, fields[0], fields[1]))
+				} else if len(fields) >= 3 && fields[2] != "True" && fields[1] == "Running" {
+					problematicPods = append(problematicPods, fmt.Sprintf("  %s/%s (Status: %s, Ready: %s)", ns, fields[0], fields[1], fields[2]))
+				}
+			}
+		}
+	}
+
+	// Collect logs of taskrun pods in the MPC namespace
+	By("Fetching logs of taskrun pods in the " + MPCNamespace + " namespace")
+	cmd = exec.Command(
+		"kubectl",
+		"get",
+		"pods",
+		"-n",
+		MPCNamespace,
+		"-l",
+		"app.kubernetes.io/managed-by=tekton-pipelines",
+		"-o",
+		"jsonpath={range .items[*]}{.metadata.name}{\"\\n\"}{end}",
+	)
+	podNamesOutput, err := utils.Run(cmd)
+	if err == nil {
+		files := DumpPodsLogs(MPCNamespace, podNamesOutput, logDir)
+		writtenFiles = append(writtenFiles, files...)
+	} else {
+		_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get pod names in %s namespace: %s\n", MPCNamespace, err)
+	}
+
+	// Collect logs of all pods in the test namespace
+	By("Fetching logs of all pods in the " + testNamespace + " namespace")
+	cmd = exec.Command("kubectl", "get", "pods", "-n", testNamespace, "-o", "jsonpath={range .items[*]}{.metadata.name}{\"\\n\"}{end}")
+	podNamesOutput, err = utils.Run(cmd)
+	if err == nil {
+		files := DumpPodsLogs(testNamespace, podNamesOutput, logDir)
+		writtenFiles = append(writtenFiles, files...)
+	} else {
+		_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get pod names in %s namespace: %s\n", testNamespace, err)
+	}
+
+	// Print summary
+	_, _ = fmt.Fprintf(GinkgoWriter, "\n")
+	_, _ = fmt.Fprintf(GinkgoWriter, "========================================\n")
+	_, _ = fmt.Fprintf(GinkgoWriter, "         DEBUG INFO SUMMARY\n")
+	_, _ = fmt.Fprintf(GinkgoWriter, "========================================\n")
+
+	if len(failedTaskRuns) > 0 {
+		_, _ = fmt.Fprintf(GinkgoWriter, "\nFailed/Incomplete TaskRuns:\n")
+		for _, tr := range failedTaskRuns {
+			_, _ = fmt.Fprintf(GinkgoWriter, "%s\n", tr)
+		}
+	} else {
+		_, _ = fmt.Fprintf(GinkgoWriter, "\nNo failed TaskRuns found.\n")
+	}
+
+	if len(problematicPods) > 0 {
+		_, _ = fmt.Fprintf(GinkgoWriter, "\nProblematic Pods (not Running/Succeeded or not Ready):\n")
+		for _, pod := range problematicPods {
+			_, _ = fmt.Fprintf(GinkgoWriter, "%s\n", pod)
+		}
+	} else {
+		_, _ = fmt.Fprintf(GinkgoWriter, "\nNo problematic pods found.\n")
+	}
+
+	_, _ = fmt.Fprintf(GinkgoWriter, "\nDebug logs written to: %s\n", logDir)
+	if len(writtenFiles) > 0 {
+		_, _ = fmt.Fprintf(GinkgoWriter, "Files created:\n")
+		for _, f := range writtenFiles {
+			_, _ = fmt.Fprintf(GinkgoWriter, "  - %s\n", f)
+		}
+	}
+
+	_, _ = fmt.Fprintf(GinkgoWriter, "========================================\n")
 }

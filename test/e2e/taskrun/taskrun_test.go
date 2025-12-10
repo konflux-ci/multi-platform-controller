@@ -45,7 +45,7 @@ if [ -e "/ssh/error" ]; then
 	cat /ssh/error
 	exit 1
 fi
-
+exit 1
 SSH_ARGS="-o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=10"
 SSH_HOST=$(cat /ssh/host)
 mkdir -p ~/.ssh
