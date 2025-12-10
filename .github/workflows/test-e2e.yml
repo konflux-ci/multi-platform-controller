@@ -66,6 +66,7 @@ jobs:
       - name: Install dependencies
         run: |
           make tekton
+          make cert-manager
 
       - name: Deploy MPC
         run: |

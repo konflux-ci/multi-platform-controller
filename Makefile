@@ -86,6 +86,7 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 CONTAINER_TOOL ?= podman
 TEKTON_VERSION ?= $(shell ./hack/get-module-version.sh github.com/tektoncd/pipeline)
+CERT_MANAGER_VERSION ?= v1.19.2
 KUBECTL ?= kubectl
 QUAY_USERNAME ?= konflux-ci
 CONTROLLER_IMAGE=quay.io/$(QUAY_USERNAME)/multi-platform-controller:dev
@@ -107,6 +108,11 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 tekton:
 	$(KUBECTL) apply --server-side -f https://storage.googleapis.com/tekton-releases/pipeline/previous/$(TEKTON_VERSION)/release.yaml
 	$(KUBECTL) wait --for=condition=Available deployment --all -n tekton-pipelines --timeout=300s
+
+.PHONY: cert-manager
+cert-manager:
+	$(KUBECTL) apply --server-side -f https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
+	$(KUBECTL) wait --for=condition=Available deployment --all -n cert-manager --timeout=300s
 
 .PHONY: build-controller-image
 build-controller-image:

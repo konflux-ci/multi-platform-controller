@@ -16,21 +16,15 @@ package main
 import (
 	"context"
 	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"io/fs"
-	"math/big"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -156,10 +150,6 @@ func runDeploy() error {
 
 	if err := prepareDeploymentOverlays(cfg); err != nil {
 		return fmt.Errorf("preparing deployment overlays: %w", err)
-	}
-
-	if err := setupOTPCertificates(cfg); err != nil {
-		return fmt.Errorf("setting up OTP certificates: %w", err)
 	}
 
 	if err := deployOperator(cfg); err != nil {
@@ -580,125 +570,6 @@ func replaceInFiles(dir, old, new string) error {
 		}
 		return nil
 	})
-}
-
-func setupOTPCertificates(cfg *Config) (retErr error) {
-	fmt.Println("Generating CA bundle...")
-
-	tmpDir, err := os.MkdirTemp("", "otp-certs-")
-	if err != nil {
-		return fmt.Errorf("creating temp dir: %w", err)
-	}
-	defer func() {
-		if err := os.RemoveAll(tmpDir); err != nil && retErr == nil {
-			retErr = fmt.Errorf("removing temp dir: %w", err)
-		}
-	}()
-
-	keyPath := filepath.Join(tmpDir, "ca.key")
-	certPath := filepath.Join(tmpDir, "ca.crt")
-
-	// Generate RSA private key
-	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return fmt.Errorf("generating private key: %w", err)
-	}
-
-	// Write private key
-	if err := writePrivateKey(keyPath, privateKey); err != nil {
-		return err
-	}
-
-	// Create certificate template
-	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
-	if err != nil {
-		return fmt.Errorf("generating serial number: %w", err)
-	}
-
-	template := x509.Certificate{
-		SerialNumber: serialNumber,
-		Subject:      pkix.Name{CommonName: "multi-platform-otp-ca"},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().AddDate(1, 0, 0), // 1 year
-		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		IsCA:         true,
-		DNSNames: []string{
-			"multi-platform-otp-server",
-			"multi-platform-otp-server.multi-platform-controller",
-			"multi-platform-otp-server.multi-platform-controller.svc",
-			"multi-platform-otp-server.multi-platform-controller.svc.cluster.local",
-		},
-		BasicConstraintsValid: true,
-	}
-
-	// Create self-signed certificate
-	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
-	if err != nil {
-		return fmt.Errorf("creating certificate: %w", err)
-	}
-
-	// Write certificate
-	if err := writeCertificate(certPath, certDER); err != nil {
-		return err
-	}
-
-	fmt.Println("CA bundle created")
-	fmt.Println("Creating OTP TLS secret")
-
-	// Create TLS secret
-	cmd := exec.Command("kubectl", "create", "secret", "tls", "otp-tls-secrets", //nolint:gosec // G204 - dev tool with trusted input
-		"--key", keyPath, "--cert", certPath, "--dry-run=client", "-o", "yaml")
-	output, err := cmd.Output()
-	if err != nil {
-		return fmt.Errorf("generating tls secret yaml: %w", err)
-	}
-
-	apply := exec.Command("kubectl", "apply", "-f", "-")
-	apply.Stdin = strings.NewReader(string(output))
-	apply.Stdout = os.Stdout
-	apply.Stderr = os.Stderr
-	return apply.Run()
-}
-
-func writePrivateKey(path string, privateKey *rsa.PrivateKey) error {
-	keyFile, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600) //nolint:gosec // G304 - dev tool writing to temp directory
-	if err != nil {
-		return fmt.Errorf("creating key file: %w", err)
-	}
-
-	if err := pem.Encode(keyFile, &pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
-	}); err != nil {
-		_ = keyFile.Close()
-		return fmt.Errorf("encoding private key: %w", err)
-	}
-
-	if err := keyFile.Close(); err != nil {
-		return fmt.Errorf("closing key file: %w", err)
-	}
-	return nil
-}
-
-func writeCertificate(path string, certDER []byte) error {
-	certFile, err := os.Create(path) //nolint:gosec // G304 - dev tool writing to temp directory
-	if err != nil {
-		return fmt.Errorf("creating cert file: %w", err)
-	}
-
-	if err := pem.Encode(certFile, &pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: certDER,
-	}); err != nil {
-		_ = certFile.Close()
-		return fmt.Errorf("encoding certificate: %w", err)
-	}
-
-	if err := certFile.Close(); err != nil {
-		return fmt.Errorf("closing cert file: %w", err)
-	}
-	return nil
 }
 
 func deployOperator(cfg *Config) error {
