@@ -12,11 +12,11 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.31.2
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.245.2
 	github.com/aws/aws-sdk-go-v2/service/sts v1.38.0
-	github.com/go-logr/logr v1.4.2
+	github.com/go-logr/logr v1.4.3
 	github.com/go-logr/stdr v1.2.2
 	github.com/google/uuid v1.6.0
-	github.com/onsi/ginkgo/v2 v2.23.3
-	github.com/onsi/gomega v1.37.0
+	github.com/onsi/ginkgo/v2 v2.27.3
+	github.com/onsi/gomega v1.38.2
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.22.0
 	github.com/prometheus/client_model v0.6.1
@@ -41,6 +41,7 @@ require (
 	contrib.go.opencensus.io/exporter/ocagent v0.7.1-0.20200907061046-05415f1de66d // indirect
 	contrib.go.opencensus.io/exporter/prometheus v0.4.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
+	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.6 // indirect
