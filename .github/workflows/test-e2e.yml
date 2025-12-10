@@ -3,6 +3,12 @@ name: E2E Tests
 on:
   pull_request:
 
+  merge_group:
+    types: [checks_requested]
+
+  push:
+    branches: [ main ]
+
 permissions:
   id-token: write
 
