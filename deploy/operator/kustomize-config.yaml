@@ -1,0 +1,14 @@
+nameReference:
+- kind: ConfigMap
+  fieldSpecs:
+  # 1. Handle references in Task "env" variables
+  - kind: Task
+    path: spec/steps/env/valueFrom/configMapKeyRef/name
+  - kind: Task
+    path: spec/stepTemplate/env/valueFrom/configMapKeyRef/name
+  - kind: Task
+    path: spec/sidecars/env/valueFrom/configMapKeyRef/name
+
+  # 2. Handle references in Task "volumes"
+  - kind: Task
+    path: spec/volumes/configMap/name

@@ -5,7 +5,7 @@ metadata:
   namespace: multi-platform-controller
 spec:
   description: >-
-    This task will retrieve SSH Private Key from a Windows host and create the relevant secret.
+    This task will retrieve a SSH Private Key from a Windows host and create the relevant secret.
   params:
     - name: SECRET_NAME
       type: string
@@ -35,6 +35,8 @@ spec:
         value: $(params.USER)
       - name: SUDO_COMMANDS
         value: $(params.SUDO_COMMANDS)
+      - name: SSH_WORKSPACE_PATH
+        value: $(workspaces.ssh.path)
   steps:
     - name: provision
       image: quay.io/redhat-appstudio/multi-platform-runner:01c7670e81d5120347cf0ad13372742489985e5f@sha256:246adeaaba600e207131d63a7f706cffdcdc37d8f600c56187123ec62823ff44
@@ -42,70 +44,16 @@ spec:
       volumeMounts:
         - mountPath: /tls
           name: tls
-      script: |
-        #!/bin/bash
-        cd /tmp
-        set -o verbose
-        set -eu
-        set -o pipefail
-        mkdir -p /root/.ssh
-        cp $(workspaces.ssh.path)/id_rsa /tmp/master_key
-        chmod 0400 /tmp/master_key
-        ## TODO(filariow): we should use USER here instead,
-        # but we need to update MPC's code as today its value
-        # is hardcoded to `ec2-user`
-        export SSH_HOST="Administrator@${HOST}"
-
-        export USERNAME=konflux-builder
-        ssh -i /tmp/master_key -o StrictHostKeyChecking=no "${SSH_HOST}" "powershell -Command cat C:\\Users\\Administrator\\${USERNAME}" | sed 's/\r$//' > id_rsa
-        ssh -i /tmp/master_key -o StrictHostKeyChecking=no "${SSH_HOST}" "powershell -Command rm C:\\Users\\Administrator\\${USERNAME}"
-
-        chmod 0400 id_rsa
-        HOST=$(echo "${USERNAME}@${HOST}" | base64 -w 0)
-        DIR=$(echo 'C:\\Users\\'"${USERNAME}" | base64 -w 0)
-
-        if [ -e "/tls/tls.crt" ]; then
-          KEY=$(cat id_rsa)
-          OTP=$(curl --cacert /tls/tls.crt -XPOST -d "$KEY" https://multi-platform-otp-server.multi-platform-controller.svc.cluster.local/store-key | base64 -w 0)
-          OTP_SERVER="$(echo https://multi-platform-otp-server.multi-platform-controller.svc.cluster.local/otp | base64 -w 0)"
-          echo $OTP | base64 -d
-          cat >secret.yaml <<EOF
-          apiVersion: v1
-          data:
-            otp-ca: "$(cat /tls/tls.crt | base64 -w 0)"
-            otp: "$OTP"
-            otp-server: "$OTP_SERVER"
-            host: "$HOST"
-            user-dir: "$DIR"
-          kind: Secret
-          metadata:
-            name: "$SECRET_NAME"
-            namespace: "$NAMESPACE"
-            labels:
-              build.appstudio.redhat.com/multi-platform-secret: "true"
-          type: Opaque
-        EOF
-        else
-          KEY=$(cat id_rsa | base64 -w 0)
-          cat >secret.yaml <<EOF
-          apiVersion: v1
-          data:
-            id_rsa: "$KEY"
-            host: "$HOST"
-            user-dir: "$DIR"
-          kind: Secret
-          metadata:
-            name: "$SECRET_NAME"
-            namespace: "$NAMESPACE"
-            labels:
-              build.appstudio.redhat.com/multi-platform-secret: "true"
-          type: Opaque
-        EOF
-        fi
-
-        kubectl create -f secret.yaml
+        - mountPath: /scripts
+          name: script
+      command: ["/bin/bash"]
+      args: ["/scripts/provision-host-windows.sh"]
   volumes:
     - name: tls
       secret:
         optional: true
         secretName: otp-tls-secrets
+    - name: script
+      configMap:
+        name: provision-windows-host-script
+        defaultMode: 0755
