@@ -45,6 +45,7 @@ if [ -e "/ssh/error" ]; then
 	cat /ssh/error
 	exit 1
 fi
+echo "we are about to fail"
 exit 1
 SSH_ARGS="-o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=10"
 SSH_HOST=$(cat /ssh/host)
@@ -145,8 +146,8 @@ var _ = Describe("TaskRun execution", func() {
 
 	// After each test, check for failures and collect logs, events,
 	// and pod descriptions for debugging.
-	AfterEach(func() {
-		common.CollectDebugInfo(testContext, testNamespace)
+	AfterEach(func(ctx context.Context) {
+		common.CollectDebugInfo(ctx, k8sClient, testContext, testNamespace)
 	})
 
 	SetDefaultEventuallyTimeout(2 * time.Minute)
