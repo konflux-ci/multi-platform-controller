@@ -74,6 +74,100 @@ sudo mv "$USERNAME".pub /home/"$USERNAME"/.ssh/authorized_keys
 sudo chown "$USERNAME" /home/"$USERNAME"/.ssh/authorized_keys
 sudo restorecon -FRvv /home/"$USERNAME"/.ssh
 echo "{message: \"Successfully created and configured a new SSH key for $USERNAME.\", level: \"INFO\"}"
+
+# Calculate virtual memory limits based on available physical memory
+# Get total memory in KB from /proc/meminfo
+TOTAL_MEM_KB=\$(awk '/MemTotal/ {print \$2}' /proc/meminfo)
+# Convert to bytes for 'as' (virtual memory) limit
+TOTAL_MEM_BYTES=\$((TOTAL_MEM_KB * 1024))
+
+# Soft limit: 50% of total memory per process (reasonable for most builds)
+# Hard limit: 80% of total memory per process (allows for intensive builds)
+SOFT_AS=\$((TOTAL_MEM_BYTES / 2))
+HARD_AS=\$((TOTAL_MEM_BYTES * 80 / 100))
+
+# Ensure minimum thresholds (useful for small machines)
+# Minimum 2GB soft, 4GB hard
+MIN_SOFT_AS=\$((2 * 1024 * 1024 * 1024))
+MIN_HARD_AS=\$((4 * 1024 * 1024 * 1024))
+if (( \$SOFT_AS < \$MIN_SOFT_AS )); then
+  SOFT_AS=\$MIN_SOFT_AS
+fi
+if (( \$HARD_AS < \$MIN_HARD_AS )); then
+  HARD_AS=\$MIN_HARD_AS
+fi
+
+# Calculate memlock limits (for memory locking)
+# Soft: 25% of total memory, Hard: 50% of total memory
+SOFT_MEMLOCK=\$((TOTAL_MEM_KB / 4))
+HARD_MEMLOCK=\$((TOTAL_MEM_KB / 2))
+
+# Set resource limits for this user to prevent fork bombs
+sudo tee /etc/security/limits.d/user-$USERNAME.conf >/dev/null <<LIMITS_EOF
+$USERNAME   soft   nproc   2048
+$USERNAME   hard   nproc   4096
+$USERNAME   soft   nofile  8192
+$USERNAME   hard   nofile  16384
+$USERNAME   soft   cpu     28800      # 8 hours
+$USERNAME   hard   cpu     43200      # 12 hours
+$USERNAME   soft   as      \${SOFT_AS}
+$USERNAME   hard   as      \${HARD_AS}
+$USERNAME   soft   fsize   10485760   # 10GB in KB
+$USERNAME   hard   fsize   20971520   # 20GB in KB
+$USERNAME   soft   memlock \${SOFT_MEMLOCK}
+$USERNAME   hard   memlock \${HARD_MEMLOCK}
+LIMITS_EOF
+
+# Ensure PAM enforces these limits
+PAM_FILE="/etc/pam.d/system-auth"
+
+# Add pam_limits.so if not already present
+if ! grep -q "pam_limits.so" "\$PAM_FILE"; then
+  echo "session required pam_limits.so" | sudo tee -a "\$PAM_FILE" >/dev/null
+  echo "{message: \"PAM limits enabled in \$PAM_FILE.\", level: \"INFO\"}"
+else
+  echo "{message: \"PAM limits already configured in \$PAM_FILE.\", level: \"INFO\"}"
+fi
+
+SSH_PAM_FILE="/etc/pam.d/sshd"
+if ! grep -q "pam_limits.so" "\$SSH_PAM_FILE"; then
+  echo "session required pam_limits.so" | sudo tee -a "\$SSH_PAM_FILE" >/dev/null
+  echo "{message: \"PAM limits enabled in \$SSH_PAM_FILE.\", level: \"INFO\"}"
+else
+  echo "{message: \"PAM limits already configured in \$SSH_PAM_FILE.\", level: \"INFO\"}"
+fi
+
+# Get the UID for systemd slice configuration
+USER_UID=\$(id -u $USERNAME)
+
+# Calculate CPU quota dynamically based on available CPUs
+# Allow user to use 90% of total CPU capacity, leaving 10% for system
+TOTAL_CPUS=\$(nproc)
+CPU_QUOTA_PERCENT=\$((TOTAL_CPUS * 90))
+
+# Configure systemd user slice limits for additional protection
+sudo mkdir -p "/etc/systemd/system/user-\${USER_UID}.slice.d"
+sudo tee /etc/systemd/system/user-\${USER_UID}.slice.d/limits.conf >/dev/null <<SYSTEMD_LIMITS
+[Slice]
+# Limit total tasks (processes + threads) - allows for build parallelism
+TasksMax=4096
+# Memory limit - prevent memory exhaustion
+MemoryMax=90%
+# CPU quota - dynamically calculated: 90% of \${TOTAL_CPUS} CPUs = \${CPU_QUOTA_PERCENT}%
+CPUQuota=\${CPU_QUOTA_PERCENT}%
+# CPU weight for fair scheduling (default is 100, range 1-10000)
+# Lower weight = less priority when competing with other users
+CPUWeight=100
+SYSTEMD_LIMITS
+
+# Reload systemd to apply slice changes
+sudo systemctl daemon-reload
+echo "Systemd slice limits configured for user $USERNAME (UID: \$USER_UID)"
+echo "{message: \"  - CPUs available: \$TOTAL_CPUS.\", level: \"INFO\"}"
+echo "{message: \"  - CPU quota set to: \${CPU_QUOTA_PERCENT}% (90% of total).\", level: \"INFO\"}"
+echo "{message: \"  - Total memory: \$((TOTAL_MEM_KB / 1024)) MB.\", level: \"INFO\"}"
+echo "{message: \"  - Virtual memory (as) soft limit: \$((SOFT_AS / 1024 / 1024 / 1024)) GB per process.\", level: \"INFO\"}"
+echo "{message: \"  - Virtual memory (as) hard limit: \$((HARD_AS / 1024 / 1024 / 1024)) GB per process.\", level: \"INFO\"}"
 EOF
 
 # Add sudo access (if needed) to the script
