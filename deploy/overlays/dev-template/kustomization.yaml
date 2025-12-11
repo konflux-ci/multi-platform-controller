@@ -5,6 +5,7 @@ resources:
  - "../../operator"
  - "../../otp"
  - host-config.yaml
+ - otp-certificate.yaml
 
 images:
   - name: multi-platform-controller

@@ -1,0 +1,102 @@
+name: E2E Tests
+
+on:
+  pull_request:
+
+  merge_group:
+    types: [checks_requested]
+
+  push:
+    branches: [ main ]
+
+permissions:
+  id-token: write
+
+jobs:
+  test-e2e:
+    name: Run on Ubuntu
+    runs-on: ubuntu-latest
+    env:
+      AWS_ROLE_ARN: arn:aws:iam::418272753558:role/multi-platform-github-action
+      AWS_REGION: us-east-1
+      AWS_ROLE_DURATION: 900 # 15 minutes
+      INSTANCE_TAG: ${{ github.run_id }}-development
+      KIND_EXPERIMENTAL_PROVIDER: podman
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          # this might remove tools that are actually needed,
+          # if set to "true" but frees about 6 GB
+          tool-cache: false
+
+          docker-images: false
+
+      - name: Clone the code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v5.1.1
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: ${{ env.AWS_ROLE_DURATION }}
+
+      - name: Validate AWS Credentials
+        run: |
+          aws sts get-caller-identity
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install the latest version of kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Verify kind installation
+        run: kind version
+
+      - name: Create kind cluster
+        run: kind create cluster
+
+      - name: Build and load images
+        run: |
+          go mod tidy
+          make load-image
+          podman exec kind-control-plane crictl images
+
+      - name: Install dependencies
+        run: |
+          make tekton
+          make cert-manager
+
+      - name: Deploy MPC
+        run: |
+          make deploy
+
+      - name: Run Test e2e
+        run: |
+          make test-e2e
+
+      # Reconfigure AWS credentials for cleanup to ensure they're available even if
+      # The credentials expired (15-minute duration) during long-running tests
+
+      - name: Configure AWS Credentials for Cleanup
+        if: always()
+        uses: aws-actions/configure-aws-credentials@v5.1.1
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: ${{ env.AWS_ROLE_DURATION }}
+
+      - name: Delete AWS EC2 Instances
+        if: always()
+        run: ./out/devsetup cleanup-instances ${{ env.INSTANCE_TAG }}
+
+      - name: Delete AWS EC2 Key Pair
+        if: always()
+        run: ./out/devsetup cleanup-keypair ${{ github.run_id }}

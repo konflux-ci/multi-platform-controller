@@ -8,6 +8,9 @@ import (
 var (
 	// Default allocation timeout for dynamic platforms in seconds (10 minutes)
 	defaultAllocationTimeout = 600
+	// Default IP check interval for dynamic VM
+	defaultCheckInterval = 60
+
 	// Default concurrency for static hosts
 	defaultStaticHostsConcurrency = 0
 )
@@ -171,7 +174,7 @@ func parseRequiredSSHSecretField(data map[string]string, prefix, platform, platf
 	}
 }
 
-// parseDynamicPlatformConfig parses and validates a single dynamic platform configuration
+// ParseDynamicPlatformConfig parses and validates a single dynamic platform configuration
 // This function extracts configuration for a dynamic platform from the ConfigMap data,
 // validates all required and optional fields, and returns a structured DynamicPlatformConfig.
 // Dynamic platforms support on-demand cloud instances (AWS EC2, IBM Cloud PowerPC and s390x) for now.
@@ -228,6 +231,18 @@ func ParseDynamicPlatformConfig(data map[string]string, platform string) (Dynami
 	} else {
 		// Default to 10 minutes if not specified
 		dynamicConfig.AllocationTimeout = int64(defaultAllocationTimeout)
+	}
+
+	// Check interval
+	if intervalStr := data[prefix+"check-interval"]; intervalStr != "" {
+		interval, err := validateNonZeroPositiveNumber(intervalStr)
+		if err != nil {
+			return DynamicPlatformConfig{}, fmt.Errorf("dynamic platform '%s': invalid check-interval '%s': %w", platform, intervalStr, err)
+		}
+		dynamicConfig.CheckInterval = int64(interval)
+	} else {
+		// Default to 60 sec if not specified
+		dynamicConfig.CheckInterval = int64(defaultCheckInterval)
 	}
 
 	// SSH secret (required)
@@ -400,6 +415,7 @@ type DynamicPlatformConfig struct {
 	MaxInstances      int    `mapstructure:"max-instances"`
 	InstanceTag       string `mapstructure:"instance-tag,omitempty"`
 	AllocationTimeout int64  `mapstructure:"allocation-timeout,omitempty"`
+	CheckInterval     int64  `mapstructure:"check-interval,omitempty"`
 	SSHSecret         string `mapstructure:"ssh-secret"`
 	SudoCommands      string `mapstructure:"sudo-commands,omitempty"`
 }

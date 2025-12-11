@@ -1,0 +1,37 @@
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: otp-selfsigned-issuer
+  namespace: multi-platform-controller
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: otp-tls-certificate
+  namespace: multi-platform-controller
+spec:
+  secretName: otp-tls-secrets
+  duration: 8760h # 1 year
+  renewBefore: 720h # 30 days
+  issuerRef:
+    name: otp-selfsigned-issuer
+    kind: Issuer
+  commonName: multi-platform-otp-ca
+  isCA: false
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  usages:
+    - digital signature
+    - key encipherment
+    - server auth
+    - cert sign
+  dnsNames:
+    - multi-platform-otp-server
+    - multi-platform-otp-server.multi-platform-controller
+    - multi-platform-otp-server.multi-platform-controller.svc
+    - multi-platform-otp-server.multi-platform-controller.svc.cluster.local
+

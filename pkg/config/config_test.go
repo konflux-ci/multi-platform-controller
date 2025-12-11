@@ -246,6 +246,7 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 					"dynamic.linux-amd64.allocation-timeout": "900",
 					"dynamic.linux-amd64.ssh-secret":         "aws-secret",
 					"dynamic.linux-amd64.sudo-commands":      "yum install -y docker",
+					"dynamic.linux-amd64.check-interval":     "70",
 				}
 
 				dynamicConfig, err := ParseDynamicPlatformConfig(data, "linux/amd64")
@@ -256,6 +257,7 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 				Expect(dynamicConfig.SSHSecret).Should(Equal("aws-secret"))
 				Expect(dynamicConfig.InstanceTag).Should(BeEmpty()) // optional field
 				Expect(dynamicConfig.SudoCommands).Should(Equal("yum install -y docker"))
+				Expect(dynamicConfig.CheckInterval).Should(Equal(int64(70)))
 			})
 
 			It("should parse IBM platform with default timeout", func(ctx SpecContext) {

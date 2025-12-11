@@ -34,7 +34,7 @@ func CreateEc2CloudConfig(platformName string, config map[string]string, systemN
 	var iops *int32
 	iopsString := config["dynamic."+platformName+".iops"]
 	if iopsString != "" {
-		iopsTmp, err := strconv.Atoi(iopsString)
+		iopsTmp, err := strconv.ParseInt(iopsString, 10, 32)
 		if err == nil {
 			iops = aws.Int32(int32(iopsTmp))
 		}
@@ -43,7 +43,7 @@ func CreateEc2CloudConfig(platformName string, config map[string]string, systemN
 	var throughput *int32
 	throughputString := config["dynamic."+platformName+".throughput"]
 	if throughputString != "" {
-		throughputTmp, err := strconv.Atoi(throughputString)
+		throughputTmp, err := strconv.ParseInt(throughputString, 10, 32)
 		if err == nil {
 			throughput = aws.Int32(int32(throughputTmp))
 		}
@@ -57,21 +57,25 @@ func CreateEc2CloudConfig(platformName string, config map[string]string, systemN
 	}
 
 	return AWSEc2DynamicConfig{Region: config["dynamic."+platformName+".region"],
-		Ami:                  config["dynamic."+platformName+".ami"],
-		InstanceType:         config["dynamic."+platformName+".instance-type"],
-		KeyName:              config["dynamic."+platformName+".key-name"],
-		Secret:               config["dynamic."+platformName+".aws-secret"],
-		SecurityGroup:        config["dynamic."+platformName+".security-group"],
-		SecurityGroupId:      config["dynamic."+platformName+".security-group-id"],
-		SubnetId:             config["dynamic."+platformName+".subnet-id"],
-		MaxSpotInstancePrice: config["dynamic."+platformName+".spot-price"],
-		InstanceProfileName:  config["dynamic."+platformName+".instance-profile-name"],
-		InstanceProfileArn:   config["dynamic."+platformName+".instance-profile-arn"],
-		SystemNamespace:      systemNamespace,
-		Disk:                 int32(disk),
-		Iops:                 iops,
-		Throughput:           throughput,
-		UserData:             userDataPtr,
+		Ami:                     config["dynamic."+platformName+".ami"],
+		InstanceType:            config["dynamic."+platformName+".instance-type"],
+		KeyName:                 config["dynamic."+platformName+".key-name"],
+		Secret:                  config["dynamic."+platformName+".aws-secret"],
+		SecurityGroup:           config["dynamic."+platformName+".security-group"],
+		SecurityGroupId:         config["dynamic."+platformName+".security-group-id"],
+		SubnetId:                config["dynamic."+platformName+".subnet-id"],
+		MaxSpotInstancePrice:    config["dynamic."+platformName+".spot-price"],
+		InstanceProfileName:     config["dynamic."+platformName+".instance-profile-name"],
+		InstanceProfileArn:      config["dynamic."+platformName+".instance-profile-arn"],
+		StrictPublicAddress:     config["dynamic."+platformName+".strict-public-address"] == "true",
+		SystemNamespace:         systemNamespace,
+		Disk:                    int32(disk),
+		Iops:                    iops,
+		Throughput:              throughput,
+		UserData:                userDataPtr,
+		Tenancy:                 config["dynamic."+platformName+".tenancy"],
+		HostResourceGroupArn:    config["dynamic."+platformName+".host-resource-group-arn"],
+		LicenseConfigurationArn: config["dynamic."+platformName+".license-configuration-arn"],
 	}
 }
 
@@ -95,7 +99,13 @@ func (ec AWSEc2DynamicConfig) LaunchInstance(kubeClient client.Client, ctx conte
 	}
 
 	// Launch the new EC2 instance
-	launchInput := ec.configureInstance(taskRunName, instanceTag, additionalInstanceTags)
+	launchInput, err := ec.configureInstance(taskRunName, instanceTag, additionalInstanceTags)
+	if err != nil {
+		if strings.Contains(err.Error(), "MacOS") {
+			return "", fmt.Errorf("missing configuration fields mandatory for MacOS instances: %w", err)
+		}
+		return "", fmt.Errorf("failed to configure EC2 instance for %s: %w", taskRunName, err)
+	}
 	runInstancesOutput, err := ec2Client.RunInstances(ctx, launchInput)
 	if err != nil {
 		// Check to see if there were market options for spot instances.
@@ -404,6 +414,21 @@ type AWSEc2DynamicConfig struct {
 	// for the instance's EBS volume(s).
 	Iops *int32
 
-	// TODO: determine what this is for (see commonUserData in ibmp_test.go)
 	UserData *string
+
+	// Tenancy specifies the tenancy of the instance. Valid values are "default",
+	// "dedicated", or "host". For Mac instances, use "host".
+	Tenancy string
+
+	// HostResourceGroupArn is the ARN of the host resource group in which to
+	// launch the instance. Required when Tenancy is "host".
+	HostResourceGroupArn string
+
+	// LicenseConfigurationArn is the ARN of the license configuration to
+	// associate with the instance.
+	LicenseConfigurationArn string
+
+	// StrictPublicAddress specifies whether the instance must use a public IP address.
+	// If false, it would be also possible for the instance to use a private IP address.
+	StrictPublicAddress bool
 }

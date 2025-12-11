@@ -2,6 +2,7 @@ package aws
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -39,7 +40,9 @@ func (ec AWSEc2DynamicConfig) validateIPAddress(ctx context.Context, instance *t
 	var err error
 	if instance.PublicDnsName != nil && *instance.PublicDnsName != "" {
 		ip = *instance.PublicDnsName
-	} else if instance.PrivateIpAddress != nil && *instance.PrivateIpAddress != "" {
+	} else if instance.PublicIpAddress != nil && *instance.PublicIpAddress != "" {
+		ip = *instance.PublicIpAddress
+	} else if instance.PrivateIpAddress != nil && *instance.PrivateIpAddress != "" && !ec.StrictPublicAddress {
 		ip = *instance.PrivateIpAddress
 	}
 
@@ -67,12 +70,25 @@ func (ec AWSEc2DynamicConfig) createClient(kubeClient client.Client, ctx context
 }
 
 // configureInstance creates and returns an EC2 instance configuration.
-func (ec AWSEc2DynamicConfig) configureInstance(taskRunName string, instanceTag string, additionalInstanceTags map[string]string) *ec2.RunInstancesInput {
+func (ec AWSEc2DynamicConfig) configureInstance(taskRunName string, instanceTag string, additionalInstanceTags map[string]string) (*ec2.RunInstancesInput, error) {
+	// Validate that MacOS-specific fields are either all set or all empty
+	tenancySet := ec.Tenancy != ""
+	hostResourceGroupSet := ec.HostResourceGroupArn != ""
+	licenseConfigSet := ec.LicenseConfigurationArn != ""
+
+	if tenancySet || hostResourceGroupSet || licenseConfigSet {
+		if !tenancySet || !hostResourceGroupSet || !licenseConfigSet {
+			return nil, errors.New("MacOS dedicated host configuration requires all three fields: Tenancy, HostResourceGroupArn, and LicenseConfigurationArn must be set together")
+		}
+	}
+
 	var subnet *string
 	var securityGroups []string
 	var securityGroupIds []string
 	var instanceProfile *types.IamInstanceProfileSpecification
 	var instanceMarketOpts *types.InstanceMarketOptionsRequest
+	var placement *types.Placement
+	var licenseSpecifications []types.LicenseConfigurationRequest
 
 	if ec.SubnetId != "" {
 		subnet = aws.String(ec.SubnetId)
@@ -101,6 +117,18 @@ func (ec AWSEc2DynamicConfig) configureInstance(taskRunName string, instanceTag 
 				InstanceInterruptionBehavior: types.InstanceInterruptionBehaviorTerminate,
 				SpotInstanceType:             types.SpotInstanceTypeOneTime,
 			},
+		}
+	}
+
+	// Configure placement and license for dedicated hosts (e.g., Mac instances)
+	// All three fields (Tenancy, HostResourceGroupArn, LicenseConfigurationArn) are validated to be set together
+	if ec.Tenancy != "" {
+		placement = &types.Placement{
+			Tenancy:              types.Tenancy(ec.Tenancy),
+			HostResourceGroupArn: aws.String(ec.HostResourceGroupArn),
+		}
+		licenseSpecifications = []types.LicenseConfigurationRequest{
+			{LicenseConfigurationArn: aws.String(ec.LicenseConfigurationArn)},
 		}
 	}
 
@@ -138,10 +166,12 @@ func (ec AWSEc2DynamicConfig) configureInstance(taskRunName string, instanceTag 
 		}},
 		InstanceInitiatedShutdownBehavior: types.ShutdownBehaviorTerminate,
 		InstanceMarketOptions:             instanceMarketOpts,
+		Placement:                         placement,
+		LicenseSpecifications:             licenseSpecifications,
 		TagSpecifications: []types.TagSpecification{
 			{ResourceType: types.ResourceTypeInstance, Tags: instanceTags},
 		},
-	}
+	}, nil
 }
 
 // findInstancesWithoutTaskRuns iterates over instances retrieved from the ec cloud and returns a list of those that
@@ -211,6 +241,7 @@ func (r SecretCredentialsProvider) Retrieve(ctx context.Context) (aws.Credential
 		return aws.Credentials{
 			AccessKeyID:     os.Getenv("MULTI_ARCH_ACCESS_KEY"),
 			SecretAccessKey: os.Getenv("MULTI_ARCH_SECRET_KEY"),
+			SessionToken:    os.Getenv("MULTI_ARCH_SESSION_TOKEN"),
 		}, nil
 	}
 
@@ -223,8 +254,16 @@ func (r SecretCredentialsProvider) Retrieve(ctx context.Context) (aws.Credential
 			fmt.Errorf("failed to retrieve the secret %v from the Kubernetes client: %w", nameSpacedSecret, err)
 	}
 
+	accessKeyID := string(s.Data["access-key-id"])
+	secretAccessKey := string(s.Data["secret-access-key"])
+	sessionToken := ""
+	if sessionTokenData, ok := s.Data["session-token"]; ok {
+		sessionToken = string(sessionTokenData)
+	}
+
 	return aws.Credentials{
-		AccessKeyID:     string(s.Data["access-key-id"]),
-		SecretAccessKey: string(s.Data["secret-access-key"]),
+		AccessKeyID:     accessKeyID,
+		SecretAccessKey: secretAccessKey,
+		SessionToken:    sessionToken,
 	}, nil
 }

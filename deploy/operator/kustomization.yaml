@@ -8,10 +8,12 @@ resources:
   - namespace.yaml
   - deployment.yaml
   - provision-shared-host.yaml
+  - provision-host-windows.yaml
   - clean-shared-host.yaml
   - openshift-specific-rbac.yaml
   - update-host.yaml
   - metrics_service.yaml
+  - provision-host-macos.yaml
 patches:
   - target:
       kind: ClusterRole
