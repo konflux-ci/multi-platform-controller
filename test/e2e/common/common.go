@@ -251,11 +251,17 @@ func collectPodsInfo(ctx context.Context, k8sClient client.Client, logDir, names
 		return result
 	}
 
+	_, _ = fmt.Fprintf(GinkgoWriter, "Found %d pods in %s namespace\n", len(podList.Items), namespace)
+
 	// Write pods YAML to file
 	podsYaml, err := yaml.Marshal(podList)
-	if err == nil {
+	if err != nil {
+		_, _ = fmt.Fprintf(GinkgoWriter, "Failed to marshal pods to YAML: %s\n", err)
+	} else {
 		filename := fmt.Sprintf("pods-%s.yaml", namespace)
-		_ = writeToFile(logDir, filename, string(podsYaml))
+		if writeErr := writeToFile(logDir, filename, string(podsYaml)); writeErr != nil {
+			_, _ = fmt.Fprintf(GinkgoWriter, "Failed to write pods YAML file: %s\n", writeErr)
+		}
 	}
 
 	// Categorize pods by status
@@ -272,11 +278,32 @@ func collectPodsInfo(ctx context.Context, k8sClient client.Client, logDir, names
 			}
 		}
 
+		// Check if any container failed (non-zero exit code)
+		hasFailedContainer := false
+		var failedContainerInfo string
+		for _, cs := range pod.Status.ContainerStatuses {
+			if cs.State.Terminated != nil && cs.State.Terminated.ExitCode != 0 {
+				hasFailedContainer = true
+				failedContainerInfo = fmt.Sprintf("container %s exited with code %d",
+					cs.Name, cs.State.Terminated.ExitCode)
+				break
+			}
+		}
+
 		switch {
+		case phase == corev1.PodFailed:
+			result.FailedPods = append(result.FailedPods, podNN)
+			result.ProblematicPodsDisplay = append(result.ProblematicPodsDisplay,
+				fmt.Sprintf("  %s (Status: %s)", podNN, phase))
+		case phase == corev1.PodSucceeded && hasFailedContainer:
+			// Pod completed but a container failed
+			result.FailedPods = append(result.FailedPods, podNN)
+			result.ProblematicPodsDisplay = append(result.ProblematicPodsDisplay,
+				fmt.Sprintf("  %s (Status: %s, %s)", podNN, phase, failedContainerInfo))
 		case phase == corev1.PodSucceeded:
 			result.SucceededPods = append(result.SucceededPods, podNN)
 		case phase == corev1.PodRunning && isReady:
-			// Running and ready - not problematic, but we still want to collect logs
+			// Running and ready - not problematic
 			result.SucceededPods = append(result.SucceededPods, podNN)
 		case phase == corev1.PodRunning && !isReady:
 			// Running but not ready
@@ -284,7 +311,7 @@ func collectPodsInfo(ctx context.Context, k8sClient client.Client, logDir, names
 			result.ProblematicPodsDisplay = append(result.ProblematicPodsDisplay,
 				fmt.Sprintf("  %s (Status: %s, Ready: false)", podNN, phase))
 		default:
-			// Failed, Pending, Unknown, etc.
+			// Pending, Unknown, etc.
 			result.FailedPods = append(result.FailedPods, podNN)
 			result.ProblematicPodsDisplay = append(result.ProblematicPodsDisplay,
 				fmt.Sprintf("  %s (Status: %s)", podNN, phase))
@@ -387,6 +414,9 @@ func GetK8sClientOrDie(ctx context.Context) client.Client {
 
 	_, err = k8sCache.GetInformer(ctx, &tekv1.TaskRun{})
 	Expect(err).ToNot(HaveOccurred(), "failed to setup informer for taskruns")
+
+	_, err = k8sCache.GetInformer(ctx, &corev1.Pod{})
+	Expect(err).ToNot(HaveOccurred(), "failed to setup informer for pods")
 
 	go func() {
 		if err := k8sCache.Start(ctx); err != nil {
