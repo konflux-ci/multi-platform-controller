@@ -21,7 +21,7 @@ export SSH_HOST="$USER@$HOST"
 SSH_OPTS="-i /tmp/master_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
 SSH_UPDATE_OUTPUT=$(
-    ssh "$SSH_OPTS" "$SSH_HOST" "sudo dnf update -y" 2>&1
+    ssh "${SSH_OPTS}" "$SSH_HOST" "sudo dnf update -y" 2>&1
 ) || {
     # If the command fails, the `||` block executes.
     # Note: Using `||` suppresses set -e for this line.
@@ -67,7 +67,7 @@ EOF
 
 # Execute script to prune dangling users remotely
 SSH_USER_DEL_OUTPUT=$(
-    ssh "$SSH_OPTS" "$SSH_HOST" "bash -s" <script.sh 2>&1
+    ssh "${SSH_OPTS}" "$SSH_HOST" "bash -s" <script.sh 2>&1
 ) || {
     # If the command fails, the `||` block executes.
     # Note: Using `||` suppresses set -e for this line.

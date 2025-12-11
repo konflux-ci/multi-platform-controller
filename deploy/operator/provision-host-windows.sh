@@ -27,10 +27,10 @@ SSH_OPTS="-i /tmp/master_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/
 export USERNAME=konflux-builder
 
 # Copy remote SSH key and then delete on VM
-ssh "$SSH_OPTS" "$SSH_HOST" "powershell -Command cat C:\\Users\\Administrator\\${USERNAME}" | sed 's/\r$//' > id_rsa
+ssh "${SSH_OPTS}" "$SSH_HOST" "powershell -Command cat C:\\Users\\Administrator\\${USERNAME}" | sed 's/\r$//' > id_rsa
 cho "{message: \"Successfully copied remote SSH key from VM.\", level: \"INFO\"}"
 SSH_KEY_RM_OUTPUT=$(
-    ssh "$SSH_OPTS" "$SSH_HOST" "powershell -Command rm C:\\Users\\Administrator\\${USERNAME}"
+    ssh "${SSH_OPTS}"  "$SSH_HOST" "powershell -Command rm C:\\Users\\Administrator\\${USERNAME}"
 ) || {
     # If the command fails, the '||' block executes.
     # Note: Using '||' suppresses set -e for this line.

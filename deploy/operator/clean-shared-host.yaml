@@ -20,8 +20,6 @@ spec:
     - name: ssh
   stepTemplate:
     env:
-      - name: SECRET_NAME
-        value: $(params.SECRET_NAME)
       - name: TASKRUN_NAME
         value: $(params.TASKRUN_NAME)
       - name: NAMESPACE

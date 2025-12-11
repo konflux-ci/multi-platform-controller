@@ -1,6 +1,7 @@
 #!/bin/bash
 set -o verbose
 set -eu
+set -o pipefail
 
 # --- Error Handling Function ---
 # shellcheck disable=SC2317
@@ -21,14 +22,14 @@ cp "$SSH_WORKSPACE_PATH/id_rsa" /tmp/master_key
 chmod 0400 /tmp/master_key
 export SSH_HOST="$USER@$HOST"
 SSH_MULTIPLEX_OPTS="-o ControlMaster=auto -o ControlPath=/tmp/ssh-%r@%h:%p"
-SSH_OPTS="-i /tmp/master_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $SSH_MULTIPLEX_OPTS"
+SSH_OPTS="-i /tmp/master_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${SSH_MULTIPLEX_OPTS}"
 
 USERNAME=u-$(echo "$TASKRUN_NAME$NAMESPACE" | md5sum | cut -b-28)
 export USERNAME
 
 # Check if the user exists
 SSH_USER_CHK_OUTPUT=$(
-    ssh "$SSH_OPTS" "$SSH_HOST" id -u "$USERNAME"
+    ssh "${SSH_OPTS}" "$SSH_HOST" id -u "$USERNAME"
 ) || {
     # If the command fails, the `||` block executes.
     # Note: Using `||` suppresses set -e for this line.
@@ -44,7 +45,7 @@ echo "{message: \"User $USERNAME exists, proceeding with cleanup.\", level: \"IN
 
 # Kill all processes associated with user
 SSH_KILL_OUTPUT=$(
-    ssh "$SSH_OPTS" "$SSH_HOST" sudo killall -9 -u "$USERNAME" 2>&1
+    ssh "${SSH_OPTS}" "$SSH_HOST" sudo killall -9 -u "$USERNAME" 2>&1
 ) || {
     # If the command fails, the `||` block executes.
     # Note: Using `||` suppresses set -e for this line.
@@ -53,7 +54,7 @@ SSH_KILL_OUTPUT=$(
 }
 
 for i in {10..1}; do
-  if ssh "$SSH_OPTS" "$SSH_HOST" sudo userdel -f -r -Z "$USERNAME"; then
+  if ssh "${SSH_OPTS}" "$SSH_HOST" sudo userdel -f -r -Z "$USERNAME"; then
     echo "{message: \"User $USERNAME successfully deleted.\", level: \"INFO\"}"
     exit 0
   fi

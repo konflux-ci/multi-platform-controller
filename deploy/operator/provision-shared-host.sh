@@ -22,7 +22,7 @@ cp "$SSH_WORKSPACE_PATH/id_rsa" /tmp/master_key
 chmod 0400 /tmp/master_key
 export SSH_HOST="$USER@$HOST"
 SSH_MULTIPLEX_OPTS="-o ControlMaster=auto -o ControlPath=/tmp/ssh-%r@%h:%p"
-SSH_OPTS="-i /tmp/master_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $SSH_MULTIPLEX_OPTS"
+SSH_OPTS="-i /tmp/master_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${SSH_MULTIPLEX_OPTS}"
 
 USERNAME=u-$(echo "$TASKRUN_NAME$NAMESPACE" | md5sum | cut -b-28)
 export USERNAME
@@ -69,7 +69,7 @@ fi
 
 # Execute provision script on VM
 SSH_PROVISION_OUTPUT=$(
-    ssh "$SSH_OPTS" "$SSH_HOST" "bash -s" <script.sh 2>&1
+    ssh "${SSH_OPTS}" "$SSH_HOST" "bash -s" <script.sh 2>&1
 ) || {
     # If the command fails, the '||' block executes.
     # Note: Using '||' suppresses set -e for this line.
@@ -80,10 +80,10 @@ echo "$SSH_PROVISION_OUTPUT"
 echo "{message: \"Successfully ran provisioning script on VM.\", level: \"INFO\"}"
 
 # Copy/configure remotely-generated SSH key and then delete on VM
-ssh "$SSH_OPTS" "$SSH_HOST" cat "\$USERNAME"  >id_rsa
+ssh "${SSH_OPTS}" "$SSH_HOST" cat "\$USERNAME"  >id_rsa
 echo "{message: \"Successfully copied remotely-generated SSH key from VM.\", level: \"INFO\"}"
 SSH_KEY_RM_OUTPUT=$(
-    ssh "$SSH_OPTS" "$SSH_HOST" rm "\$USERNAME" 2>&1
+    ssh "${SSH_OPTS}" "$SSH_HOST" rm "\$USERNAME" 2>&1
 ) || {
     # If the command fails, the '||' block executes.
     # Note: Using '||' suppresses set -e for this line.
