@@ -38,7 +38,7 @@ SSH_USER_CHK_OUTPUT=$(
       echo "{message: \"User $USERNAME already deleted, exiting...\", level: \"INFO\"}"
       exit 0
     fi
-    echo "{message: \"Remote User Check Output: $SSH_USER_CHK_OUTPUT\", level: \"WARNING\"}" >&2
+    echo "{message: \"Remote User Check Output: ${SSH_USER_CHK_OUTPUT//$'\n'/ }\", level: \"WARNING\"}" >&2
     exit $exit_code
 }
 echo "{message: \"User $USERNAME exists, proceeding with cleanup.\", level: \"INFO\"}"
@@ -49,7 +49,7 @@ SSH_KILL_OUTPUT=$(
 ) || {
     # If the command fails, the `||` block executes.
     # Note: Using `||` suppresses set -e for this line.
-    echo "{message: \"Remote Kill Output: $SSH_KILL_OUTPUT\", level: \"WARNING\"}" >&2
+    echo "{message: \"Remote Kill Output: ${SSH_KILL_OUTPUT//$'\n'/ }\", level: \"WARNING\"}" >&2
     exit 1
 }
 
