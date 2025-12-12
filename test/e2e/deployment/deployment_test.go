@@ -48,7 +48,11 @@ var _ = Describe("Deployment", Ordered, func() {
 				podName := common.VerifyControllerPodRunning(g)
 				testContext.SetControllerPodName(podName)
 			}
-			Eventually(verifyControllerUp).Should(Succeed())
+			// Wait up to 2 minutes for the pod to be ready.
+			// The readiness probe has initialDelaySeconds: 5 and periodSeconds: 10,
+			// so it may take some time for the pod to become ready, especially
+			// if waiting for TaskRun CRD to be available (up to 5 minutes in controller.go).
+			Eventually(verifyControllerUp, "2m", "5s").Should(Succeed())
 		})
 
 		// TODO: Customize the e2e test suite with scenarios specific to your project.
