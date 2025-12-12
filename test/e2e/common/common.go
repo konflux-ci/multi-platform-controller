@@ -476,30 +476,39 @@ func CollectDebugInfo(ctx context.Context, k8sClient client.Client, testContext 
 
 	// Collect pod info from both namespaces
 	mpcPodsInfo := collectPodsInfo(ctx, k8sClient, logDir, MPCNamespace)
-	testPodsInfo := collectPodsInfo(ctx, k8sClient, logDir, testNamespace)
 
-	// Merge failed pods
+	// Initialize with default values
 	var allFailedPods []types.NamespacedName
-	allFailedPods = append(allFailedPods, mpcPodsInfo.FailedPods...)
-	allFailedPods = append(allFailedPods, testPodsInfo.FailedPods...)
-
-	// Merge problematic pods display
 	var problematicPods []string
-	problematicPods = append(problematicPods, mpcPodsInfo.ProblematicPodsDisplay...)
-	problematicPods = append(problematicPods, testPodsInfo.ProblematicPodsDisplay...)
-
-	// Collect pod logs and aggregate failed pod logs for the summary
 	failedPodLogs := make(map[types.NamespacedName]string)
+
+	// Add MPC namespace pods
+	allFailedPods = append(allFailedPods, mpcPodsInfo.FailedPods...)
+	problematicPods = append(problematicPods, mpcPodsInfo.ProblematicPodsDisplay...)
+
+	// Only collect test namespace pods if testNamespace is not empty
+	var testPodsInfo PodsByStatus
+	if testNamespace != "" {
+		testPodsInfo = collectPodsInfo(ctx, k8sClient, logDir, testNamespace)
+		allFailedPods = append(allFailedPods, testPodsInfo.FailedPods...)
+		problematicPods = append(problematicPods, testPodsInfo.ProblematicPodsDisplay...)
+	} else {
+		_, _ = fmt.Fprintf(GinkgoWriter, "%s namespace is empty\n", testNamespace)
+	}
 
 	// Get all pods from MPC namespace (succeeded + failed)
 	allMPCPods := append(mpcPodsInfo.SucceededPods, mpcPodsInfo.FailedPods...)
 	By("Fetching logs of pods in the " + MPCNamespace + " namespace")
 	maps.Copy(failedPodLogs, collectNamespacePodLogs(logDir, allMPCPods, allFailedPods))
 
-	// Get all pods from test namespace (succeeded + failed)
-	allTestPods := append(testPodsInfo.SucceededPods, testPodsInfo.FailedPods...)
-	By("Fetching logs of all pods in the " + testNamespace + " namespace")
-	maps.Copy(failedPodLogs, collectNamespacePodLogs(logDir, allTestPods, allFailedPods))
+	// Get all pods from test namespace (succeeded + failed) if test namespace is specified
+	if testNamespace != "" {
+		allTestPods := append(testPodsInfo.SucceededPods, testPodsInfo.FailedPods...)
+		By("Fetching logs of all pods in the " + testNamespace + " namespace")
+		maps.Copy(failedPodLogs, collectNamespacePodLogs(logDir, allTestPods, allFailedPods))
+	} else {
+		_, _ = fmt.Fprintf(GinkgoWriter, "%s namespace is empty\n", testNamespace)
+	}
 
 	printDebugSummary(failedTaskRuns, problematicPods, failedPodLogs, logDir)
 }
