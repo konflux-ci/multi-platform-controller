@@ -4,10 +4,8 @@ metadata:
   name: clean-shared-host
 spec:
   description: >-
-    This task will clean up after a build
+    This task will clean up after a build.
   params:
-    - name: SECRET_NAME
-      type: string
     - name: TASKRUN_NAME
       type: string
     - name: NAMESPACE
@@ -18,53 +16,29 @@ spec:
       type: string
   workspaces:
     - name: ssh
-
+  stepTemplate:
+    env:
+      - name: TASKRUN_NAME
+        value: $(params.TASKRUN_NAME)
+      - name: NAMESPACE
+        value: $(params.NAMESPACE)
+      - name: HOST
+        value: $(params.HOST)
+      - name: USER
+        value: $(params.USER)
+      - name: SSH_WORKSPACE_PATH
+        value: $(workspaces.ssh.path)
   steps:
-    - name: provision
+    - name: clean
       image: quay.io/redhat-appstudio/multi-platform-runner:01c7670e81d5120347cf0ad13372742489985e5f@sha256:246adeaaba600e207131d63a7f706cffdcdc37d8f600c56187123ec62823ff44
       imagePullPolicy: IfNotPresent
-      script: |
-        #!/bin/bash
-        cd /tmp
-        set -o verbose
-        set -eu
-        cp $(workspaces.ssh.path)/id_rsa /tmp/master_key
-        chmod 0400 /tmp/master_key
-        export SSH_HOST=$(params.USER)@$(params.HOST)
-        export USERNAME=u-$(echo $(params.TASKRUN_NAME)$(params.NAMESPACE) | md5sum | cut -b-28)
-
-        # Obfuscate USERNAME for logging
-        obfuscated_username="${USERNAME:0:2}**********${USERNAME: -3:3}"
-
-        SSH_OPTS="-i /tmp/master_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-
-        # check user exists
-        if ssh $SSH_OPTS "$SSH_HOST" id -u "$USERNAME" > /dev/null 2>&1; then
-           echo "User $obfuscated_username exists, proceeding with cleanup"
-        else
-           exit_code=$?
-           if [ $exit_code -eq 1 ]; then
-             echo "User $obfuscated_username already deleted, exiting"
-             exit 0
-           else
-             echo "SSH error (exit code $exit_code)" >&2
-             exit $exit_code
-           fi
-        fi
-
-        # kill all processes associated with $USERNAME
-        ssh $SSH_OPTS "$SSH_HOST" sudo killall -9 -u "$USERNAME" || true
-
-        for i in {10..1}; do
-          if ssh $SSH_OPTS "$SSH_HOST" sudo userdel -f -r -Z "$USERNAME"; then
-            echo "User $obfuscated_username successfully deleted"
-            exit 0
-          fi
-          ATTEMPTS_REMAINING=$((i - 1))
-          if [ "$ATTEMPTS_REMAINING" -gt 0 ]; then
-            echo "User $obfuscated_username deletion attempt failed, retrying $ATTEMPTS_REMAINING more times..."
-            sleep 1
-          fi
-        done
-        echo "ERROR: Failed to delete user $obfuscated_username on $SSH_HOST after 10 total attempts."
-        exit 1
+      volumeMounts:
+        - mountPath: /scripts
+          name: script
+      command: ["/bin/bash"]
+      args: ["/scripts/clean-shared-host.sh"]
+  volumes:
+    - name: script
+      configMap:
+        name: clean-shared-host-script
+        defaultMode: 0755

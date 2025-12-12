@@ -5,7 +5,7 @@ metadata:
   namespace: multi-platform-controller
 spec:
   description: >-
-    This task will create a new user on a host, setup ssh keys, and then create the relevant secret.
+    This task will run an update on each static host found and delete all users older than 1 day.
   params:
     - name: HOST
       type: string
@@ -13,44 +13,25 @@ spec:
       type: string
   workspaces:
     - name: ssh
+  stepTemplate:
+    env:
+      - name: HOST
+        value: $(params.HOST)
+      - name: USER
+        value: $(params.USER)
+      - name: SSH_WORKSPACE_PATH
+        value: $(workspaces.ssh.path)
   steps:
     - name: update
       image: quay.io/redhat-appstudio/multi-platform-runner:01c7670e81d5120347cf0ad13372742489985e5f@sha256:246adeaaba600e207131d63a7f706cffdcdc37d8f600c56187123ec62823ff44
       imagePullPolicy: IfNotPresent
-      script: |
-        #!/bin/bash
-        cd /tmp || exit 1
-        set -o verbose
-        mkdir -p /root/.ssh
-        cp $(workspaces.ssh.path)/id_rsa /tmp/master_key
-        chmod 0400 /tmp/master_key
-        export SSH_HOST=$(params.USER)@$(params.HOST)
-        ssh -i /tmp/master_key -o StrictHostKeyChecking=no "$SSH_HOST" "sudo dnf update -y"
-
-        # Clean up any dangling users, if their cleanup failed for whatever reason
-        cat >script.sh <<EOF
-        threshold=\$(date -d "1 day ago" +%s)
-        cd /home
-        for user_dir in u-*; do
-          # Skip non-directory entries
-          if [[ ! -d "\$user_dir" ]]; then
-            continue
-          fi
-
-          # Obfuscate user directory for logging
-          obfuscated_dir="\${user_dir:0:2}**********\${user_dir: -3:3}"
-
-          # Delete the user & directory if the last modification time is older than the threshold
-          if [[ \$(stat -c "%Y" "\$user_dir") -lt "\$threshold" ]]; then
-            echo "Deleting old user & its /home directory: \$obfuscated_dir..."
-            sudo userdel -f -r -Z \$user_dir
-            # Confirm deletion of user and user directory (0) or just user directory (6)
-            if [ $? -eq 0 ] || [ $? -eq 6]; then
-                echo "User \$obfuscated_name was successfully deleted"
-            else
-                echo "User \$obfuscated_name deletion failed (exit code $?)."
-            fi
-          fi
-        done
-        EOF
-        ssh -i /tmp/master_key -o StrictHostKeyChecking=no "$SSH_HOST" "bash -s" <script.sh
+      volumeMounts:
+        - mountPath: /scripts
+          name: script
+      command: ["/bin/bash"]
+      args: ["/scripts/update-host.sh"]
+  volumes:
+    - name: script
+      configMap:
+        name: update-host-script
+        defaultMode: 0755
