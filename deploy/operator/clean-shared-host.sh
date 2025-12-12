@@ -38,21 +38,37 @@ SSH_USER_CHK_OUTPUT=$(
       echo "{message: \"User $USERNAME already deleted, exiting...\", level: \"INFO\"}"
       exit 0
     fi
-    echo "{message: \"Remote User Check Output: $SSH_USER_CHK_OUTPUT\", level: \"WARNING\"}" >&2
+    echo "{message: \"Remote User Check Output: ${SSH_USER_CHK_OUTPUT//$'\n'/ }\", level: \"WARNING\"}" >&2
     exit $exit_code
 }
 echo "{message: \"User $USERNAME exists, proceeding with cleanup.\", level: \"INFO\"}"
 
-# Kill all processes associated with user
-SSH_KILL_OUTPUT=$(
-    ssh "${SSH_OPTS[@]}" "$SSH_HOST" sudo killall -9 -u "$USERNAME" 2>&1
+# Check if the user has any associated processes and kill them
+cat >script.sh <<EOF
+if pgrep -u "$USERNAME" > /dev/null; then
+  echo {message: \"User $USERNAME has at least one process running\", level: \"INFO\"}
+
+  sudo killall -9 -u "$USERNAME"
+  if [ \$? -eq 0 ]; then
+    echo {message: \"User $USERNAME process(es) were killed.\", level: \"INFO\"}
+  else
+    echo {message: \"User $USERNAME process(es) could not be killed\", level: \"WARNING\"}
+  fi
+else
+    echo {message: \"User $USERNAME has no processes.\", level: \"INFO\"}
+fi
+EOF
+
+SSH_USR_PROCESS_OUTPUT=$(
+    ssh "${SSH_OPTS[@]}" "$SSH_HOST" "bash -s" <script.sh 2>&1
 ) || {
     # If the command fails, the `||` block executes.
     # Note: Using `||` suppresses set -e for this line.
-    echo "{message: \"Remote Kill Output: $SSH_KILL_OUTPUT\", level: \"WARNING\"}" >&2
+    echo "{message: \"Remote User Process Deletion Output: ${SSH_USR_PROCESS_OUTPUT//$'\n'/ }\", level: \"WARNING\"}" >&2
     exit 1
 }
 
+# Attempt to delete the user
 for i in {10..1}; do
   if ssh "${SSH_OPTS[@]}" "$SSH_HOST" sudo userdel -f -r -Z "$USERNAME"; then
     echo "{message: \"User $USERNAME successfully deleted.\", level: \"INFO\"}"
