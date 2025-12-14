@@ -1,0 +1,149 @@
+name: PR Comment Commands
+
+# This workflow allows org members to trigger actions on PRs (including fork PRs)
+# by posting comments with specific commands.
+#
+# Usage:
+#   /run <test-name>
+#
+# Available tests are defined in the ALLOWED_TESTS environment variable below.
+
+on:
+  issue_comment:
+    types: [created]
+
+env:
+  # Define allowed tests and their descriptions
+  # Format: JSON object with test names as keys and descriptions as values
+  ALLOWED_TESTS: |
+    {
+      "e2e": "Run end-to-end tests"
+    }
+
+jobs:
+  handle-command:
+    name: Handle PR Command
+    runs-on: ubuntu-latest
+    # Only run for:
+    # - Comments on PRs (not issues)
+    # - Comments starting with /run
+    # - Org members (OWNER, MEMBER, COLLABORATOR)
+    if: |
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/run') &&
+      contains(fromJson('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+    steps:
+      - name: Parse command
+        id: parse
+        uses: actions/github-script@v7
+        env:
+          ALLOWED_TESTS: ${{ env.ALLOWED_TESTS }}
+        with:
+          script: |
+            const allowedTests = JSON.parse(process.env.ALLOWED_TESTS);
+            const allowedTestNames = Object.keys(allowedTests);
+
+            const comment = context.payload.comment.body;
+            const lines = comment.split('\n');
+            const commandLine = lines.find(line => line.trim().startsWith('/run'));
+
+            if (!commandLine) {
+              core.setOutput('error', 'No /run command found');
+              core.setOutput('allowed_tests', JSON.stringify(allowedTests));
+              return;
+            }
+
+            // Parse: /run <test-name>
+            const parts = commandLine.trim().split(/\s+/);
+            const testName = parts[1];
+
+            if (!testName) {
+              core.setOutput('error', 'Missing test name');
+              core.setOutput('allowed_tests', JSON.stringify(allowedTests));
+              return;
+            }
+
+            if (!allowedTestNames.includes(testName)) {
+              core.setOutput('error', `Unknown test: \`${testName}\``);
+              core.setOutput('allowed_tests', JSON.stringify(allowedTests));
+              return;
+            }
+
+            core.setOutput('event_type', testName);
+            console.log(`Test: ${testName}`);
+
+      - name: Report error
+        if: steps.parse.outputs.error
+        uses: actions/github-script@v7
+        env:
+          ERROR_MSG: ${{ steps.parse.outputs.error }}
+          ALLOWED_TESTS: ${{ steps.parse.outputs.allowed_tests }}
+        with:
+          script: |
+            const error = process.env.ERROR_MSG;
+            const allowedTests = JSON.parse(process.env.ALLOWED_TESTS || '{}');
+
+            // Build available commands list
+            let commandsList = Object.entries(allowedTests)
+              .map(([name, desc]) => `- \`/run ${name}\` - ${desc}`)
+              .join('\n');
+
+            // Add confused reaction
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'confused'
+            });
+
+            // Post error comment
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `❌ **Error:** ${error}\n\n**Available commands:**\n${commandsList}`
+            });
+
+            core.setFailed(error);
+
+      - name: Get PR details
+        if: ${{ !steps.parse.outputs.error }}
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
+            return {
+              number: pr.data.number,
+              ref: `refs/pull/${pr.data.number}/merge`,
+              head_sha: pr.data.head.sha
+            };
+
+      - name: Trigger workflow
+        if: ${{ !steps.parse.outputs.error }}
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          event-type: ${{ steps.parse.outputs.event_type }}
+          client-payload: |
+            {
+              "pr_number": ${{ fromJson(steps.pr.outputs.result).number }},
+              "pr_ref": "${{ fromJson(steps.pr.outputs.result).ref }}",
+              "head_sha": "${{ fromJson(steps.pr.outputs.result).head_sha }}",
+              "triggered_by": "${{ github.event.comment.user.login }}"
+            }
+
+      - name: Add success reaction
+        if: ${{ !steps.parse.outputs.error }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'rocket'
+            });
