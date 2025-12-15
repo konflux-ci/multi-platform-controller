@@ -17,19 +17,28 @@ limitations under the License.
 package deployment
 
 import (
+	"context"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/konflux-ci/multi-platform-controller/test/e2e/common"
 )
 
 var _ = Describe("Deployment", Ordered, func() {
+	var k8sClient client.Client
 	testContext := &common.TestContext{}
+
+	BeforeEach(func() {
+		By("Creating a k8s client")
+		k8sClient = common.GetK8sClientOrDie(context.Background())
+	})
 
 	// After each test, check for failures and collect logs, events,
 	// and pod descriptions for debugging.
-	AfterEach(func() {
-		common.CollectDebugInfo(testContext, "")
+	AfterEach(func(ctx context.Context) {
+		common.CollectDebugInfo(ctx, k8sClient, testContext, "")
 	})
 
 	Context("Manager", func() {
@@ -39,7 +48,11 @@ var _ = Describe("Deployment", Ordered, func() {
 				podName := common.VerifyControllerPodRunning(g)
 				testContext.SetControllerPodName(podName)
 			}
-			Eventually(verifyControllerUp).Should(Succeed())
+			// Wait up to 2 minutes for the pod to be ready.
+			// The readiness probe has initialDelaySeconds: 5 and periodSeconds: 10,
+			// so it may take some time for the pod to become ready, especially
+			// if waiting for TaskRun CRD to be available (up to 5 minutes in controller.go).
+			Eventually(verifyControllerUp, "2m", "5s").Should(Succeed())
 		})
 
 		// TODO: Customize the e2e test suite with scenarios specific to your project.

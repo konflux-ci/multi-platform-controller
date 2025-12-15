@@ -22,6 +22,7 @@ jobs:
       AWS_ROLE_DURATION: 900 # 15 minutes
       INSTANCE_TAG: ${{ github.run_id }}-development
       KIND_EXPERIMENTAL_PROVIDER: podman
+      E2E_DEBUG_LOG_DIR: ${{ github.workspace }}/e2e-debug-logs
     steps:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
@@ -33,7 +34,7 @@ jobs:
           docker-images: false
 
       - name: Clone the code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v5.1.1
@@ -47,7 +48,7 @@ jobs:
           aws sts get-caller-identity
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
@@ -81,6 +82,15 @@ jobs:
       - name: Run Test e2e
         run: |
           make test-e2e
+
+      - name: Upload E2E Debug Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-debug-logs
+          path: ${{ env.E2E_DEBUG_LOG_DIR }}
+          if-no-files-found: ignore
+          retention-days: 14
 
       # Reconfigure AWS credentials for cleanup to ensure they're available even if
       # The credentials expired (15-minute duration) during long-running tests
