@@ -87,7 +87,7 @@ jobs:
 
       - name: Upload E2E Debug Logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: e2e-debug-logs
           path: ${{ env.E2E_DEBUG_LOG_DIR }}
