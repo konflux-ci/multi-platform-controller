@@ -1,6 +1,7 @@
 #!/bin/bash
 set -o verbose
 set -eu
+set -o pipefail
 
 # --- Error Handling Function ---
 handle_error() {
@@ -25,8 +26,7 @@ SSH_UPDATE_OUTPUT=$(
 ) || {
     # If the command fails, the `||` block executes.
     # Note: Using `||` suppresses set -e for this line.
-    echo "{message: \"Remote Update Output: $SSH_UPDATE_OUTPUT\", level: \"WARNING\"}" >&2
-    exit 1
+    echo "{message: \"Remote Update Output: ${SSH_UPDATE_OUTPUT//$'\n'/ }\", level: \"WARNING\"}" >&2
 }
 echo "{message: \"SSH to $HOST was successful.\", level: \"INFO\"}"
 
@@ -71,7 +71,7 @@ SSH_USER_DEL_OUTPUT=$(
 ) || {
     # If the command fails, the `||` block executes.
     # Note: Using `||` suppresses set -e for this line.
-    echo "{message: \"Remote User Pruning Output: $SSH_USER_DEL_OUTPUT\", level: \"WARNING\"}" >&2
+    echo "{message: \"Remote User Pruning Output: ${SSH_USER_DEL_OUTPUT//$'\n'/ }\", level: \"WARNING\"}" >&2
     exit 1
 }
 echo "$SSH_USER_DEL_OUTPUT"

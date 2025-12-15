@@ -34,7 +34,7 @@ SSH_KEY_RM_OUTPUT=$(
 ) || {
     # If the command fails, the '||' block executes.
     # Note: Using '||' suppresses set -e for this line.
-    echo "{message: \"Remote Key Removal Output: $SSH_KEY_RM_OUTPUT\", level: \"WARNING\"}" >&2
+    echo "{message: \"Remote Key Removal Output: ${SSH_KEY_RM_OUTPUT//$'\n'/ }\", level: \"WARNING\"}" >&2
     exit 1
 }
 echo "{message: \"Successfully deleted SSH key from VM.\", level: \"INFO\"}"
