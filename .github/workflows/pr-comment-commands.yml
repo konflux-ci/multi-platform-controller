@@ -23,7 +23,7 @@ env:
 jobs:
   handle-command:
     name: Handle PR Command
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     # Only run for:
     # - Comments on PRs (not issues)
     # - Comments starting with /run
