@@ -32,9 +32,9 @@ export USERNAME
 cat >script.sh <<EOF
 sudo dnf install podman -y
 
- if command -v otelcol >/dev/null 2>&1; then
+if command -v otelcol >/dev/null 2>&1; then
   echo "Found Opentelemetry, skipping..."
- else
+else
   PKG="otelcol_0.140.0_${PLATFORM}.rpm"
   URL="https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.140.0/$PKG"
   echo "Downloading: $URL"
