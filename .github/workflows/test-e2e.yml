@@ -16,6 +16,8 @@ jobs:
   test-e2e:
     name: Run on Ubuntu
     runs-on: ubuntu-latest
+    # Skip e2e tests for PRs from forks (no access to the action's JWT token)
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     env:
       AWS_ROLE_ARN: arn:aws:iam::418272753558:role/multi-platform-github-action
       AWS_REGION: us-east-1
