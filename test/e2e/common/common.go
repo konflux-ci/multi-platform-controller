@@ -188,21 +188,22 @@ func collectEvents(logDir string) {
 }
 
 // collectTaskRuns collects TaskRuns from all namespaces and returns a list of failed ones.
-// Files created: taskruns-all.yaml
+// Files created: taskruns-{namespace}.yaml
 //
 // Parameters:
 //   - ctx: context for the Kubernetes client operations
 //   - k8sClient: the Kubernetes client to use for listing TaskRuns
 //   - logDir: the directory path where the taskruns YAML file will be written
+//   - namespace: the namespace to collect taskruns from
 //
 // Returns:
 //   - []string: list of formatted strings describing failed/incomplete TaskRuns
 //     (format: "  namespace/name (Status: status reason)")
-func collectTaskRuns(ctx context.Context, k8sClient client.Client, logDir string) []string {
+func collectTaskRuns(ctx context.Context, k8sClient client.Client, logDir, namespace string) []string {
 	By("Fetching TaskRuns")
 
 	taskRunList := &tekv1.TaskRunList{}
-	if err := k8sClient.List(ctx, taskRunList); err != nil {
+	if err := k8sClient.List(ctx, taskRunList, client.InNamespace(namespace)); err != nil {
 		_, _ = fmt.Fprintf(GinkgoWriter, "Failed to list taskruns: %s\n", err)
 		return nil
 	}
@@ -210,7 +211,8 @@ func collectTaskRuns(ctx context.Context, k8sClient client.Client, logDir string
 	// Write TaskRuns YAML to file
 	taskrunsYaml, err := yaml.Marshal(taskRunList)
 	if err == nil {
-		_ = writeToFile(logDir, "taskruns-all.yaml", string(taskrunsYaml))
+		filename := fmt.Sprintf("taskruns-%s.yaml", namespace)
+		_ = writeToFile(logDir, filename, string(taskrunsYaml))
 	}
 
 	// Find failed TaskRuns
@@ -472,7 +474,11 @@ func CollectDebugInfo(ctx context.Context, k8sClient client.Client, testContext 
 
 	collectControllerPodInfo(testContext.ControllerPodName, logDir)
 	collectEvents(logDir)
-	failedTaskRuns := collectTaskRuns(ctx, k8sClient, logDir)
+	// Collect taskruns
+	failedTaskRuns := collectTaskRuns(ctx, k8sClient, logDir, MPCNamespace)
+	if testNamespace != "" {
+		failedTaskRuns = append(failedTaskRuns, collectTaskRuns(ctx, k8sClient, logDir, testNamespace)...)
+	}
 
 	// Collect pod info from both namespaces
 	mpcPodsInfo := collectPodsInfo(ctx, k8sClient, logDir, MPCNamespace)
