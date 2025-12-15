@@ -19,7 +19,7 @@ require (
 	github.com/onsi/gomega v1.37.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.22.0
-	github.com/prometheus/client_model v0.6.1
+	github.com/prometheus/client_model v0.6.2
 	github.com/spf13/cobra v1.8.1
 	github.com/tektoncd/pipeline v1.0.0
 	go.uber.org/zap v1.27.0
