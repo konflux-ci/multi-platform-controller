@@ -19,6 +19,8 @@ spec:
       type: string
     - name: SUDO_COMMANDS
       type: string
+    - name: RAW_PLATFORM
+      type: string
   workspaces:
     - name: ssh
   stepTemplate:
@@ -35,6 +37,8 @@ spec:
         value: $(params.USER)
       - name: SUDO_COMMANDS
         value: $(params.SUDO_COMMANDS)
+      - name: RAW_PLATFORM
+        value: $(params.RAW_PLATFORM)
       - name: SSH_WORKSPACE_PATH
         value: $(workspaces.ssh.path)
   steps:
@@ -44,6 +48,7 @@ spec:
       volumeMounts:
         - mountPath: /tls
           name: tls
+
         - mountPath: /scripts
           name: script
       command: ["/bin/bash"]
@@ -53,6 +58,10 @@ spec:
       secret:
         optional: true
         secretName: otp-tls-secrets
+    - name: otelcol-config
+      secret:
+        optional: true
+        secretName: otel-collector-config
     - name: script
       configMap:
         name: provision-shared-host-script

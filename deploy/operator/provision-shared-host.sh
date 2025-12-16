@@ -21,6 +21,7 @@ mkdir -p /root/.ssh
 cp "$SSH_WORKSPACE_PATH/id_rsa" /tmp/master_key
 chmod 0400 /tmp/master_key
 export SSH_HOST="$USER@$HOST"
+export PLATFORM="${RAW_PLATFORM//-/_}"
 SSH_MULTIPLEX_OPTS=(-o ControlMaster=auto -o ControlPath=/tmp/ssh-%r@%h:%p)
 SSH_OPTS=(-i /tmp/master_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null  "${SSH_MULTIPLEX_OPTS[@]}")
 
@@ -30,6 +31,18 @@ export USERNAME
 # Create script to provision VM
 cat >script.sh <<EOF
 sudo dnf install podman -y
+
+if command -v otelcol >/dev/null 2>&1; then
+  echo "Found Opentelemetry, skipping..."
+else
+  PKG="otelcol_0.140.0_${PLATFORM}.rpm"
+  URL="https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.140.0/\$PKG"
+  echo "Downloading: \$URL"
+  wget "\$URL" && sudo rpm -ivh "\$PKG"
+  # Patch config file name
+  echo "OTELCOL_OPTIONS=/etc/otelcol/config_mpc.yaml" >> /etc/otelcol/otelcol.conf
+  sudo systemctl start otelconf
+fi
 
 rm -f "$USERNAME" "$USERNAME".pub
 
@@ -66,6 +79,9 @@ if [ -n "${SUDO_COMMANDS:-}" ]; then
   echo "{message: \"Successfully added sudo access.\", level: \"INFO\"}"
 EOF
 fi
+
+# Copy opentelemetry config
+ssh "${SSH_OPTS[@]}" "$SSH_HOST" mkdir -p /etc/otelcol && cat > /etc/otelcol/config_mpc.yaml < /otelcol/config.yaml
 
 # Execute provision script on VM
 SSH_PROVISION_OUTPUT=$(

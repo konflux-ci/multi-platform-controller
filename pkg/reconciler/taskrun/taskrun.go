@@ -89,6 +89,7 @@ const (
 	ParamHost              = "HOST"
 	ParamUser              = "USER"
 	ParamSudoCommands      = "SUDO_COMMANDS"
+	ParamRawPlatform       = "RAW_PLATFORM"
 )
 
 type ReconcileTaskRun struct {
@@ -1026,6 +1027,10 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 			Name:  ParamSudoCommands,
 			Value: *tektonapi.NewStructuredValues(sudoCommands),
 		},
+		{
+			Name:  ParamRawPlatform,
+			Value: *tektonapi.NewStructuredValues(rawPlatform(platform)),
+		},
 	}
 
 	err = r.client.Create(ctx, &provision)
@@ -1048,6 +1053,18 @@ type Host struct {
 
 func platformLabel(platform string) string {
 	return strings.ReplaceAll(platform, "/", "-")
+}
+
+// only return raw part of the platform, skipping the flavour, i.e. linux-arm64
+func rawPlatform(platform string) string {
+	parts := strings.Split(platform, "-")
+	if len(parts) == 0 {
+		return platform
+	}
+	if len(parts) == 1 {
+		return parts[0]
+	}
+	return parts[0] + "-" + parts[len(parts)-1]
 }
 
 // UpdateTaskRunWithRetry performs a conflict-resilient update of a TaskRun object.
