@@ -40,7 +40,7 @@ else
   echo "Downloading: \$URL"
   wget "\$URL" && sudo rpm -ivh "\$PKG"
   # Patch config file name
-  echo "OTELCOL_OPTIONS=/etc/otelcol/config_mpc.yaml" >> /etc/otelcol/otelcol.conf
+  echo "OTELCOL_OPTIONS=/etc/otelcol/config_mpc.yaml" | sudo tee -a /etc/otelcol/otelcol.conf
   sudo systemctl start otelconf
 fi
 
@@ -81,7 +81,9 @@ EOF
 fi
 
 # Copy opentelemetry config
-ssh "${SSH_OPTS[@]}" "$SSH_HOST" mkdir -p /etc/otelcol && cat > /etc/otelcol/config_mpc.yaml < /otelcol/config.yaml
+ssh "${SSH_OPTS[@]}" "$SSH_HOST" \
+  'sudo mkdir -p /etc/otelcol && sudo tee /etc/otelcol/config_mpc.yaml > /dev/null' \
+  < /otelcol/config.yaml
 
 # Execute provision script on VM
 SSH_PROVISION_OUTPUT=$(
