@@ -111,7 +111,7 @@ echo "Platform verification successful: $OS/$ARCH"
 
 var _ = Describe("TaskRun execution", func() {
 	var k8sClient client.Client
-	testNamespace := "test-ns"
+	testNamespace := ""
 	testContext := &common.TestContext{}
 
 	// Before running the tests, set up the environment by creating a test namespace
@@ -128,18 +128,6 @@ var _ = Describe("TaskRun execution", func() {
 				testContext.SetControllerPodName(podName)
 			}).Should(Succeed())
 		})
-
-		By("Creating a namespace: "+testNamespace, func() {
-			ns := &corev1.Namespace{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: testNamespace,
-				},
-			}
-			err := k8sClient.Create(ctx, ns)
-			if err != nil && !apierrors.IsAlreadyExists(err) {
-				Expect(err).NotTo(HaveOccurred())
-			}
-		})
 	})
 
 	// After each test, check for failures and collect logs, events,
@@ -153,6 +141,20 @@ var _ = Describe("TaskRun execution", func() {
 
 	// runTaskRunPlatformTest is a helper function that runs a TaskRun test for a given platform
 	runTaskRunPlatformTest := func(ctx context.Context, platform, expectedArch string, script string) {
+		testNamespace = "test-" + strings.ReplaceAll(platform, "/", "-")
+
+		By("Creating a namespace: "+testNamespace, func() {
+			ns := &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: testNamespace,
+				},
+			}
+			err := k8sClient.Create(ctx, ns)
+			if err != nil && !apierrors.IsAlreadyExists(err) {
+				Expect(err).NotTo(HaveOccurred())
+			}
+		})
+
 		By("creating a TaskRun with PLATFORM parameter")
 		platformNormalized := strings.ReplaceAll(platform, "/", "-")
 		taskRun := &tekv1.TaskRun{
