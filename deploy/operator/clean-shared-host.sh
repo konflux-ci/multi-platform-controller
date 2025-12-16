@@ -50,9 +50,9 @@ if pgrep -u "$USERNAME" > /dev/null; then
 
   sudo killall -9 -u "$USERNAME"
   if [ \$? -eq 0 ]; then
-    echo {message: \"User $USERNAME process(es) were killed.\", level: \"INFO\"}
+    echo {message: \"User $USERNAME process\(es\) were killed.\", level: \"INFO\"}
   else
-    echo {message: \"User $USERNAME process(es) could not be killed\", level: \"WARNING\"}
+    echo {message: \"User $USERNAME process\(es\) could not be killed\", level: \"WARNING\"}
   fi
 else
     echo {message: \"User $USERNAME has no processes.\", level: \"INFO\"}
