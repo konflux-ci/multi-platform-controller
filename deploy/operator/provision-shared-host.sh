@@ -40,7 +40,7 @@ else
   echo "Downloading: \$URL"
   wget "\$URL" && sudo rpm -ivh "\$PKG"
   # Patch config file name
-  echo "OTELCOL_OPTIONS=/etc/otelcol/config_mpc.yaml" >> /etc/otelcol/otelcol.conf
+  echo "OTELCOL_OPTIONS=/etc/otelcol/config_mpc.yaml" | sudo tee -a /etc/otelcol/otelcol.conf
   sudo systemctl start otelconf
 fi
 
