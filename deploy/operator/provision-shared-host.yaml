@@ -48,7 +48,8 @@ spec:
       volumeMounts:
         - mountPath: /tls
           name: tls
-
+        - mountPath: /otelcol
+          name: otelcol
         - mountPath: /scripts
           name: script
       command: ["/bin/bash"]
@@ -58,10 +59,10 @@ spec:
       secret:
         optional: true
         secretName: otp-tls-secrets
-    - name: otelcol-config
+    - name: otelcol
       secret:
         optional: true
-        secretName: otel-collector-config
+        secretName: otelcol-config
     - name: script
       configMap:
         name: provision-shared-host-script
