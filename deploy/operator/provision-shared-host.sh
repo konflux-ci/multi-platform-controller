@@ -45,6 +45,7 @@ else
     sudo systemctl start otelconf
   else
     echo "Opentelemetry config not found, skipping installation."
+  fi
 fi
 
 rm -f "$USERNAME" "$USERNAME".pub
