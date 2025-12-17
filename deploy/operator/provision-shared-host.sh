@@ -35,13 +35,16 @@ sudo dnf install podman -y
 if command -v otelcol >/dev/null 2>&1; then
   echo "Found Opentelemetry, skipping..."
 else
-  PKG="otelcol_0.140.0_${PLATFORM}.rpm"
-  URL="https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.140.0/\$PKG"
-  echo "Downloading: \$URL"
-  wget "\$URL" && sudo rpm -ivh "\$PKG"
-  # Patch config file name
-  echo "OTELCOL_OPTIONS=/etc/otelcol/config_mpc.yaml" | sudo tee -a /etc/otelcol/otelcol.conf
-  sudo systemctl start otelconf
+  if [[ -f /etc/otelcol/config_mpc.yaml ]]; then
+    PKG="otelcol_0.140.0_${PLATFORM}.rpm"
+    URL="https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.140.0/\$PKG"
+    echo "Downloading: \$URL"
+    wget "\$URL" && sudo rpm -ivh "\$PKG"
+    # Patch config file name
+    echo "OTELCOL_OPTIONS=/etc/otelcol/config_mpc.yaml" | sudo tee -a /etc/otelcol/otelcol.conf
+    sudo systemctl start otelconf
+  else
+    echo "Opentelemetry config not found, skipping installation."
 fi
 
 rm -f "$USERNAME" "$USERNAME".pub
@@ -85,6 +88,8 @@ if [[ -f /otelcol/config.yaml ]]; then
   ssh "${SSH_OPTS[@]}" "$SSH_HOST" \
     'sudo mkdir -p /etc/otelcol && sudo tee /etc/otelcol/config_mpc.yaml > /dev/null' \
     < /otelcol/config.yaml
+else
+  echo "Opentelemetry config not found, default one will be used"
 fi
 
 # Execute provision script on VM
