@@ -392,6 +392,7 @@ func setupSSHKey(cfg *Config) error {
 func getCreatorRoleARN(ctx context.Context, awsCfg aws.Config) string {
 	stsClient := sts.NewFromConfig(awsCfg)
 	result, err := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: Failed to get AWS caller identity: %v\n", err)
 		return ""
