@@ -81,9 +81,11 @@ EOF
 fi
 
 # Copy opentelemetry config
-ssh "${SSH_OPTS[@]}" "$SSH_HOST" \
-  'sudo mkdir -p /etc/otelcol && sudo tee /etc/otelcol/config_mpc.yaml > /dev/null' \
-  < /otelcol/config.yaml
+if [[ -f /otelcol/config.yaml ]]; then
+  ssh "${SSH_OPTS[@]}" "$SSH_HOST" \
+    'sudo mkdir -p /etc/otelcol && sudo tee /etc/otelcol/config_mpc.yaml > /dev/null' \
+    < /otelcol/config.yaml
+fi
 
 # Execute provision script on VM
 SSH_PROVISION_OUTPUT=$(
