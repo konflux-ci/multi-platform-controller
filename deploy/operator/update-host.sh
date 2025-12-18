@@ -28,7 +28,7 @@ SSH_UPDATE_OUTPUT=$(
     # Note: Using `||` suppresses set -e for this line.
     echo "{message: \"Remote Update Output: ${SSH_UPDATE_OUTPUT//$'\n'/ }\", level: \"WARNING\"}" >&2
 }
-echo "{message: \"SSH to $HOST was successful.\", level: \"INFO\"}"
+echo "{message: \"SSH to $HOST for update finished.\", level: \"INFO\"}"
 
 # Create script to clean up dangling users
 cat >script.sh <<EOF
@@ -45,22 +45,33 @@ for user_dir in u-*; do
   # Delete the user & directory if the last modification time is older than the threshold
   if [[ \$(stat -c "%Y" "\$user_dir") -lt "\$threshold" ]]; then
 
-    # try to kill all processes associated with \$user_dir
-    sudo killall -9 -u "\$user_dir"
-    KILL_STATUS=\$?
-    if [ \$KILL_STATUS -ne 0 ]; then
-      echo "{message: \"Could not kill all processes associated with user '\$user_dir' (exit code \$KILL_STATUS).\", level: \"WARNING\"}"
-    fi
+    # Check if the user has any processes running
+    if pgrep -u "\$user_dir" > /dev/null; then
+      echo {message: \"User '\$user_dir' has at least one process running.\", level: \"INFO\"}
+
+      # Try to kill all processes associated with \$user_dir
+      sudo killall -9 -u "\$user_dir"
+      KILL_STATUS=\$?
+      if [ \$KILL_STATUS -ne 0 ]; then
+        echo "{message: \"User '\$user-dir' process\(es\) could not be killed.\", level: \"WARNING\"}"
+      else
+        echo "{message: \"User '\$user-dir' process\(es\) were killed.\", level: \"INFO\"}"
+      fi
+
+    else
+      echo {message: \"User '\$user_dir' has no processes running.\", level: \"INFO\"}
 
     echo "{message: \"Deleting old home directory '\$user_dir' & its associated user...\", level: \"INFO\"}"
     sudo userdel -f -r -Z "\$user_dir"
     # Confirm deletion of user and user directory (0) or just user directory (6)
     DELETE_STATUS=\$? # Capture status immediately
     if [ \$DELETE_STATUS -eq 0 ] || [ \$DELETE_STATUS -eq 6 ]; then
-        echo "{message: \"User \$user_dir was successfully deleted.\", level: \"INFO\"}"
+        echo "{message: \"User '\$user_dir' was successfully deleted.\", level: \"INFO\"}"
     else
-        echo "{message: \"User \$user_dir deletion failed (exit code \$DELETE_STATUS).\", level: \"WARNING\"}"
+        echo "{message: \"User '\$user_dir' deletion failed (exit code \$DELETE_STATUS).\", level: \"WARNING\"}"
     fi
+  else
+    echo "{message: \"'\$user_dir' is not older than the threshold of \$threshold.\", level: \"INFO\"}"
   fi
 done
 EOF
@@ -75,4 +86,4 @@ SSH_USER_DEL_OUTPUT=$(
     exit 1
 }
 echo "$SSH_USER_DEL_OUTPUT"
-echo "{message: \"Remote user pruning on $HOST was successful.\", level: \"INFO\"}"
+echo "{message: \"Remote user pruning on $HOST finished.\", level: \"INFO\"}"
