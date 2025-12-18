@@ -42,7 +42,7 @@ else
     curl -LO "\$URL" && sudo rpm -ivh "\$PKG"
     # Patch config file name
     echo "OTELCOL_OPTIONS=/etc/otelcol/config_mpc.yaml" | sudo tee -a /etc/otelcol/otelcol.conf
-    sudo systemctl start otelconf
+    sudo systemctl start otelcol
   else
     echo "Opentelemetry config not found, skipping installation."
   fi
