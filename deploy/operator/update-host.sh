@@ -60,6 +60,7 @@ for user_dir in u-*; do
 
     else
       echo {message: \"User '\$user_dir' has no processes running.\", level: \"INFO\"}
+    fi
 
     echo "{message: \"Deleting old home directory '\$user_dir' & its associated user...\", level: \"INFO\"}"
     sudo userdel -f -r -Z "\$user_dir"
