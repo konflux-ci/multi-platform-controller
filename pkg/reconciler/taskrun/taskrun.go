@@ -1057,7 +1057,7 @@ func platformLabel(platform string) string {
 
 // only return raw part of the platform, skipping the flavour, i.e. linux-arm64
 func rawPlatform(platform string) string {
-	parts := strings.Split(platform, "-")
+	parts := strings.Split(platformLabel(platform), "-")
 	if len(parts) == 0 {
 		return platform
 	}
