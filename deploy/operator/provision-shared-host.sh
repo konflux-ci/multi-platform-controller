@@ -44,7 +44,7 @@ else
     if ! sudo grep -q '^OTELCOL_OPTIONS=' /etc/otelcol/otelcol.conf 2>/dev/null; then
       echo 'OTELCOL_OPTIONS="--config=/etc/otelcol/config_mpc.yaml"' | sudo tee -a /etc/otelcol/otelcol.conf >/dev/null
     fi
-    sudo systemctl start otelcol
+    sudo systemctl start otelcol-contrib
   else
     echo "Opentelemetry config not found, skipping installation."
   fi
