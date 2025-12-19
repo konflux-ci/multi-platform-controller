@@ -36,7 +36,7 @@ if command -v otelcol >/dev/null 2>&1; then
   echo "Found Opentelemetry, skipping..."
 else
   if [[ -f /etc/otelcol/config_mpc.yaml ]]; then
-    PKG="otelcol_contrib_0.140.0_${PLATFORM}.rpm"
+    PKG="otelcol-contrib_0.140.0_${PLATFORM}.rpm"
     URL="https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.140.0/\$PKG"
     echo "Downloading: \$URL"
     curl -LO "\$URL" && sudo rpm -ivh "\$PKG"
