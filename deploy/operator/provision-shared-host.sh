@@ -41,9 +41,7 @@ else
     echo "Downloading: \$URL"
     curl -LO "\$URL" && sudo rpm -ivh "\$PKG"
     # Patch config file name
-    if ! sudo grep -q '^OTELCOL_OPTIONS=' /etc/otelcol/otelcol.conf 2>/dev/null; then
-      echo 'OTELCOL_OPTIONS="--config=/etc/otelcol/config_mpc.yaml"' | sudo tee -a /etc/otelcol/otelcol.conf >/dev/null
-    fi
+    echo 'OTELCOL_OPTIONS="--config=/etc/otelcol-contrib/config_mpc.yaml"' | sudo tee /etc/otelcol-contrib/otelcol-contrib.conf >/dev/null
     sudo systemctl start otelcol-contrib
   else
     echo "Opentelemetry config not found, skipping installation."
@@ -89,7 +87,7 @@ fi
 # Copy opentelemetry config
 if [[ -f /otelcol/config.yaml ]]; then
   ssh "${SSH_OPTS[@]}" "$SSH_HOST" \
-    'sudo mkdir -p /etc/otelcol && sudo tee /etc/otelcol/config_mpc.yaml > /dev/null' \
+    'sudo mkdir -p /etc/otelcol-contib && sudo tee /etc/otelcol-contrib/config_mpc.yaml > /dev/null' \
     < /otelcol/config.yaml
 else
   echo "Opentelemetry config not found, default one will be used"
