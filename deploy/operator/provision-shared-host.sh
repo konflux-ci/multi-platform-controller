@@ -49,7 +49,7 @@ else
       | sudo tee /etc/otelcol-contrib/otelcol-contrib.conf >/dev/null
 
     # Add user to groups BEFORE start
-    sudo usermod -aG adm systemd-journal otelcol-contrib
+    sudo usermod -aG adm,systemd-journal otelcol-contrib
     sudo systemctl daemon-reload
     sudo systemctl start otelcol-contrib
   else
