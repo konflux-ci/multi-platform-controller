@@ -38,9 +38,9 @@ else
   if [[ -f /etc/otelcol-contrib/config_mpc.yaml ]]; then
     PKG="otelcol-contrib_0.140.0_${PLATFORM}.rpm"
     URL="https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.140.0/\$PKG"
-    echo "Downloading: $URL"
-    curl -LO "$URL" || exit 1
-    sudo rpm -ivh "$PKG" || exit 1
+    echo "Downloading: \$URL"
+    curl -LO "\$URL" || exit 1
+    sudo rpm -ivh "\$PKG" || exit 1
     # Ensure config dir exists
     sudo install -d /etc/otelcol-contrib
 
