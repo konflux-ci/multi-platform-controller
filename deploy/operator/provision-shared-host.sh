@@ -32,16 +32,25 @@ export USERNAME
 cat >script.sh <<EOF
 sudo dnf install podman -y
 
-if command -v otelcol >/dev/null 2>&1; then
+if command -v otelcol-contrib >/dev/null 2>&1; then
   echo "Found Opentelemetry, skipping..."
 else
   if [[ -f /etc/otelcol-contrib/config_mpc.yaml ]]; then
     PKG="otelcol-contrib_0.140.0_${PLATFORM}.rpm"
     URL="https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.140.0/\$PKG"
-    echo "Downloading: \$URL"
-    curl -LO "\$URL" && sudo rpm -ivh "\$PKG"
-    # Patch config file name
-    echo 'OTELCOL_OPTIONS="--config=/etc/otelcol-contrib/config_mpc.yaml"' | sudo tee /etc/otelcol-contrib/otelcol-contrib.conf >/dev/null
+    echo "Downloading: $URL"
+    curl -LO "$URL" || exit 1
+    sudo rpm -ivh "$PKG" || exit 1
+    # Ensure config dir exists
+    sudo install -d /etc/otelcol-contrib
+
+    # Patch config file name (overwrite)
+    echo 'OTELCOL_OPTIONS="--config=/etc/otelcol-contrib/config_mpc.yaml"' \
+      | sudo tee /etc/otelcol-contrib/otelcol-contrib.conf >/dev/null
+
+    # Add user to groups BEFORE start
+    sudo usermod -aG systemd-journal otelcol-contrib
+    sudo systemctl daemon-reload
     sudo systemctl start otelcol-contrib
   else
     echo "Opentelemetry config not found, skipping installation."
