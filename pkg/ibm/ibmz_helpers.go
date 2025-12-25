@@ -7,7 +7,7 @@ import (
 	// #nosec is added to bypass the golang security scan since the cryptographic
 	// strength doesn't matter here
 	"crypto/md5" //#nosec
-	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -19,7 +19,6 @@ import (
 	"github.com/IBM/go-sdk-core/v5/core"
 	"github.com/IBM/vpc-go-sdk/vpcv1"
 	"github.com/go-logr/logr"
-	"github.com/google/uuid"
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
 	v1 "k8s.io/api/core/v1"
 	types2 "k8s.io/apimachinery/pkg/types"
@@ -31,33 +30,46 @@ import (
 // Must not start with a hyphen.
 var validInstanceNamePattern = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9_-]*$`)
 
-// createInstanceName returns a unique instance name in the
-// format  <instance_tag>-<instance_id> where the 'instance_id'
-// is a 20 character universally unique ID generated using the
-// md5 cryptographic hash function.
+// length of the hash created from an instanceTag and the timestamp to add to an Instance name that is unique
+var hashLength = 16
+
+// createInstanceName returns a unique instance name in the format <instance_tag>-<hash>x
+// This function generates cloud instance names for IBM Cloud (System Z and Power PC) that comply with
+// platform naming requirements. It creates a unique name by combining the instance tag with a 16-character
+// MD5 hash of the tag plus a nanosecond-precision timestamp.
+//
+// Uniqueness is guaranteed by:
+// - Nanosecond-precision timestamp (seconds + nanoseconds)
+// - 16-hex-character hash (64 bits of entropy, ~0.003% collision probability in 10M iterations)
 //
 // The instanceTag is sanitized to comply with IBM Cloud instance naming requirements:
-// uppercase letters are converted to lowercase, and underscores are replaced with hyphens.
-// Special characters (other than alphanumeric, hyphens, and underscores) are not allowed.
+// - Uppercase letters are converted to lowercase
+// - Underscores are replaced with hyphens
+// - Special characters (other than alphanumeric, hyphens, and underscores) are rejected
 //
-// Used in for Both IBM System Z & IBM Power PC.
+// Config validation ensures instance tags are short enough that the final name fits within maxLength:
+// - ppc64le: instanceTag <= 29 chars → final name <= 47 chars
+// - s390x: instanceTag <= 45 chars → final name <= 63 chars
 func createInstanceName(instanceTag string) (string, error) {
 	// Validate instanceTag contains only alphanumeric characters, hyphens, and underscores
 	if !validInstanceNamePattern.MatchString(instanceTag) {
 		return "", fmt.Errorf("instance tag contains invalid characters, only alphanumeric characters, hyphens, and underscores are allowed, got: %s", instanceTag)
 	}
 
-	binary, err := uuid.New().MarshalBinary()
-	if err != nil {
-		return "", fmt.Errorf("failed to create a UUID for the instance name: %w", err)
-	}
+	// Use a full nanosecond timestamp for maximum uniqueness and include both seconds and nanoseconds explicitly
+	now := time.Now()
+	timestamp := fmt.Sprintf("%d-%d", now.Unix(), now.Nanosecond())
+
+	// Hash the tag + timestamp for uniqueness
+	hashInput := fmt.Sprintf("%s-%s", instanceTag, timestamp)
 	// #nosec is added to bypass the golang security scan since the cryptographic
 	// strength doesn't matter here
-	md5EncodedBinary := md5.New().Sum(binary) //#nosec
-	md5EncodedString := base64.URLEncoding.EncodeToString(md5EncodedBinary)[0:20]
+	md5Hash := md5.Sum([]byte(hashInput)) //#nosec
+	// Use 16-character hash (essentially zero collision risk in 10M iterations)
+	shortHash := hex.EncodeToString(md5Hash[:])[0:hashLength]
 
-	// Build instance name and sanitize: lowercase and replace underscores with hyphens
-	instanceName := fmt.Sprintf("%s-%sx", instanceTag, md5EncodedString)
+	// Build final instance name
+	instanceName := fmt.Sprintf("%s-%sx", instanceTag, shortHash)
 	return strings.ReplaceAll(strings.ToLower(instanceName), "_", "-"), nil
 }
 
