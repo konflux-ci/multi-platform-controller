@@ -375,5 +375,25 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 				Entry("with invalid value format", "linux-m2xlarge-arm64", "invalid-format"),
 			)
 		})
+
+		When("validating IBM platform tag length limits", func() {
+			DescribeTable("it should accept tags within length limits",
+				func(key, value string) {
+					Expect(validateDynamicInstanceTag(key, value)).ShouldNot(HaveOccurred())
+				},
+				Entry("ppc64le at max length (29 chars)", "linux-m1-ppc64le", "productionmaxtagxx-ppc64le-m1"),             // 29 chars
+				Entry("s390x at max length (45 chars)", "linux-m1-s390x", "productionenterprisemaxtaglimitsxxxx-s390x-m1"), // 45 chars
+			)
+
+			DescribeTable("it should reject tags exceeding length limits",
+				func(key, value, expectedError string) {
+					err := validateDynamicInstanceTag(key, value)
+					Expect(err).Should(HaveOccurred())
+					Expect(err.Error()).Should(ContainSubstring(expectedError))
+				},
+				Entry("ppc64le exceeds 29 char limit", "linux-m1-ppc64le", "productionexceedsmaxtagxxxx-ppc64le-m1", "too long for ppc64le platform"),             // 37 chars
+				Entry("s390x exceeds 45 char limit", "linux-m1-s390x", "productionenterpriseexceedsmaxtaglimitsxxxxxxxx-s390x-m1", "too long for s390x platform"), // 54 chars
+			)
+		})
 	})
 })

@@ -10,11 +10,12 @@ import (
 	"github.com/konflux-ci/multi-platform-controller/testing/utils"
 )
 
-const testIterations = 100000
+const testIterations = 10000000
 const maxAllowedErrors = 2
 
-// expectedInstanceNameFormat verifies the instance name structure: sanitized-tag + "-" + 20-char-id + "x"
-var expectedInstanceNameFormat = regexp.MustCompile(`^[a-z0-9-]+-[a-z0-9-]{20}x$`)
+// expectedInstanceNameFormat verifies the instance name structure: sanitized-tag + "-" + 16-hex-hash + "x"
+// All instance names use a fixed 16-character hash
+var expectedInstanceNameFormat = regexp.MustCompile(`^[a-z0-9-]+-[0-9a-f]{16}x$`)
 
 var _ = Describe("IBM s390x Helper Functions", func() {
 
@@ -28,52 +29,53 @@ var _ = Describe("IBM s390x Helper Functions", func() {
 	Describe("The createInstanceName function", func() {
 		When("provided with valid instanceTag inputs that should be sanitized", func() {
 			DescribeTable("should successfully create and sanitize instance names",
-				func(tag, description string) {
+				func(tag string) {
 					name, _ := createInstanceName(tag)
-					// Verify the name matches expected format: tag-{20 chars}x
+					// Verify the name matches expected format: tag-{16-hex-hash}x
 					Expect(expectedInstanceNameFormat.MatchString(name)).To(BeTrue())
 				},
-				Entry("lowercase with hyphens", "test-tag", "valid lowercase with hyphens"),
-				Entry("mixed case and underscores are sanitized", "Test_Instance_123", "mixed case and underscores sanitized"),
+				Entry("lowercase with hyphens", "test-tag"),
+				Entry("mixed case and underscores are sanitized", "Test_Instance_123"),
 			)
 		})
 
 		When("provided with invalid instanceTag inputs", func() {
 			DescribeTable("should reject the input with an error",
-				func(tag, description string) {
+				func(tag string) {
 					name, err := createInstanceName(tag)
 
 					Expect(err).Should(MatchError(ContainSubstring("invalid characters")))
 					Expect(name).Should(BeEmpty())
 				},
-				Entry("special characters rejected", "moshe_kipod_Funky-Tag*!@#", "contains multiple invalid characters"),
-				Entry("empty string rejected", "", "empty tag"),
-				Entry("just a space tag", " ", "space tag"),
-				Entry("spaces rejected", "test tag", "contains space character"),
-				Entry("space in the beginning of the tag rejected", " test-tag", "contains space character"),
-				Entry("tag name starting with hyphen rejected", "-koko-hazamar", "contains space character"),
+				Entry("special characters rejected", "moshe_kipod_Funky-Tag*!@#"),
+				Entry("empty string rejected", ""),
+				Entry("just a space tag", " "),
+				Entry("spaces rejected", "test tag"),
+				Entry("space in the beginning of the tag rejected", " test-tag"),
+				Entry("tag name starting with hyphen rejected", "-koko-hazamar"),
 			)
 		})
 
-		When("generating a large batch of 100,000 instance names with the same tag", func() {
-			var instanceTagForBatch = "tag-uniqueness-tag"
-
-			It("should produce unique names each time and encounter no more than two errors in the process", func() {
-
+		DescribeTable("should produce unique names with 16-char hash",
+			func(tag string, scenarioName string) {
 				generator := func() (string, error) {
-					return createInstanceName(instanceTagForBatch)
+					name, err := createInstanceName(tag)
+					return name, err
 				}
 
 				stats := utils.PerformUniquenessAndPerformanceTest(testIterations, generator)
 
 				GinkgoWriter.Printf(
-					"Performance Report for createInstanceName:\n"+
+					"\nPerformance Report for createInstanceName (%s):\n"+
+						"  Tag used: %q (length %d)\n"+
 						"  Target Iterations: %d\n"+
 						"  Successfully Generated: %d\n"+
 						"  Unique Names: %d\n"+
 						"  Duplicate Names Found: %d\n"+
 						"  Errors Encountered: %d\n"+
 						"  Total Duration: %v\n",
+					scenarioName,
+					tag, len(tag),
 					testIterations,
 					stats.GeneratedCount,
 					stats.UniqueCount,
@@ -86,9 +88,18 @@ var _ = Describe("IBM s390x Helper Functions", func() {
 					fmt.Sprintf("Expected no more than %d errors, but got %d",
 						maxAllowedErrors, stats.ErrorCount))
 				Expect(stats.DuplicateCount).Should(Equal(0),
-					fmt.Sprintf("Expected 0 duplicate names, but found %d",
+					fmt.Sprintf("Expected 0 duplicate names, but found %d duplicates",
 						stats.DuplicateCount))
-			})
-		})
+			},
+			Entry("very short tag",
+				"test", // 4 chars - minimal tag
+				"Very Short Tag"),
+			Entry("PowerPC: max validation length",
+				"prod-ppc64le-at-max-limit-29", // 28 chars - at 29 char validation limit
+				"PowerPC Max Tag Length"),
+			Entry("System Z: max validation length",
+				"prod-s390x-enterprise-tag-at-validation-max45", // 45 chars - at 45 char validation limit
+				"System Z Max Tag Length"),
+		)
 	})
 })
