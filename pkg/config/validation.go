@@ -28,6 +28,11 @@ const (
 	maxStaticConcurrency = 8
 	// Maximum pool host age in minutes (24 hours)
 	maxPoolHostAge = 1440
+
+	// Maximum instance tag lengths for IBM platforms to ensure 16-char hashes
+	// These limits prevent collision issues by using 64-bit hash space
+	maxInstanceTagLengthPPC   = 29 // PowerPC: maxLength=47, format is tag + "-" + 16-char-hash + "x" = tag + 18
+	maxInstanceTagLengthS390x = 45 // System Z: maxLength=63, format is tag + "-" + 16-char-hash + "x" = tag + 18
 )
 
 // validatePlatformFormat validates a platform string according to the controller's rules
@@ -185,8 +190,9 @@ func validateIBMHostSecret(key, value string) error {
 	return errIBMHostSecretPlatformMismatch
 }
 
-// validateDynamicInstanceTag validates dynamic AWS host instance-tag configuration.
+// validateDynamicInstanceTag validates dynamic host instance-tag configuration.
 // It ensures the platform and instance type match between the key (platformConfigName) and the value (instanceTag).
+// For IBM platforms, it also enforces maximum length limits to prevent hash collision issues.
 //
 // CONVENTION:
 //
@@ -201,10 +207,13 @@ func validateIBMHostSecret(key, value string) error {
 // This function verifies that 'Platform' and 'InstanceType' (after sorting)
 // are identical between both.
 //
+// Length limits for IBM platforms:
+//   - ppc64le: Maximum 29 characters (ensures 16-char hash, ~0.003% collision probability)
+//   - s390x: Maximum 45 characters (ensures 16-char hash, ~0.003% collision probability)
+//
 // Returns:
 //   - nil if validation passes
-//   - a descriptive error if the validation fails or if the inputs are malformed, and nil if
-//     the validation succeeds.
+//   - a descriptive error if the validation fails or if the inputs are malformed
 func validateDynamicInstanceTag(key, value string) error {
 	// Parse and normalize the platform and instance type from the key, then from the value.
 	keyPlatform, keyInstanceType, err := parseDynamicHostInstanceTypeKey(key)
@@ -225,6 +234,19 @@ func validateDynamicInstanceTag(key, value string) error {
 	if keyInstanceType != valueInstanceType {
 		return fmt.Errorf("instance type mismatch: key has '%s', value has '%s'", keyInstanceType, valueInstanceType)
 	}
+
+	// Enforce length limits for IBM platforms to prevent hash collision issues
+	switch keyPlatform {
+	case "ppc64le":
+		if len(value) > maxInstanceTagLengthPPC {
+			return fmt.Errorf("instance tag too long for ppc64le platform: %d characters (max %d)", len(value), maxInstanceTagLengthPPC)
+		}
+	case "s390x":
+		if len(value) > maxInstanceTagLengthS390x {
+			return fmt.Errorf("instance tag too long for s390x platform: %d characters (max %d)", len(value), maxInstanceTagLengthS390x)
+		}
+	}
+
 	return nil
 }
 
