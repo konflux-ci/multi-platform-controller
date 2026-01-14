@@ -16,6 +16,7 @@ import (
 	"knative.dev/pkg/kmeta"
 
 	mpcmetrics "github.com/konflux-ci/multi-platform-controller/pkg/metrics"
+	"github.com/konflux-ci/multi-platform-controller/pkg/util"
 
 	"github.com/konflux-ci/multi-platform-controller/pkg/aws"
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
@@ -114,7 +115,7 @@ type ReconcileTaskRun struct {
 func newReconciler(mgr ctrl.Manager, operatorNamespace string) reconcile.Reconciler {
 	return &ReconcileTaskRun{
 		apiReader:         mgr.GetAPIReader(),
-		client:            mgr.GetClient(),
+		client:            util.NewRetryClient(mgr.GetClient(), retry.DefaultBackoff),
 		scheme:            mgr.GetScheme(),
 		eventRecorder:     mgr.GetEventRecorderFor("MultiPlatformTaskRun"),
 		operatorNamespace: operatorNamespace,
