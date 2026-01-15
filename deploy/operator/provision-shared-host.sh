@@ -191,7 +191,7 @@ fi
 # Copy opentelemetry config
 if [[ -f /otelcol/config.yaml ]]; then
   ssh "${SSH_OPTS[@]}" "$SSH_HOST" \
-    'sudo mkdir -p /etc/otelcol-contib && sudo tee /etc/otelcol-contrib/config_mpc.yaml > /dev/null' \
+    'sudo mkdir -p /etc/otelcol-contrib && sudo tee /etc/otelcol-contrib/config_mpc.yaml > /dev/null' \
     < /otelcol/config.yaml
 else
   echo "Opentelemetry config not found, default one will be used"
