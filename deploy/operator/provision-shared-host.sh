@@ -33,7 +33,8 @@ cat >script.sh <<EOF
 sudo dnf install podman -y
 
 if command -v otelcol-contrib >/dev/null 2>&1; then
-  echo "Found Opentelemetry, skipping..."
+  echo "Found Opentelemetry, re-apply config.."
+  sudo systemctl restart otelcol-contrib
 else
   if [[ -f /etc/otelcol-contrib/config_mpc.yaml ]]; then
     PKG="otelcol-contrib_0.140.0_${PLATFORM}.rpm"
@@ -48,10 +49,10 @@ else
     echo 'OTELCOL_OPTIONS="--config=/etc/otelcol-contrib/config_mpc.yaml"' \
       | sudo tee /etc/otelcol-contrib/otelcol-contrib.conf >/dev/null
 
-    # Add user to groups BEFORE start
+    # Add user to groups BEFORE restart
     sudo usermod -aG adm,systemd-journal otelcol-contrib
     sudo systemctl daemon-reload
-    sudo systemctl start otelcol-contrib
+    sudo systemctl restart otelcol-contrib
   else
     echo "Opentelemetry config not found, skipping installation."
   fi
