@@ -52,20 +52,9 @@ else
     # Add user to groups BEFORE restart
     sudo usermod -aG adm,systemd-journal otelcol-contrib
 
-    # enable audit -> journald forwarding
-    AUDIT_SYSLOG_CONF="/etc/audit/plugins.d/syslog.conf"
-
-    if [[ ! -f "\${AUDIT_SYSLOG_CONF}" ]]; then
-       sudo tee "\${AUDIT_SYSLOG_CONF}" >/dev/null <<'AUDIT_EOF'
-active = yes
-direction = out
-path = builtin_syslog
-type = builtin
-args = LOG_INFO
-format = string
-AUDIT_EOF
-    fi
-    sudo service auditd restart
+    # Set ACLs to read the audit log
+    sudo setfacl -m u:otelcol-contrib:r /var/log/audit/audit.log
+    sudo setfacl -m u:otelcol-contrib:rx /var/log/audit
 
     sudo systemctl daemon-reload
     sudo systemctl restart otelcol-contrib
