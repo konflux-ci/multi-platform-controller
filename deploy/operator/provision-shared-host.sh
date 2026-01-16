@@ -56,7 +56,7 @@ else
     AUDIT_SYSLOG_CONF="/etc/audit/plugins.d/syslog.conf"
 
     if [ ! -f "\${AUDIT_SYSLOG_CONF}" ]; then
-        sudo tee /etc/audit/plugins.d/syslog.conf >/dev/null <<'AUDIT_EOF'
+        sudo tee "\${AUDIT_SYSLOG_CONF}" >/dev/null <<'AUDIT_EOF'
         active = yes
         direction = out
         path = builtin_syslog
