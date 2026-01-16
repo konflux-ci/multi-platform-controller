@@ -55,15 +55,15 @@ else
     # enable audit -> journald forwarding
     AUDIT_SYSLOG_CONF="/etc/audit/plugins.d/syslog.conf"
 
-    if [ ! -f "\${AUDIT_SYSLOG_CONF}" ]; then
-        sudo tee "\${AUDIT_SYSLOG_CONF}" >/dev/null <<'AUDIT_EOF'
-        active = yes
-        direction = out
-        path = builtin_syslog
-        type = builtin
-        args = LOG_INFO
-        format = string
-        AUDIT_EOF
+    if [[ ! -f "\${AUDIT_SYSLOG_CONF}" ]]; then
+       sudo tee "\${AUDIT_SYSLOG_CONF}" >/dev/null <<'AUDIT_EOF'
+active = yes
+direction = out
+path = builtin_syslog
+type = builtin
+args = LOG_INFO
+format = string
+AUDIT_EOF
     fi
     sudo service auditd restart
 
