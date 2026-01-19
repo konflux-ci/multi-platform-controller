@@ -4,10 +4,9 @@ import (
 	"fmt"
 	"regexp"
 
+	"github.com/konflux-ci/multi-platform-controller/test/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"github.com/konflux-ci/multi-platform-controller/testing/utils"
 )
 
 const testIterations = 10000000
