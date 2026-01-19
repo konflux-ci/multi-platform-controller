@@ -4,10 +4,9 @@ package main
 import (
 	"fmt"
 
+	"github.com/konflux-ci/multi-platform-controller/test/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"github.com/konflux-ci/multi-platform-controller/testing/utils"
 )
 
 const testRounds = 100000
