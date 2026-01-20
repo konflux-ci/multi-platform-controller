@@ -96,10 +96,10 @@ TOTAL_MEM_KB=\$(awk '/MemTotal/ {print \$2}' /proc/meminfo)
 # Convert to bytes for 'as' (virtual memory) limit
 TOTAL_MEM_BYTES=\$((TOTAL_MEM_KB * 1024))
 
-# Soft limit: 50% of total memory per process (reasonable for most builds)
-# Hard limit: 80% of total memory per process (allows for intensive builds)
-SOFT_AS=\$((TOTAL_MEM_BYTES / 2))
-HARD_AS=\$((TOTAL_MEM_BYTES * 80 / 100))
+# Soft limit: 75% of total memory per process (reasonable for most builds)
+# Hard limit: 90% of total memory per process (allows for intensive builds)
+SOFT_AS=\$((TOTAL_MEM_BYTES * 75 / 100))
+HARD_AS=\$((TOTAL_MEM_BYTES * 90 / 100))
 
 # Ensure minimum thresholds (useful for small machines)
 # Minimum 2GB soft, 4GB hard
@@ -112,23 +112,14 @@ if (( \$HARD_AS < \$MIN_HARD_AS )); then
   HARD_AS=\$MIN_HARD_AS
 fi
 
-# Calculate memlock limits (for memory locking)
-# Soft: 25% of total memory, Hard: 50% of total memory
-SOFT_MEMLOCK=\$((TOTAL_MEM_KB / 4))
-HARD_MEMLOCK=\$((TOTAL_MEM_KB / 2))
-
 # Set resource limits for this user to prevent fork bombs
 sudo tee /etc/security/limits.d/user-$USERNAME.conf >/dev/null <<LIMITS_EOF
 $USERNAME   soft   nproc   2048
 $USERNAME   hard   nproc   4096
-$USERNAME   soft   nofile  8192
-$USERNAME   hard   nofile  16384
 $USERNAME   soft   cpu     28800      # 8 hours
 $USERNAME   hard   cpu     43200      # 12 hours
 $USERNAME   soft   as      \${SOFT_AS}
 $USERNAME   hard   as      \${HARD_AS}
-$USERNAME   soft   memlock \${SOFT_MEMLOCK}
-$USERNAME   hard   memlock \${HARD_MEMLOCK}
 LIMITS_EOF
 
 # Ensure PAM enforces these limits
@@ -162,8 +153,6 @@ CPU_QUOTA_PERCENT=\$((TOTAL_CPUS * 90))
 sudo mkdir -p "/etc/systemd/system/user-\${USER_UID}.slice.d"
 sudo tee /etc/systemd/system/user-\${USER_UID}.slice.d/limits.conf >/dev/null <<SYSTEMD_LIMITS
 [Slice]
-# Limit total tasks (processes + threads) - allows for build parallelism
-TasksMax=4096
 # Memory limit - prevent memory exhaustion
 MemoryMax=90%
 # CPU quota - dynamically calculated: 90% of \${TOTAL_CPUS} CPUs = \${CPU_QUOTA_PERCENT}%
