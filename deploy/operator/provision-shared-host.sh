@@ -127,8 +127,6 @@ $USERNAME   soft   cpu     28800      # 8 hours
 $USERNAME   hard   cpu     43200      # 12 hours
 $USERNAME   soft   as      \${SOFT_AS}
 $USERNAME   hard   as      \${HARD_AS}
-$USERNAME   soft   fsize   10485760   # 10GB in KB
-$USERNAME   hard   fsize   20971520   # 20GB in KB
 $USERNAME   soft   memlock \${SOFT_MEMLOCK}
 $USERNAME   hard   memlock \${HARD_MEMLOCK}
 LIMITS_EOF
