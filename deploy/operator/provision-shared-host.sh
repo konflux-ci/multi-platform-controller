@@ -180,6 +180,7 @@ if [ -n "${SUDO_COMMANDS:-}" ]; then
 EOF
 fi
 
+
 # Copy opentelemetry config
 if [[ -f /otelcol/config.yaml ]]; then
   ssh "${SSH_OPTS[@]}" "$SSH_HOST" \

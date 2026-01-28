@@ -1,0 +1,135 @@
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: otelcol-config
+  namespace: multi-platform-controller
+  labels:
+    build.appstudio.redhat.com/multi-platform-secret: "true"
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "-1"
+stringData:
+  config.yaml: |
+    exporters:
+      awss3:
+        s3uploader:
+          region: us-east-1
+          s3_bucket: otelcol-logs
+          s3_base_prefix: mpc
+          s3_prefix: default
+          s3_partition_format: '%Y-%m-%d-%H-%M'
+        resource_attrs_to_s3:
+          s3_prefix: host.id
+    extensions:
+      file_storage/otc:
+        directory: /tmp/otelcollector/oteltmp
+        timeout: 10s
+        create_directory: true
+    processors:
+      batch:
+        timeout: 2s
+        send_batch_size: 20
+        send_batch_max_size: 20
+      transform/common:
+        error_mode: ignore
+        log_statements:
+          - context: log
+            statements:
+              - set(attributes["com.splunk.source"], attributes["log.file.path"])
+              - set(attributes["host.name"], resource.attributes["host.name"])
+              - set(attributes["appcode"], resource.attributes["appcode"])
+              - keep_keys(attributes, ["com.splunk.source", "host.name", "appcode", "com.splunk.index", "com.splunk.sourcetype"])
+      resource/add_appcode:
+        attributes:
+          - action: insert
+            key: appcode
+            value: "ASSH-001"
+      resourcedetection/ec2:
+        detectors:
+          - ec2
+        override: true
+      resourcedetection/system:
+        attributes:
+          - host.name
+          - os.type
+        detectors:
+          - system
+        override: true
+        system:
+          hostname_sources:
+            - os
+          resource_attributes:
+            host.id:
+              enabled: false
+            host.name:
+              enabled: true
+            os.type:
+              enabled: true
+    receivers:
+      filelog/e2e_audit:
+        include:
+          - /var/log/audit/audit.log
+        include_file_path: true
+        exclude_older_than: 86400s
+        operators:
+          - type: add
+            id: e2e_idx
+            field: attributes["com.splunk.index"]
+            value: e2e
+            on_error: send
+          - type: add
+            id: rh_assh-001_audit_st
+            field: attributes["com.splunk.sourcetype"]
+            value: audit
+            on_error: send
+      journald/e2e_messages:
+        operators:
+          - type: filter
+            id: messages_filter
+            expr: 'attributes["SYSLOG_IDENTIFIER"] != nil'
+          - type: add
+            id: e2e_idx
+            field: attributes["com.splunk.index"]
+            value: e2e
+            on_error: send
+          - type: add
+            id: rh_assh-001_messages_st
+            field: attributes["com.splunk.sourcetype"]
+            value: messages
+            on_error: send
+      journald/e2e_secure:
+        operators:
+          - type: filter
+            id: secure_filter
+            expr: |
+              attributes["SYSLOG_IDENTIFIER"] == "sshd" ||
+              attributes["SYSLOG_IDENTIFIER"] == "sudo" ||
+              attributes["SYSLOG_FACILITY"] == "auth"
+          - type: add
+            id: e2e_idx
+            field: attributes["com.splunk.index"]
+            value: e2e
+            on_error: send
+          - type: add
+            id: rh_assh-001_secure_st
+            field: attributes["com.splunk.sourcetype"]
+            value: secure
+            on_error: send
+    service:
+      extensions:
+        - file_storage/otc
+      pipelines:
+        logs:
+          processors:
+            - resource/add_appcode
+            - resourcedetection/ec2
+            - resourcedetection/system
+            - transform/common
+            - batch
+          receivers:
+            - filelog/e2e_audit
+            - journald/e2e_messages
+            - journald/e2e_secure
+          exporters:
+            - awss3

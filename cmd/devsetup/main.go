@@ -30,6 +30,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
@@ -64,6 +66,7 @@ func newRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newDeployCmd())
 	rootCmd.AddCommand(newCleanupKeypairCmd())
 	rootCmd.AddCommand(newCleanupInstancesCmd())
+	rootCmd.AddCommand(newCleanupS3LogsCmd())
 
 	return rootCmd
 }
@@ -122,6 +125,28 @@ This is typically used to clean up instances created during e2e tests.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCleanupInstances(args[0])
+		},
+	}
+}
+
+func newCleanupS3LogsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "cleanup-s3-logs <instance-tag>",
+		Short: "Delete S3 logs for EC2 instances created during development/testing",
+		Long: `Find EC2 instances tagged with the specified instance tag and remove their logs from S3.
+
+This command finds all EC2 instances with tags:
+  - multi-platform-instance=<instance-tag>
+  - MultiPlatformManaged=true
+
+Instances are listed in all states (including stopped and terminated) to ensure logs
+are removed even if instances already shut down.
+
+Required environment variables:
+  S3_LOGS_BUCKET - S3 bucket for log cleanup.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runCleanupS3Logs(args[0])
 		},
 	}
 }
@@ -249,6 +274,136 @@ func runCleanupInstances(instanceTag string) error {
 		if err != nil {
 			fmt.Printf("Failed to terminate instance %s: %v\n", instanceID, err)
 			// Continue with other instances
+		}
+	}
+
+	return nil
+}
+
+func logsBucketName() (string, error) {
+	value := strings.TrimSpace(os.Getenv("S3_LOGS_BUCKET"))
+	if value == "" {
+		return "", errors.New("S3_LOGS_BUCKET is required for cleanup-s3-logs")
+	}
+	return value, nil
+}
+
+func runCleanupS3Logs(instanceTag string) error {
+	if err := validateAWSCredentials(); err != nil {
+		return err
+	}
+
+	fmt.Printf("Finding EC2 instances with tag multi-platform-instance=%s for S3 log cleanup\n", instanceTag)
+
+	ctx := context.Background()
+	awsCfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("loading AWS config: %w", err)
+	}
+
+	ec2Client := ec2.NewFromConfig(awsCfg)
+	s3Client := s3.NewFromConfig(awsCfg)
+	logsBucket, err := logsBucketName()
+	if err != nil {
+		return err
+	}
+
+	result, err := ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
+		Filters: []types.Filter{
+			{
+				Name:   aws.String("tag:multi-platform-instance"),
+				Values: []string{instanceTag},
+			},
+			{
+				Name:   aws.String("tag:MultiPlatformManaged"),
+				Values: []string{"true"},
+			},
+			{
+				Name: aws.String("instance-state-name"),
+				Values: []string{
+					"pending",
+					"running",
+					"stopping",
+					"stopped",
+					"shutting-down",
+					"terminated",
+				},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("describing instances: %w", err)
+	}
+
+	instanceIDs := make(map[string]struct{})
+	for _, reservation := range result.Reservations {
+		for _, instance := range reservation.Instances {
+			if instance.InstanceId != nil && *instance.InstanceId != "" {
+				instanceIDs[*instance.InstanceId] = struct{}{}
+			}
+		}
+	}
+
+	if len(instanceIDs) == 0 {
+		fmt.Printf("No EC2 instances found with tag multi-platform-instance=%s for S3 log cleanup\n", instanceTag)
+		return nil
+	}
+
+	var cleanupErrors []error
+	for instanceID := range instanceIDs {
+		if err := cleanupS3Logs(ctx, s3Client, instanceID, logsBucket); err != nil {
+			fmt.Printf("Failed to delete S3 logs for %s: %v\n", instanceID, err)
+			cleanupErrors = append(cleanupErrors, err)
+		}
+	}
+
+	if len(cleanupErrors) > 0 {
+		return errors.Join(cleanupErrors...)
+	}
+
+	return nil
+}
+
+func cleanupS3Logs(ctx context.Context, s3Client *s3.Client, instanceID string, bucket string) error {
+	prefix := fmt.Sprintf("mpc/%s/", instanceID)
+	fmt.Printf("Deleting S3 logs from bucket %s with prefix %s\n", bucket, prefix)
+
+	paginator := s3.NewListObjectsV2Paginator(s3Client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(bucket),
+		Prefix: aws.String(prefix),
+	})
+
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return fmt.Errorf("listing S3 objects with prefix %s: %w", prefix, err)
+		}
+		if len(page.Contents) == 0 {
+			continue
+		}
+
+		objects := make([]s3types.ObjectIdentifier, 0, len(page.Contents))
+		for _, object := range page.Contents {
+			if object.Key != nil {
+				objects = append(objects, s3types.ObjectIdentifier{Key: object.Key})
+			}
+		}
+		if len(objects) == 0 {
+			continue
+		}
+
+		output, err := s3Client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+			Bucket: aws.String(bucket),
+			Delete: &s3types.Delete{
+				Objects: objects,
+				Quiet:   aws.Bool(true),
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("deleting S3 objects with prefix %s: %w", prefix, err)
+		}
+		if len(output.Errors) > 0 {
+			return fmt.Errorf("failed deleting some S3 objects with prefix %s: %v", prefix, output.Errors)
 		}
 	}
 
