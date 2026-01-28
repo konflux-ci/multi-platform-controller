@@ -6,6 +6,7 @@ resources:
  - "../../otp"
  - host-config.yaml
  - otp-certificate.yaml
+ - otelcollector.yaml
 
 images:
   - name: multi-platform-controller
