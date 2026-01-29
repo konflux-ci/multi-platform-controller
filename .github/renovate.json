@@ -3,5 +3,15 @@
   "prConcurrentLimit": 20,
   "extends": ["config:recommended"],
   "pinDigests": true,
-  "postUpdateOptions": ["gomodTidy"]
+  "postUpdateOptions": ["gomodTidy"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Update _VERSION variables in Makefiles",
+      "managerFilePatterns": ["Makefile"],
+      "matchStrings": [
+        "#\\s+?renovate:\\s+?datasource=(?<datasource>[a-z-]+?)(?: depName=(?<depName>.+?))? packageName=(?<packageName>.+?)(?: versioning=(?<versioning>[a-z-]+?))?\\s+?.+?_VERSION\\s+?\\?=\\s+?(?<currentValue>.+?)\\s"
+      ]
+    }
+  ]
 }
