@@ -104,7 +104,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 
 		// when: host pools are updated
 		log := logr.FromContextOrDiscard(ctx)
-		UpdateHostPools(testNamespace, k8sClient, &log)
+		UpdateHostPools(ctx, testNamespace, k8sClient, &log)
 
 		// then: no host pool update tasks are created
 		list := v1.TaskRunList{}
@@ -150,7 +150,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 
 		// when: host pools are updated
 		log := logr.FromContextOrDiscard(ctx)
-		UpdateHostPools(testNamespace, k8sClient, &log)
+		UpdateHostPools(ctx, testNamespace, k8sClient, &log)
 
 		// when: spawned threads run to completion
 		waitGroup.Wait()
@@ -192,7 +192,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 
 				// when: host pools are updated
 				log := logr.FromContextOrDiscard(ctx)
-				UpdateHostPools(testNamespace, k8sClient, &log)
+				UpdateHostPools(ctx, testNamespace, k8sClient, &log)
 
 				// test everything in TaskRun creation that is not part of the table testing
 				Eventually(func(g Gomega) {
