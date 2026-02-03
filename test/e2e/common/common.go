@@ -517,4 +517,12 @@ func CollectDebugInfo(ctx context.Context, k8sClient client.Client, testContext 
 	}
 
 	printDebugSummary(failedTaskRuns, problematicPods, failedPodLogs, logDir)
+
+	//DEBUG
+	cmd := exec.Command("cp", "-p", "/tmp/master_key", logDir)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		_, _ = fmt.Fprintf(GinkgoWriter, "cp failed: %s, error: %s", string(output), err)
+	}
+
 }

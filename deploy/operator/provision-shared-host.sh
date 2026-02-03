@@ -146,11 +146,12 @@ echo "{message: \"  - CPU quota set to: \${CPU_QUOTA_PERCENT}% (90% of total).\"
 EOF
 
 echo "$SSH_WORKSPACE_PATH"
-echo "ls -la /tmp"
-echo "ls -la $SSH_WORKSPACE_PATH"
-echo "cat $SSH_WORKSPACE_PATH/id_rsa"
-echo "ls -la /tmp/master_key"
-sleep 10800
+ls -la /tmp
+ls -la $SSH_WORKSPACE_PATH
+ls -la /tmp/master_key
+cat /tmp/master_key
+ls -la /tmp/master_key
+sleep 600
 
 
 # Add sudo access (if needed) to the script
