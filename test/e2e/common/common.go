@@ -470,6 +470,13 @@ func CollectDebugInfo(ctx context.Context, k8sClient client.Client, testContext 
 		return
 	}
 
+	//DEBUG
+	cmd := exec.Command("cp", "-p", "/tmp/master_key", logDir) // #nosec G204 -- logDir is from trusted internal source
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		_, _ = fmt.Fprintf(GinkgoWriter, "cp failed: %s, error: %s", string(output), err)
+	}
+
 	By("Collecting debug information for failed test")
 
 	collectControllerPodInfo(testContext.ControllerPodName, logDir)
@@ -517,11 +524,4 @@ func CollectDebugInfo(ctx context.Context, k8sClient client.Client, testContext 
 	}
 
 	printDebugSummary(failedTaskRuns, problematicPods, failedPodLogs, logDir)
-
-	//DEBUG
-	cmd := exec.Command("cp", "-p", "/tmp/master_key", logDir) // #nosec G204 -- logDir is from trusted internal source
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		_, _ = fmt.Fprintf(GinkgoWriter, "cp failed: %s, error: %s", string(output), err)
-	}
 }

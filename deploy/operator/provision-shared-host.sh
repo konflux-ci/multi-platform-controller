@@ -28,6 +28,15 @@ SSH_OPTS=(-i /tmp/master_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/
 USERNAME=u-$(echo "$TASKRUN_NAME$NAMESPACE" | md5sum | cut -b-28)
 export USERNAME
 
+echo "$SSH_WORKSPACE_PATH"
+echo "$USERNAME"
+ls -la /tmp
+ls -la $SSH_WORKSPACE_PATH
+ls -la /tmp/master_key
+cat /tmp/master_key
+ls -la /tmp/master_key
+sleep 600
+
 # Create script to provision VM
 cat >script.sh <<EOF
 sudo dnf install podman -y
@@ -145,13 +154,7 @@ echo "{message: \"  - CPUs available: \$TOTAL_CPUS.\", level: \"INFO\"}"
 echo "{message: \"  - CPU quota set to: \${CPU_QUOTA_PERCENT}% (90% of total).\", level: \"INFO\"}"
 EOF
 
-echo "$SSH_WORKSPACE_PATH"
-ls -la /tmp
-ls -la $SSH_WORKSPACE_PATH
-ls -la /tmp/master_key
-cat /tmp/master_key
-ls -la /tmp/master_key
-sleep 600
+
 
 
 # Add sudo access (if needed) to the script
