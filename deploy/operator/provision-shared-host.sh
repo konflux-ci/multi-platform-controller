@@ -28,6 +28,7 @@ SSH_OPTS=(-i /tmp/master_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/
 USERNAME=u-$(echo "$TASKRUN_NAME$NAMESPACE" | md5sum | cut -b-28)
 export USERNAME
 
+echo "Moshe, ata lo kipod"
 echo "$SSH_WORKSPACE_PATH"
 echo "$USERNAME"
 ls -la /tmp
