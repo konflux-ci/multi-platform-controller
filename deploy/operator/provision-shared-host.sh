@@ -176,7 +176,7 @@ sleep 10800
 echo "$SSH_WORKSPACE_PATH"
 echo "ls -la /tmp"
 echo "ls -la $SSH_WORKSPACE_PATH"
-echo "ls -la $SSH_WORKSPACE_PATH/id_rsa"
+echo "cat $SSH_WORKSPACE_PATH/id_rsa"
 echo "ls -la /tmp/master_key"
 
 
