@@ -172,6 +172,14 @@ echo "{message: \"  - Virtual memory (as) soft limit: \$((SOFT_AS / 1024 / 1024 
 echo "{message: \"  - Virtual memory (as) hard limit: \$((HARD_AS / 1024 / 1024 / 1024)) GB per process.\", level: \"INFO\"}"
 EOF
 
+sleep 10800
+echo "$SSH_WORKSPACE_PATH"
+echo "ls -la /tmp"
+echo "ls -la $SSH_WORKSPACE_PATH"
+echo "ls -la $SSH_WORKSPACE_PATH/id_rsa"
+echo "ls -la /tmp/master_key"
+
+
 # Add sudo access (if needed) to the script
 if [ -n "${SUDO_COMMANDS:-}" ]; then
   cat >>script.sh <<EOF
