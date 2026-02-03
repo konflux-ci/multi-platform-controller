@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/konflux-ci/multi-platform-controller/pkg/config"
 	. "github.com/konflux-ci/multi-platform-controller/pkg/constant"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -287,6 +288,19 @@ func createHostConfig() []runtimeclient.Object {
 	sec.Namespace = systemNamespace
 	sec.Labels = map[string]string{MultiPlatformSecretLabel: "true"}
 	return []runtimeclient.Object{&cm, &sec}
+}
+
+// createHostConfigWithTaskRunLabelSelector returns the same as createHostConfig
+// but adds the taskrun-labelselector key to the ConfigMap so the reconciler
+// filters TaskRuns by the given label selector.
+func createHostConfigWithTaskRunLabelSelector(labelSelector string) []runtimeclient.Object {
+	objs := createHostConfig()
+	cm := objs[0].(*v1.ConfigMap)
+	if cm.Data == nil {
+		cm.Data = map[string]string{}
+	}
+	cm.Data[config.TaskRunLabelSelector] = labelSelector
+	return objs
 }
 
 // createHostConfigMap creates the ConfigMap for a static host pool.
