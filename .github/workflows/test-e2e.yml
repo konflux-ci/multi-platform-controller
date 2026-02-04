@@ -99,21 +99,42 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      # Reconfigure AWS credentials for cleanup to ensure they're available even if
-      # The credentials expired (15-minute duration) during long-running tests
+      # ╔═══════════════════════════════════════════════════════════════════════════╗
+      # ║                                                                           ║
+      # ║   ██████  ███████ ██████  ██    ██  ██████      ██ ██ ██                 ║
+      # ║   ██   ██ ██      ██   ██ ██    ██ ██           ██ ██ ██                 ║
+      # ║   ██   ██ █████   ██████  ██    ██ ██   ███     ██ ██ ██                 ║
+      # ║   ██   ██ ██      ██   ██ ██    ██ ██    ██                              ║
+      # ║   ██████  ███████ ██████   ██████   ██████      ██ ██ ██                 ║
+      # ║                                                                           ║
+      # ║   CLEANUP DISABLED FOR DEBUGGING - EC2 INSTANCES WILL NOT BE DELETED!    ║
+      # ║   UNCOMMENT THE STEPS BELOW BEFORE COMMITTING!                           ║
+      # ║                                                                           ║
+      # ║   MANUAL CLEANUP REQUIRED AFTER DEBUGGING:                               ║
+      # ║   ./out/devsetup cleanup-instances $INSTANCE_TAG                         ║
+      # ║   ./out/devsetup cleanup-keypair $GITHUB_RUN_ID                          ║
+      # ║                                                                           ║
+      # ╚═══════════════════════════════════════════════════════════════════════════╝
 
-      - name: Configure AWS Credentials for Cleanup
-        if: always()
-        uses: aws-actions/configure-aws-credentials@v5.1.1
-        with:
-          role-to-assume: ${{ env.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-          role-duration-seconds: ${{ env.AWS_ROLE_DURATION }}
+      # # Reconfigure AWS credentials for cleanup to ensure they're available even if
+      # # The credentials expired (15-minute duration) during long-running tests
+      #
+      # - name: Configure AWS Credentials for Cleanup
+      #   if: always()
+      #   uses: aws-actions/configure-aws-credentials@v5.1.1
+      #   with:
+      #     role-to-assume: ${{ env.AWS_ROLE_ARN }}
+      #     aws-region: ${{ env.AWS_REGION }}
+      #     role-duration-seconds: ${{ env.AWS_ROLE_DURATION }}
+      #
+      # - name: Delete AWS EC2 Instances
+      #   if: always()
+      #   run: ./out/devsetup cleanup-instances ${{ env.INSTANCE_TAG }}
+      #
+      # - name: Delete AWS EC2 Key Pair
+      #   if: always()
+      #   run: ./out/devsetup cleanup-keypair ${{ github.run_id }}
 
-      - name: Delete AWS EC2 Instances
-        if: always()
-        run: ./out/devsetup cleanup-instances ${{ env.INSTANCE_TAG }}
-
-      - name: Delete AWS EC2 Key Pair
-        if: always()
-        run: ./out/devsetup cleanup-keypair ${{ github.run_id }}
+      # ╔═══════════════════════════════════════════════════════════════════════════╗
+      # ║   END DEBUG SECTION - UNCOMMENT CLEANUP STEPS ABOVE BEFORE COMMIT!        ║
+      # ╚═══════════════════════════════════════════════════════════════════════════╝

@@ -225,15 +225,33 @@ var _ = Describe("TaskRun execution", func() {
 		Expect(tr.Status.CompletionTime).ToNot(BeNil())
 	}
 
+	//╔════════════════════════════════════════════════════════════════════════════╗
+	//║                                                                            ║
+	//║   ██████  ███████ ██████  ██    ██  ██████      ██ ██ ██                  ║
+	//║   ██   ██ ██      ██   ██ ██    ██ ██           ██ ██ ██                  ║
+	//║   ██   ██ █████   ██████  ██    ██ ██   ███     ██ ██ ██                  ║
+	//║   ██   ██ ██      ██   ██ ██    ██ ██    ██                               ║
+	//║   ██████  ███████ ██████   ██████   ██████      ██ ██ ██                  ║
+	//║                                                                            ║
+	//║   FIt() BELOW - ONLY arm64 TEST WILL RUN!                                 ║
+	//║   REMOVE THE 'F' FROM FIt() BEFORE COMMITTING TO GIT!                     ║
+	//║   OTHER TESTS (amd64, windows) ARE AUTOMATICALLY SKIPPED BY GINKGO FOCUS  ║
+	//║                                                                            ║
+	//╚════════════════════════════════════════════════════════════════════════════╝
+
 	It("should successfully run a TaskRun on linux/amd64 platform", func(ctx context.Context) {
 		runTaskRunPlatformTest(ctx, "linux/amd64", "x86_64", generateVerifyPlatformScript("x86_64"))
 	})
 
-	It("should successfully run a TaskRun on linux/arm64 platform", func(ctx context.Context) {
+	FIt("should successfully run a TaskRun on linux/arm64 platform", func(ctx context.Context) {
 		runTaskRunPlatformTest(ctx, "linux/arm64", "aarch64", generateVerifyPlatformScript("aarch64"))
 	})
 
-	It("should successfully run a TaskRun on windows/c4xlarge-amd64 platform", func(ctx context.Context) {
+	FIt("should successfully run a TaskRun on windows/c4xlarge-amd64 platform", func(ctx context.Context) {
 		runTaskRunPlatformTest(ctx, "windows/c4xlarge-amd64", "AMD64", generateVerifyWindowsPlatformScript("AMD64"))
 	})
+
+	//╔════════════════════════════════════════════════════════════════════════════╗
+	//║   END DEBUG SECTION - REMEMBER TO REMOVE 'F' FROM FIt() ABOVE!            ║
+	//╚════════════════════════════════════════════════════════════════════════════╝
 })

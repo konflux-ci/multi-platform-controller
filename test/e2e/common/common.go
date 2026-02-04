@@ -24,6 +24,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:staticcheck
 	. "github.com/onsi/gomega"    //nolint:staticcheck
@@ -470,12 +471,63 @@ func CollectDebugInfo(ctx context.Context, k8sClient client.Client, testContext 
 		return
 	}
 
-	//DEBUG
-	cmd := exec.Command("cp", "-p", "/tmp/master_key", logDir) // #nosec G204 -- logDir is from trusted internal source
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		_, _ = fmt.Fprintf(GinkgoWriter, "cp failed: %s, error: %s", string(output), err)
+	//╔════════════════════════════════════════════════════════════════════════════╗
+	//║  DEBUG!!! DEBUG!!! DEBUG!!! DEBUG!!! DEBUG!!! DEBUG!!! DEBUG!!! DEBUG!!!   ║
+	//║  SSH KEY EXTRACTION FOR DEBUGGING - REMOVE BEFORE COMMIT                   ║
+	//║  Extracting keys from both secret and pod to detect transformation issues  ║
+	//╚════════════════════════════════════════════════════════════════════════════╝
+
+	// Extract SSH key from Kubernetes secret
+	By("DEBUG: Extracting SSH key from Kubernetes secret")
+	secretList := &corev1.SecretList{}
+	listOpts := []client.ListOption{
+		client.InNamespace(testNamespace),
 	}
+	if err := k8sClient.List(ctx, secretList, listOpts...); err != nil {
+		_, _ = fmt.Fprintf(GinkgoWriter, "DEBUG: Failed to list secrets: %s\n", err)
+	} else {
+		for _, secret := range secretList.Items {
+			if strings.HasPrefix(secret.Name, "multi-platform-ssh-") {
+				if idRsa, ok := secret.Data["id_rsa"]; ok {
+					keyPath := filepath.Join(logDir, fmt.Sprintf("master_key_from_secret_%s.pem", secret.Name))
+					if err := os.WriteFile(keyPath, idRsa, 0600); err != nil {
+						_, _ = fmt.Fprintf(GinkgoWriter, "DEBUG: Failed to write secret key to %s: %s\n", keyPath, err)
+					} else {
+						_, _ = fmt.Fprintf(GinkgoWriter, "DEBUG: Extracted SSH key from secret %s to %s\n", secret.Name, keyPath)
+					}
+				}
+			}
+		}
+	}
+
+	// Extract SSH key from provision pod filesystem
+	By("DEBUG: Extracting SSH key from provision pod")
+	podList := &corev1.PodList{}
+	if err := k8sClient.List(ctx, podList, client.InNamespace(MPCNamespace)); err != nil {
+		_, _ = fmt.Fprintf(GinkgoWriter, "DEBUG: Failed to list pods: %s\n", err)
+	} else {
+		for _, pod := range podList.Items {
+			if strings.Contains(pod.Name, "-prov-") {
+				// Try to extract key from provision pod's secret mount
+				cmd := exec.Command("kubectl", "exec", "-n", MPCNamespace, pod.Name, "--", "cat", "/workspace/ssh/id_rsa") // #nosec G204 -- pod.Name is from Kubernetes API (trusted source)
+				output, err := cmd.CombinedOutput()
+				if err != nil {
+					_, _ = fmt.Fprintf(GinkgoWriter, "DEBUG: Failed to extract key from pod %s: %s, output: %s\n", pod.Name, err, string(output))
+				} else {
+					keyPath := filepath.Join(logDir, fmt.Sprintf("master_key_from_pod_%s.pem", pod.Name))
+					if err := os.WriteFile(keyPath, output, 0600); err != nil {
+						_, _ = fmt.Fprintf(GinkgoWriter, "DEBUG: Failed to write pod key to %s: %s\n", keyPath, err)
+					} else {
+						_, _ = fmt.Fprintf(GinkgoWriter, "DEBUG: Extracted SSH key from pod %s to %s\n", pod.Name, keyPath)
+					}
+				}
+			}
+		}
+	}
+
+	//╚════════════════════════════════════════════════════════════════════════════╝
+	// END DEBUG SECTION - REMEMBER TO REMOVE SSH KEY EXTRACTION CODE ABOVE
+	//╚════════════════════════════════════════════════════════════════════════════╝
 
 	By("Collecting debug information for failed test")
 
