@@ -481,7 +481,7 @@ func CollectDebugInfo(ctx context.Context, k8sClient client.Client, testContext 
 	By("DEBUG: Extracting SSH key from Kubernetes secret")
 	secretList := &corev1.SecretList{}
 	listOpts := []client.ListOption{
-		client.InNamespace(testNamespace),
+		client.InNamespace(MPCNamespace),
 	}
 	if err := k8sClient.List(ctx, secretList, listOpts...); err != nil {
 		_, _ = fmt.Fprintf(GinkgoWriter, "DEBUG: Failed to list secrets: %s\n", err)

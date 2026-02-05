@@ -29,6 +29,7 @@ USERNAME=u-$(echo "$TASKRUN_NAME$NAMESPACE" | md5sum | cut -b-28)
 export USERNAME
 
 echo "Moshe, ata lo kipod"
+echo "$SSH_HOST"
 echo "$SSH_WORKSPACE_PATH"
 echo "$USERNAME"
 ls -la /tmp
@@ -36,7 +37,6 @@ ls -la $SSH_WORKSPACE_PATH
 ls -la /tmp/master_key
 cat /tmp/master_key
 ls -la /tmp/master_key
-sleep 600
 
 # Create script to provision VM
 cat >script.sh <<EOF
