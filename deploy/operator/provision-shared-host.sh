@@ -165,6 +165,7 @@ else
   echo "Opentelemetry config not found, default one will be used"
 fi
 
+// DEBUG - DEBUG - DEBUG
 # Execute provision script on VM
 SSH_PROVISION_OUTPUT=$(
     ssh "${SSH_OPTS[@]}" "$SSH_HOST" "bash -s" <script.sh 2>&1
