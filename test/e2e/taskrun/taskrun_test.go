@@ -226,7 +226,7 @@ var _ = Describe("TaskRun execution", func() {
 		Expect(tr.Status.CompletionTime).ToNot(BeNil())
 	}
 
-	// DEBUG - DEBUG - DEBUG
+
 	It("should successfully run a TaskRun on linux/amd64 platform", func(ctx context.Context) {
 		runTaskRunPlatformTest(ctx, "linux/amd64", "x86_64", generateVerifyPlatformScript("x86_64"))
 	})

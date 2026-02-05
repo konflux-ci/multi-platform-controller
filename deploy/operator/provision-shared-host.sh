@@ -158,7 +158,7 @@ fi
 # Copy opentelemetry config
 if [[ -f /otelcol/config.yaml ]]; then
 
-  // DEBUG - DEBUG - DEBUG
+  # DEBUG - DEBUG - DEBUG
   sleep 120
 
   ssh "${SSH_OPTS[@]}" "$SSH_HOST" \
@@ -168,7 +168,7 @@ else
   echo "Opentelemetry config not found, default one will be used"
 fi
 
-// DEBUG - DEBUG - DEBUG
+# DEBUG - DEBUG - DEBUG
 sleep 120
 
 # Execute provision script on VM

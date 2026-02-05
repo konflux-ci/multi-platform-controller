@@ -26,7 +26,7 @@ SSH_OPTS=(-i /tmp/master_key -vvv -o StrictHostKeyChecking=no -o UserKnownHostsF
 
 export USERNAME=konflux-builder
 
-// DEBUG - DEBUG - DEBUG
+# DEBUG - DEBUG - DEBUG
 echo "DEBUG - DEBUG - DEBUG - host is ${HOST}"
 sleep 120
 
