@@ -647,7 +647,14 @@ func prepareDeploymentOverlays(cfg *Config) error {
 		return fmt.Errorf("replacing INSTANCE_TAG: %w", err)
 	}
 
-	if err := replaceInFiles(developmentDir, "GITHUB_RUN_ID", cfg.GithubRunID); err != nil {
+	githubRunID := strings.TrimSpace(cfg.GithubRunID)
+	if githubRunID == "" && cfg.InstanceTag != "" {
+		githubRunID = strings.TrimSuffix(cfg.InstanceTag, "-development")
+	}
+	if githubRunID == "" {
+		githubRunID = "local"
+	}
+	if err := replaceInFiles(developmentDir, "GITHUB_RUN_ID", githubRunID); err != nil {
 		return fmt.Errorf("replacing GITHUB_RUN_ID: %w", err)
 	}
 
