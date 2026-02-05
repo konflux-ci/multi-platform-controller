@@ -29,6 +29,7 @@ USERNAME=u-$(echo "$TASKRUN_NAME$NAMESPACE" | md5sum | cut -b-28)
 export USERNAME
 
 echo "DEBUG - DEBUG - DEBUG - host is $HOST"
+echo "{message: \"DEBUG - DEBUG - DEBUG - Provisioning pod IP: $(hostname -i)\", level: \"INFO\"}"
 
 # Create script to provision VM
 cat >script.sh <<EOF
@@ -159,7 +160,7 @@ fi
 if [[ -f /otelcol/config.yaml ]]; then
 
   # DEBUG - DEBUG - DEBUG
-  sleep 120
+  sleep 60
 
   ssh "${SSH_OPTS[@]}" "$SSH_HOST" \
     'sudo mkdir -p /etc/otelcol-contrib && sudo tee /etc/otelcol-contrib/config_mpc.yaml > /dev/null' \
@@ -169,7 +170,7 @@ else
 fi
 
 # DEBUG - DEBUG - DEBUG
-sleep 120
+sleep 60
 
 # Execute provision script on VM
 SSH_PROVISION_OUTPUT=$(

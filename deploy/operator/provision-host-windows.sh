@@ -28,7 +28,8 @@ export USERNAME=konflux-builder
 
 # DEBUG - DEBUG - DEBUG
 echo "DEBUG - DEBUG - DEBUG - host is ${HOST}"
-sleep 120
+echo "{message: \"DEBUG - DEBUG - DEBUG - Provisioning pod IP: $(hostname -i)\", level: \"INFO\"}"
+sleep 60
 
 # Copy remote SSH key and then delete on VM
 ssh "${SSH_OPTS[@]}" "$SSH_HOST" "powershell -Command cat C:\\Users\\Administrator\\${USERNAME}" | sed 's/\r$//' > id_rsa
