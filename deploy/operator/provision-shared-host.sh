@@ -23,7 +23,7 @@ chmod 0400 /tmp/master_key
 export SSH_HOST="$USER@$HOST"
 export PLATFORM="${RAW_PLATFORM//-/_}"
 SSH_MULTIPLEX_OPTS=(-o ControlMaster=auto -o ControlPath=/tmp/ssh-%r@%h:%p)
-SSH_OPTS=(-i /tmp/master_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null  "${SSH_MULTIPLEX_OPTS[@]}")
+SSH_OPTS=(-i /tmp/master_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null  "${SSH_MULTIPLEX_OPTS[@]}" -v)
 
 USERNAME=u-$(echo "$TASKRUN_NAME$NAMESPACE" | md5sum | cut -b-28)
 export USERNAME
@@ -168,7 +168,7 @@ SSH_PROVISION_OUTPUT=$(
 ) || {
     # If the command fails, the '||' block executes.
     # Note: Using '||' suppresses set -e for this line.
-    echo "{message: \"Remote Provision Output: ${SSH_PROVISION_OUTPUT//$'\n'/ }\", level: \"WARNING\"}" >&2
+    echo "{message: \"Remote Provision Output: ${SSH_PROVISION_OUTPUT//$'\n'/ }\", level: \"WARNING\", sshOptions: \"${SSH_OPTS[*]}\", sshHost: \"$SSH_HOST\"}" >&2
     exit 1
 }
 echo "$SSH_PROVISION_OUTPUT"
