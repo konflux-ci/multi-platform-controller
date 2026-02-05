@@ -23,10 +23,13 @@ chmod 0400 /tmp/master_key
 export SSH_HOST="$USER@$HOST"
 export PLATFORM="${RAW_PLATFORM//-/_}"
 SSH_MULTIPLEX_OPTS=(-o ControlMaster=auto -o ControlPath=/tmp/ssh-%r@%h:%p)
-SSH_OPTS=(-i /tmp/master_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null  "${SSH_MULTIPLEX_OPTS[@]}")
+SSH_OPTS=(-i /tmp/master_key -vvv -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null  "${SSH_MULTIPLEX_OPTS[@]}")
 
 USERNAME=u-$(echo "$TASKRUN_NAME$NAMESPACE" | md5sum | cut -b-28)
 export USERNAME
+
+echo "DEBUG"
+echo "$HOST"
 
 # Create script to provision VM
 cat >script.sh <<EOF
