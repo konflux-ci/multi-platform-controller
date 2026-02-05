@@ -674,6 +674,7 @@ func replaceInFiles(dir, old, new string) error {
 		if newData != string(data) {
 			return os.WriteFile(path, []byte(newData), 0600)
 		}
+		fmt.Println(newData)
 		return nil
 	})
 }
