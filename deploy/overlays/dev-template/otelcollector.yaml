@@ -61,12 +61,11 @@ stringData:
             - os
           resource_attributes:
             host.id:
-              enabled: false
+              enabled: true
             host.name:
               enabled: true
             os.type:
               enabled: true
-        processors:
       transform/s3prefix:
         error_mode: ignore
         log_statements:
@@ -132,6 +131,7 @@ stringData:
             - resource/add_appcode
             - resourcedetection/ec2
             - resourcedetection/system
+            - transform/s3prefix
             - transform/common
             - batch
           receivers:
