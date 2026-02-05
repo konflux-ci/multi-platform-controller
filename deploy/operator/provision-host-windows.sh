@@ -27,7 +27,8 @@ SSH_OPTS=(-i /tmp/master_key -vvv -o StrictHostKeyChecking=no -o UserKnownHostsF
 export USERNAME=konflux-builder
 
 // DEBUG - DEBUG - DEBUG
-sleep 300
+echo "DEBUG - DEBUG - DEBUG - host is ${HOST}"
+sleep 120
 
 # Copy remote SSH key and then delete on VM
 ssh "${SSH_OPTS[@]}" "$SSH_HOST" "powershell -Command cat C:\\Users\\Administrator\\${USERNAME}" | sed 's/\r$//' > id_rsa

@@ -163,6 +163,7 @@ var _ = Describe("TaskRun execution", func() {
 				Namespace:    testNamespace,
 			},
 			Spec: tekv1.TaskRunSpec{
+				Timeout: &metav1.Duration{Duration: 2 * time.Hour}, // DEBUG - DEBUG - DEBUG
 				Params: []tekv1.Param{
 					{
 						Name:  "PLATFORM",
@@ -213,7 +214,7 @@ var _ = Describe("TaskRun execution", func() {
 			tr := &tekv1.TaskRun{}
 			g.Expect(k8sClient.Get(ctx, key, tr)).To(Succeed())
 			g.Expect(tr.Status.CompletionTime).ToNot(BeNil(), "TaskRun should have a completionTime")
-		}, 10*time.Minute, 10*time.Second).Should(Succeed())
+		}, 30*time.Minute, 10*time.Second).Should(Succeed()) // DEBUG - DEBUG - DEBUG
 
 		By("verifying the TaskRun completed successfully")
 		key := client.ObjectKeyFromObject(taskRun)
@@ -225,6 +226,7 @@ var _ = Describe("TaskRun execution", func() {
 		Expect(tr.Status.CompletionTime).ToNot(BeNil())
 	}
 
+	// DEBUG - DEBUG - DEBUG
 	It("should successfully run a TaskRun on linux/amd64 platform", func(ctx context.Context) {
 		runTaskRunPlatformTest(ctx, "linux/amd64", "x86_64", generateVerifyPlatformScript("x86_64"))
 	})

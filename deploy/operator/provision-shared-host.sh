@@ -28,8 +28,7 @@ SSH_OPTS=(-i /tmp/master_key -vvv -o StrictHostKeyChecking=no -o UserKnownHostsF
 USERNAME=u-$(echo "$TASKRUN_NAME$NAMESPACE" | md5sum | cut -b-28)
 export USERNAME
 
-echo "DEBUG"
-echo "$HOST"
+echo "DEBUG - DEBUG - DEBUG - host is $HOST"
 
 # Create script to provision VM
 cat >script.sh <<EOF
@@ -158,6 +157,10 @@ fi
 
 # Copy opentelemetry config
 if [[ -f /otelcol/config.yaml ]]; then
+
+  // DEBUG - DEBUG - DEBUG
+  sleep 120
+
   ssh "${SSH_OPTS[@]}" "$SSH_HOST" \
     'sudo mkdir -p /etc/otelcol-contrib && sudo tee /etc/otelcol-contrib/config_mpc.yaml > /dev/null' \
     < /otelcol/config.yaml
@@ -166,6 +169,8 @@ else
 fi
 
 // DEBUG - DEBUG - DEBUG
+sleep 120
+
 # Execute provision script on VM
 SSH_PROVISION_OUTPUT=$(
     ssh "${SSH_OPTS[@]}" "$SSH_HOST" "bash -s" <script.sh 2>&1
