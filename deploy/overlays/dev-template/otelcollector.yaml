@@ -20,7 +20,7 @@ stringData:
           s3_prefix: default
           s3_partition_format: '%Y-%m-%d-%H-%M'
         resource_attrs_to_s3:
-          s3_prefix: GITHUB_RUN_ID/host.id
+          s3_prefix: s3.prefix
     extensions:
       file_storage/otc:
         directory: /tmp/otelcollector/oteltmp
@@ -66,6 +66,13 @@ stringData:
               enabled: true
             os.type:
               enabled: true
+        processors:
+      transform/s3prefix:
+        error_mode: ignore
+        log_statements:
+          - context: resource
+            statements:
+              - set(attributes["s3.prefix"], Concat(["GITHUB_RUN_ID", attributes["host.id"]], "/"))
     receivers:
       filelog/e2e_audit:
         include:
