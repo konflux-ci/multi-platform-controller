@@ -131,16 +131,12 @@ This is typically used to clean up instances created during e2e tests.`,
 
 func newCleanupS3LogsCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "cleanup-s3-logs <instance-tag>",
-		Short: "Delete S3 logs for EC2 instances created during development/testing",
-		Long: `Find EC2 instances tagged with the specified instance tag and remove their logs from S3.
+		Use:   "cleanup-s3-logs <github-run-id>",
+		Short: "Delete S3 logs for a GitHub Actions run",
+		Long: `Remove all logs stored under the GitHub Actions run ID prefix in S3.
 
-This command finds all EC2 instances with tags:
-  - multi-platform-instance=<instance-tag>
-  - MultiPlatformManaged=true
-
-Instances are listed in all states (including stopped and terminated) to ensure logs
-are removed even if instances already shut down.
+This command deletes the prefix:
+  mpc/<github-run-id>/
 
 Required environment variables:
   S3_LOGS_BUCKET - S3 bucket for log cleanup.`,
@@ -288,12 +284,17 @@ func logsBucketName() (string, error) {
 	return value, nil
 }
 
-func runCleanupS3Logs(instanceTag string) error {
+func runCleanupS3Logs(githubRunID string) error {
 	if err := validateAWSCredentials(); err != nil {
 		return err
 	}
 
-	fmt.Printf("Finding EC2 instances with tag multi-platform-instance=%s for S3 log cleanup\n", instanceTag)
+	githubRunID = strings.TrimSpace(githubRunID)
+	if githubRunID == "" {
+		return errors.New("github-run-id is required for cleanup-s3-logs")
+	}
+
+	fmt.Printf("Deleting S3 logs for GITHUB_RUN_ID=%s\n", githubRunID)
 
 	ctx := context.Background()
 	awsCfg, err := config.LoadDefaultConfig(ctx)
@@ -301,71 +302,17 @@ func runCleanupS3Logs(instanceTag string) error {
 		return fmt.Errorf("loading AWS config: %w", err)
 	}
 
-	ec2Client := ec2.NewFromConfig(awsCfg)
 	s3Client := s3.NewFromConfig(awsCfg)
 	logsBucket, err := logsBucketName()
 	if err != nil {
 		return err
 	}
 
-	result, err := ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
-		Filters: []types.Filter{
-			{
-				Name:   aws.String("tag:multi-platform-instance"),
-				Values: []string{instanceTag},
-			},
-			{
-				Name:   aws.String("tag:MultiPlatformManaged"),
-				Values: []string{"true"},
-			},
-			{
-				Name: aws.String("instance-state-name"),
-				Values: []string{
-					"pending",
-					"running",
-					"stopping",
-					"stopped",
-					"shutting-down",
-					"terminated",
-				},
-			},
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("describing instances: %w", err)
-	}
-
-	instanceIDs := make(map[string]struct{})
-	for _, reservation := range result.Reservations {
-		for _, instance := range reservation.Instances {
-			if instance.InstanceId != nil && *instance.InstanceId != "" {
-				instanceIDs[*instance.InstanceId] = struct{}{}
-			}
-		}
-	}
-
-	if len(instanceIDs) == 0 {
-		fmt.Printf("No EC2 instances found with tag multi-platform-instance=%s for S3 log cleanup\n", instanceTag)
-		return nil
-	}
-
-	var cleanupErrors []error
-	for instanceID := range instanceIDs {
-		if err := cleanupS3Logs(ctx, s3Client, instanceID, logsBucket); err != nil {
-			fmt.Printf("Failed to delete S3 logs for %s: %v\n", instanceID, err)
-			cleanupErrors = append(cleanupErrors, err)
-		}
-	}
-
-	if len(cleanupErrors) > 0 {
-		return errors.Join(cleanupErrors...)
-	}
-
-	return nil
+	prefix := fmt.Sprintf("mpc/%s/", githubRunID)
+	return cleanupS3LogsPrefix(ctx, s3Client, logsBucket, prefix)
 }
 
-func cleanupS3Logs(ctx context.Context, s3Client *s3.Client, instanceID string, bucket string) error {
-	prefix := fmt.Sprintf("mpc/%s/", instanceID)
+func cleanupS3LogsPrefix(ctx context.Context, s3Client *s3.Client, bucket, prefix string) error {
 	fmt.Printf("Deleting S3 logs from bucket %s with prefix %s\n", bucket, prefix)
 
 	paginator := s3.NewListObjectsV2Paginator(s3Client, &s3.ListObjectsV2Input{
@@ -698,6 +645,10 @@ func prepareDeploymentOverlays(cfg *Config) error {
 
 	if err := replaceInFiles(developmentDir, "INSTANCE_TAG", cfg.InstanceTag); err != nil {
 		return fmt.Errorf("replacing INSTANCE_TAG: %w", err)
+	}
+
+	if err := replaceInFiles(developmentDir, "GITHUB_RUN_ID", cfg.GithubRunID); err != nil {
+		return fmt.Errorf("replacing GITHUB_RUN_ID: %w", err)
 	}
 
 	if cfg.AWSSSHKeyName == "" {

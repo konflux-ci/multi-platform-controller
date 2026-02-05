@@ -112,7 +112,7 @@ jobs:
 
       - name: Delete AWS S3 Logs
         if: always()
-        run: ./out/devsetup cleanup-s3-logs ${{ env.INSTANCE_TAG }}
+        run: ./out/devsetup cleanup-s3-logs ${{ github.run_id }}
 
       - name: Delete AWS EC2 Key Pair
         if: always()

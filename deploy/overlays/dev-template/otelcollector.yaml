@@ -20,7 +20,7 @@ stringData:
           s3_prefix: default
           s3_partition_format: '%Y-%m-%d-%H-%M'
         resource_attrs_to_s3:
-          s3_prefix: host.id
+          s3_prefix: GITHUB_RUN_ID/host.id
     extensions:
       file_storage/otc:
         directory: /tmp/otelcollector/oteltmp
