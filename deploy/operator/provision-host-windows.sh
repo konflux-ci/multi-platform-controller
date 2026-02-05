@@ -28,7 +28,7 @@ export USERNAME=konflux-builder
 
 # DEBUG - DEBUG - DEBUG
 echo "DEBUG - DEBUG - DEBUG - host is ${HOST}"
-echo "{message: \"DEBUG - DEBUG - DEBUG - Provisioning pod IP: $(hostname -i)\", level: \"INFO\"}"
+echo "{message: \"DEBUG - DEBUG - DEBUG - Provisioning pod IP: $(cat /etc/hosts | grep "$HOSTNAME" | awk '{print $1}')\", level: \"INFO\"}"
 sleep 60
 
 # Copy remote SSH key and then delete on VM

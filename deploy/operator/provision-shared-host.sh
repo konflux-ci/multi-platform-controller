@@ -29,7 +29,7 @@ USERNAME=u-$(echo "$TASKRUN_NAME$NAMESPACE" | md5sum | cut -b-28)
 export USERNAME
 
 echo "DEBUG - DEBUG - DEBUG - host is $HOST"
-echo "{message: \"DEBUG - DEBUG - DEBUG - Provisioning pod IP: $(hostname -i)\", level: \"INFO\"}"
+echo "{message: \"DEBUG - DEBUG - DEBUG - Provisioning pod IP: $(cat /etc/hosts | grep "$HOSTNAME" | awk '{print $1}')\", level: \"INFO\"}"
 
 # Create script to provision VM
 cat >script.sh <<EOF

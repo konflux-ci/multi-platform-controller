@@ -40,7 +40,7 @@ func generateVerifyPlatformScript(expectedArch string) string {
 	return `#!/bin/bash
 set -e
 
-echo "DEBUG - DEBUG - DEBUG - TaskRun pod IP: $(hostname -i)"
+echo "DEBUG - DEBUG - DEBUG - TaskRun pod IP: $(cat /etc/hosts | grep "$HOSTNAME" | awk '{print $1}'))"
 
 if [ -e "/ssh/error" ]; then
 	#no server could be provisioned
@@ -75,7 +75,7 @@ func generateVerifyWindowsPlatformScript(expectedArch string) string {
 	return `#!/bin/bash
 set -e
 
-echo "DEBUG - DEBUG - DEBUG - TaskRun pod IP: $(hostname -i)"
+echo "DEBUG - DEBUG - DEBUG - TaskRun pod IP: $(cat /etc/hosts | grep "$HOSTNAME" | awk '{print $1}')"
 
 if [ -e "/ssh/error" ]; then
 	#no server could be provisioned
