@@ -106,7 +106,7 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 
 .PHONY: tekton
 tekton:
-	$(KUBECTL) apply --server-side -f https://storage.googleapis.com/tekton-releases/pipeline/previous/$(TEKTON_VERSION)/release.yaml
+	$(KUBECTL) apply --server-side -f https://infra.tekton.dev/tekton-releases/pipeline/previous/$(TEKTON_VERSION)/release.yaml
 	$(KUBECTL) wait --for=condition=Available deployment --all -n tekton-pipelines --timeout=300s
 
 .PHONY: cert-manager
