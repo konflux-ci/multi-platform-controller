@@ -30,7 +30,7 @@ export USERNAME
 
 # Create script to provision VM
 cat >script.sh <<EOF
-sudo dnf install podman -y
+sudo dnf install podman -y || echo "Failed to install podman, continuing..."
 
 if command -v otelcol-contrib >/dev/null 2>&1; then
   echo "Found Opentelemetry, re-apply config.."
