@@ -970,8 +970,16 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 	//kick off the provisioning task
 	//note that we can't use owner refs here because this task runs in a different namespace
 
-	//first verify the secret exists, so we don't hang if it is missing
 	log := logr.FromContextOrDiscard(ctx)
+
+	// Defensive validation - address must not be empty
+	if address == "" {
+		err := fmt.Errorf("cannot launch provisioning task with empty address for TaskRun %s/%s", tr.Namespace, tr.Name)
+		log.Error(err, "address parameter is empty", "platform", platform, "secretName", secretName)
+		return err
+	}
+
+	//first verify the secret exists, so we don't hang if it is missing
 	secret := kubecore.Secret{}
 	err := r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: sshSecret}, &secret)
 	if err != nil {
@@ -1032,6 +1040,14 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 			Value: *tektonapi.NewStructuredValues(rawPlatform(platform)),
 		},
 	}
+
+	log.Info("creating provision task",
+		"taskName", provision.Name,
+		"host", address,
+		"user", user,
+		"platform", platform,
+		"userTaskRun", tr.Name,
+		"userNamespace", tr.Namespace)
 
 	err = r.client.Create(ctx, &provision)
 	if k8serrors.IsAlreadyExists(err) {
