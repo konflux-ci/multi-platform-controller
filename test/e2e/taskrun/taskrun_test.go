@@ -45,7 +45,7 @@ if [ -e "/ssh/error" ]; then
 	cat /ssh/error
 	exit 1
 fi
-SSH_ARGS="-o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=10"
+SSH_ARGS="-o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=10 -v"
 SSH_HOST=$(cat /ssh/host)
 mkdir -p ~/.ssh
 curl --cacert /ssh/otp-ca -XPOST -d @/ssh/otp $(cat /ssh/otp-server) >~/.ssh/id_rsa
@@ -79,7 +79,7 @@ if [ -e "/ssh/error" ]; then
 	exit 1
 fi
 
-SSH_ARGS="-o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=10"
+SSH_ARGS="-o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=10 -v"
 SSH_HOST=$(cat /ssh/host)
 mkdir -p ~/.ssh
 curl --cacert /ssh/otp-ca -XPOST -d @/ssh/otp $(cat /ssh/otp-server) >~/.ssh/id_rsa
