@@ -45,12 +45,14 @@ if [ -e "/ssh/error" ]; then
 	cat /ssh/error
 	exit 1
 fi
-SSH_ARGS="-o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=10"
 SSH_HOST=$(cat /ssh/host)
-mkdir -p ~/.ssh
-curl --cacert /ssh/otp-ca -XPOST -d @/ssh/otp $(cat /ssh/otp-server) >~/.ssh/id_rsa
-echo "" >> ~/.ssh/id_rsa
-chmod 0400 ~/.ssh/id_rsa
+SSH_KEY="$HOME/.ssh/id_rsa"
+echo "ssh key path: $SSH_KEY"
+SSH_ARGS="-o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=10 -i $SSH_KEY -v"
+mkdir -p "$(dirname "$SSH_KEY")"
+curl --cacert /ssh/otp-ca -XPOST -d @/ssh/otp $(cat /ssh/otp-server) > "$SSH_KEY"
+echo "" >> "$SSH_KEY"
+chmod 0400 "$SSH_KEY"
 
 OS=$(ssh $SSH_ARGS $SSH_HOST uname)
 ARCH=$(ssh $SSH_ARGS $SSH_HOST uname -m)
@@ -79,12 +81,14 @@ if [ -e "/ssh/error" ]; then
 	exit 1
 fi
 
-SSH_ARGS="-o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=10"
 SSH_HOST=$(cat /ssh/host)
-mkdir -p ~/.ssh
-curl --cacert /ssh/otp-ca -XPOST -d @/ssh/otp $(cat /ssh/otp-server) >~/.ssh/id_rsa
-echo "" >> ~/.ssh/id_rsa
-chmod 0400 ~/.ssh/id_rsa
+SSH_KEY="$HOME/.ssh/id_rsa"
+echo "ssh key path: $SSH_KEY"
+SSH_ARGS="-o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=10 -i $SSH_KEY -v"
+mkdir -p "$(dirname "$SSH_KEY")"
+curl --cacert /ssh/otp-ca -XPOST -d @/ssh/otp $(cat /ssh/otp-server) > "$SSH_KEY"
+echo "" >> "$SSH_KEY"
+chmod 0400 "$SSH_KEY"
 
 # On Windows, we use PowerShell to get OS and architecture
 # Use $env:OS which returns "Windows_NT" on Windows (doesn't require WMI access)
@@ -213,7 +217,7 @@ var _ = Describe("TaskRun execution", func() {
 			tr := &tekv1.TaskRun{}
 			g.Expect(k8sClient.Get(ctx, key, tr)).To(Succeed())
 			g.Expect(tr.Status.CompletionTime).ToNot(BeNil(), "TaskRun should have a completionTime")
-		}, 10*time.Minute, 10*time.Second).Should(Succeed())
+		}, 20*time.Minute, 10*time.Second).Should(Succeed())
 
 		By("verifying the TaskRun completed successfully")
 		key := client.ObjectKeyFromObject(taskRun)

@@ -168,7 +168,7 @@ SSH_PROVISION_OUTPUT=$(
 ) || {
     # If the command fails, the '||' block executes.
     # Note: Using '||' suppresses set -e for this line.
-    echo "{message: \"Remote Provision Output: ${SSH_PROVISION_OUTPUT//$'\n'/ }\", level: \"WARNING\"}" >&2
+    echo "{message: \"Remote Provision Output: ${SSH_PROVISION_OUTPUT//$'\n'/ }\", level: \"WARNING\", sshOptions: \"${SSH_OPTS[*]}\", sshHost: \"$SSH_HOST\"}" >&2
     exit 1
 }
 echo "$SSH_PROVISION_OUTPUT"
