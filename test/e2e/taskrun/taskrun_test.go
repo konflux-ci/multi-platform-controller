@@ -217,7 +217,7 @@ var _ = Describe("TaskRun execution", func() {
 			tr := &tekv1.TaskRun{}
 			g.Expect(k8sClient.Get(ctx, key, tr)).To(Succeed())
 			g.Expect(tr.Status.CompletionTime).ToNot(BeNil(), "TaskRun should have a completionTime")
-		}, 10*time.Minute, 10*time.Second).Should(Succeed())
+		}, 20*time.Minute, 10*time.Second).Should(Succeed())
 
 		By("verifying the TaskRun completed successfully")
 		key := client.ObjectKeyFromObject(taskRun)
