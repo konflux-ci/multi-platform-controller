@@ -15,6 +15,26 @@ import (
 )
 
 var _ = Describe("AWS EC2 Helper Functions", func() {
+	Describe("validateIPAddress", func() {
+		ecConfig := AWSEc2DynamicConfig{}
+
+		It("should return error when instance has no IP addresses or DNS name", func(ctx SpecContext) {
+			instance := &types.Instance{
+				InstanceId:       aws.String("koko_hazamar"),
+				PrivateIpAddress: nil,
+				PublicIpAddress:  nil,
+				PublicDnsName:    nil,
+			}
+
+			ip, err := ecConfig.validateIPAddress(ctx, instance)
+
+			Expect(err).Should(HaveOccurred())
+			Expect(err.Error()).Should(ContainSubstring("has no accessible IP address"))
+			Expect(err.Error()).Should(ContainSubstring("koko_hazamar"))
+			Expect(ip).Should(BeEmpty())
+		})
+	})
+
 	DescribeTable("Find VM instances linked to non-existent TaskRuns",
 		func(log logr.Logger, ec2Reservations []types.Reservation, existingTaskRuns map[string][]string, expectedInstances []string) {
 			cfg := AWSEc2DynamicConfig{}
