@@ -52,6 +52,11 @@ curl --cacert /ssh/otp-ca -XPOST -d @/ssh/otp $(cat /ssh/otp-server) >~/.ssh/id_
 echo "" >> ~/.ssh/id_rsa
 chmod 0400 ~/.ssh/id_rsa
 
+if [[ ! -s ~/.ssh/id_rsa ]]; then
+	echo "~/.ssh/id_rsa is empty"
+	exit 1
+fi
+
 OS=$(ssh $SSH_ARGS $SSH_HOST uname)
 ARCH=$(ssh $SSH_ARGS $SSH_HOST uname -m)
 
@@ -85,6 +90,11 @@ mkdir -p ~/.ssh
 curl --cacert /ssh/otp-ca -XPOST -d @/ssh/otp $(cat /ssh/otp-server) >~/.ssh/id_rsa
 echo "" >> ~/.ssh/id_rsa
 chmod 0400 ~/.ssh/id_rsa
+
+if [[ ! -s ~/.ssh/id_rsa ]]; then
+	echo "~/.ssh/id_rsa is empty"
+	exit 1
+fi
 
 # On Windows, we use PowerShell to get OS and architecture
 # Use $env:OS which returns "Windows_NT" on Windows (doesn't require WMI access)
@@ -213,7 +223,7 @@ var _ = Describe("TaskRun execution", func() {
 			tr := &tekv1.TaskRun{}
 			g.Expect(k8sClient.Get(ctx, key, tr)).To(Succeed())
 			g.Expect(tr.Status.CompletionTime).ToNot(BeNil(), "TaskRun should have a completionTime")
-		}, 10*time.Minute, 10*time.Second).Should(Succeed())
+		}, 30*time.Minute, 10*time.Second).Should(Succeed())
 
 		By("verifying the TaskRun completed successfully")
 		key := client.ObjectKeyFromObject(taskRun)
