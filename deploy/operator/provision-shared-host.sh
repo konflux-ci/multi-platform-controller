@@ -90,36 +90,12 @@ sudo chown "$USERNAME" /home/"$USERNAME"/.ssh/authorized_keys
 sudo restorecon -FRvv /home/"$USERNAME"/.ssh
 echo "{message: \"Successfully created and configured a new SSH key for $USERNAME.\", level: \"INFO\"}"
 
-# Calculate virtual memory limits based on available physical memory
-# Get total memory in KB from /proc/meminfo
-TOTAL_MEM_KB=\$(awk '/MemTotal/ {print \$2}' /proc/meminfo)
-# Convert to bytes for 'as' (virtual memory) limit
-TOTAL_MEM_BYTES=\$((TOTAL_MEM_KB * 1024))
-
-# Soft limit: 75% of total memory per process (reasonable for most builds)
-# Hard limit: 90% of total memory per process (allows for intensive builds)
-SOFT_AS=\$((TOTAL_MEM_BYTES * 75 / 100))
-HARD_AS=\$((TOTAL_MEM_BYTES * 90 / 100))
-
-# Ensure minimum thresholds (useful for small machines)
-# Minimum 2GB soft, 4GB hard
-MIN_SOFT_AS=\$((2 * 1024 * 1024 * 1024))
-MIN_HARD_AS=\$((4 * 1024 * 1024 * 1024))
-if (( \$SOFT_AS < \$MIN_SOFT_AS )); then
-  SOFT_AS=\$MIN_SOFT_AS
-fi
-if (( \$HARD_AS < \$MIN_HARD_AS )); then
-  HARD_AS=\$MIN_HARD_AS
-fi
-
 # Set resource limits for this user to prevent fork bombs
 sudo tee /etc/security/limits.d/user-$USERNAME.conf >/dev/null <<LIMITS_EOF
 $USERNAME   soft   nproc   2048
 $USERNAME   hard   nproc   4096
 $USERNAME   soft   cpu     28800      # 8 hours
 $USERNAME   hard   cpu     43200      # 12 hours
-$USERNAME   soft   as      \${SOFT_AS}
-$USERNAME   hard   as      \${HARD_AS}
 LIMITS_EOF
 
 # Ensure PAM enforces these limits
@@ -167,9 +143,6 @@ sudo systemctl daemon-reload
 echo "Systemd slice limits configured for user $USERNAME (UID: \$USER_UID)"
 echo "{message: \"  - CPUs available: \$TOTAL_CPUS.\", level: \"INFO\"}"
 echo "{message: \"  - CPU quota set to: \${CPU_QUOTA_PERCENT}% (90% of total).\", level: \"INFO\"}"
-echo "{message: \"  - Total memory: \$((TOTAL_MEM_KB / 1024)) MB.\", level: \"INFO\"}"
-echo "{message: \"  - Virtual memory (as) soft limit: \$((SOFT_AS / 1024 / 1024 / 1024)) GB per process.\", level: \"INFO\"}"
-echo "{message: \"  - Virtual memory (as) hard limit: \$((HARD_AS / 1024 / 1024 / 1024)) GB per process.\", level: \"INFO\"}"
 EOF
 
 # Add sudo access (if needed) to the script
@@ -196,7 +169,7 @@ SSH_PROVISION_OUTPUT=$(
 ) || {
     # If the command fails, the '||' block executes.
     # Note: Using '||' suppresses set -e for this line.
-    echo "{message: \"Remote Provision Output: ${SSH_PROVISION_OUTPUT//$'\n'/ }\", level: \"WARNING\"}" >&2
+    echo "{message: \"Remote Provision Output: ${SSH_PROVISION_OUTPUT//$'\n'/ }\", level: \"WARNING\", sshOptions: \"${SSH_OPTS[*]}\", sshHost: \"$SSH_HOST\"}" >&2
     exit 1
 }
 echo "$SSH_PROVISION_OUTPUT"
