@@ -22,6 +22,7 @@ data:
   dynamic.linux-arm64.max-age: "10"
   dynamic.linux-arm64.subnet-id: subnet-02b7d6698c619e5a2
   dynamic.linux-arm64.strict-public-address: "true"
+  dynamic.linux-arm64.instance-profile-arn: arn:aws:iam::418272753558:instance-profile/otelcol-for-mpc-runner
 
   dynamic.linux-amd64.type: aws
   dynamic.linux-amd64.region: us-east-1
@@ -34,6 +35,7 @@ data:
   dynamic.linux-amd64.max-instances: "4"
   dynamic.linux-amd64.subnet-id: subnet-02b7d6698c619e5a2
   dynamic.linux-amd64.strict-public-address: "true"
+  dynamic.linux-amd64.instance-profile-arn: arn:aws:iam::418272753558:instance-profile/otelcol-for-mpc-runner
 
   dynamic.windows-c4xlarge-amd64.type: aws
   dynamic.windows-c4xlarge-amd64.region: us-east-1
@@ -240,6 +242,7 @@ data:
   dynamic.linux-root-amd64.iops: "16000"
   dynamic.linux-root-amd64.throughput: "1000"
   dynamic.linux-root-amd64.strict-public-address: "true"
+  dynamic.linux-root-amd64.instance-profile-arn: arn:aws:iam::418272753558:instance-profile/otelcol-for-mpc-runner
   dynamic.linux-root-amd64.user-data: |-
     Content-Type: multipart/mixed; boundary="//"
     MIME-Version: 1.0

@@ -30,6 +30,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
@@ -64,6 +66,7 @@ func newRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newDeployCmd())
 	rootCmd.AddCommand(newCleanupKeypairCmd())
 	rootCmd.AddCommand(newCleanupInstancesCmd())
+	rootCmd.AddCommand(newCleanupS3LogsCmd())
 
 	return rootCmd
 }
@@ -122,6 +125,24 @@ This is typically used to clean up instances created during e2e tests.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCleanupInstances(args[0])
+		},
+	}
+}
+
+func newCleanupS3LogsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "cleanup-s3-logs <github-run-id>",
+		Short: "Delete S3 logs for a GitHub Actions run",
+		Long: `Remove all logs stored under the GitHub Actions run ID prefix in S3.
+
+This command deletes the prefix:
+  mpc/<github-run-id>/
+
+Required environment variables:
+  S3_LOGS_BUCKET - S3 bucket for log cleanup.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runCleanupS3Logs(args[0])
 		},
 	}
 }
@@ -249,6 +270,87 @@ func runCleanupInstances(instanceTag string) error {
 		if err != nil {
 			fmt.Printf("Failed to terminate instance %s: %v\n", instanceID, err)
 			// Continue with other instances
+		}
+	}
+
+	return nil
+}
+
+func logsBucketName() (string, error) {
+	value := strings.TrimSpace(os.Getenv("S3_LOGS_BUCKET"))
+	if value == "" {
+		return "", errors.New("S3_LOGS_BUCKET is required for cleanup-s3-logs")
+	}
+	return value, nil
+}
+
+func runCleanupS3Logs(githubRunID string) error {
+	if err := validateAWSCredentials(); err != nil {
+		return err
+	}
+
+	githubRunID = strings.TrimSpace(githubRunID)
+	if githubRunID == "" {
+		return errors.New("github-run-id is required for cleanup-s3-logs")
+	}
+
+	fmt.Printf("Deleting S3 logs for GITHUB_RUN_ID=%s\n", githubRunID)
+
+	ctx := context.Background()
+	awsCfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("loading AWS config: %w", err)
+	}
+
+	s3Client := s3.NewFromConfig(awsCfg)
+	logsBucket, err := logsBucketName()
+	if err != nil {
+		return err
+	}
+
+	prefix := fmt.Sprintf("mpc/%s/", githubRunID)
+	return cleanupS3LogsPrefix(ctx, s3Client, logsBucket, prefix)
+}
+
+func cleanupS3LogsPrefix(ctx context.Context, s3Client *s3.Client, bucket, prefix string) error {
+	fmt.Printf("Deleting S3 logs from bucket %s with prefix %s\n", bucket, prefix)
+
+	paginator := s3.NewListObjectsV2Paginator(s3Client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(bucket),
+		Prefix: aws.String(prefix),
+	})
+
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return fmt.Errorf("listing S3 objects with prefix %s: %w", prefix, err)
+		}
+		if len(page.Contents) == 0 {
+			continue
+		}
+
+		objects := make([]s3types.ObjectIdentifier, 0, len(page.Contents))
+		for _, object := range page.Contents {
+			if object.Key != nil {
+				objects = append(objects, s3types.ObjectIdentifier{Key: object.Key})
+			}
+		}
+		if len(objects) == 0 {
+			continue
+		}
+
+		output, err := s3Client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+			Bucket: aws.String(bucket),
+			Delete: &s3types.Delete{
+				Objects: objects,
+				Quiet:   aws.Bool(true),
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("deleting S3 objects with prefix %s: %w", prefix, err)
+		}
+		if len(output.Errors) > 0 {
+			return fmt.Errorf("failed deleting some S3 objects with prefix %s: %v", prefix, output.Errors)
 		}
 	}
 
@@ -543,6 +645,17 @@ func prepareDeploymentOverlays(cfg *Config) error {
 
 	if err := replaceInFiles(developmentDir, "INSTANCE_TAG", cfg.InstanceTag); err != nil {
 		return fmt.Errorf("replacing INSTANCE_TAG: %w", err)
+	}
+
+	githubRunID := strings.TrimSpace(cfg.GithubRunID)
+	if githubRunID == "" && cfg.InstanceTag != "" {
+		githubRunID = strings.TrimSuffix(cfg.InstanceTag, "-development")
+	}
+	if githubRunID == "" {
+		githubRunID = "local"
+	}
+	if err := replaceInFiles(developmentDir, "GITHUB_RUN_ID", githubRunID); err != nil {
+		return fmt.Errorf("replacing GITHUB_RUN_ID: %w", err)
 	}
 
 	if cfg.AWSSSHKeyName == "" {
