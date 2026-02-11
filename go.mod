@@ -32,7 +32,7 @@ require (
 	k8s.io/code-generator v0.33.4
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
-	knative.dev/pkg v0.0.0-20250415155312-ed3e2158b883
+	knative.dev/pkg ba7fd23eb13c
 	sigs.k8s.io/controller-runtime v0.19.4
 	sigs.k8s.io/yaml v1.4.0
 )
