@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/chainsaw/main/.schemas/json/test-chainsaw-v1alpha1.json
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: local-failed-taskrun
+spec:
+  description: |
+    a valid taskrun is reconciled and successfully completed
+  steps:
+  - name: when-taskrun-is-created
+    try:
+    - apply:
+        file: ../../resources/actual_failing_tekton_taskrun.yaml
+  - name: then-taskrun-is-running
+    try:
+    - assert:
+        file: ../../resources/expected_tekton_taskrun_running.yaml
+        bindings:
+        - name: taskRunName
+          value: local-failed
+  - name: then-taskrun-succeeded
+    try:
+    - assert:
+        file: ../../resources/expected_tekton_taskrun_failed.yaml
