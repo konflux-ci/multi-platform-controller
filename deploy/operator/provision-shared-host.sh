@@ -92,8 +92,8 @@ echo "{message: \"Successfully created and configured a new SSH key for $USERNAM
 
 # Set resource limits for this user to prevent fork bombs
 sudo tee /etc/security/limits.d/user-$USERNAME.conf >/dev/null <<LIMITS_EOF
-$USERNAME   soft   nproc   2048
-$USERNAME   hard   nproc   4096
+$USERNAME   soft   nproc   8192
+$USERNAME   hard   nproc   16384
 $USERNAME   soft   cpu     28800      # 8 hours
 $USERNAME   hard   cpu     43200      # 12 hours
 LIMITS_EOF
