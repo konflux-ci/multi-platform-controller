@@ -2,6 +2,12 @@ name: E2E Tests
 
 on:
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+    branches: [ main ]
+
 
   merge_group:
     types: [checks_requested]
@@ -16,8 +22,15 @@ jobs:
   test-e2e:
     name: Run on Ubuntu
     runs-on: ubuntu-latest
-    # Skip e2e tests for PRs from forks (no access to the action's JWT token)
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    # Skip e2e tests for untrusted fork PRs (no access to the action's JWT token)
+    # Allow e2e tests if PR author owns the fork AND is an OWNER/MEMBER/COLLABORATOR
+    if: |
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository ||
+      (
+        github.event.pull_request.user.login == github.event.pull_request.head.repo.owner.login &&
+        contains(fromJson('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
+      )
     env:
       AWS_ROLE_ARN: arn:aws:iam::418272753558:role/multi-platform-github-action
       AWS_REGION: us-east-1
