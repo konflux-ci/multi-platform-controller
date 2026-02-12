@@ -8,6 +8,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -20,24 +21,23 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// pingIPAddress tries to resolve the IP address ip. An error is returned if ipAddress couldn't be reached.
+// pingIPAddress tries to connect to the SSH port on ipAddress with a 60-second timeout.
+// An error is returned if the connection fails.
 func pingIPAddress(ipAddress string) error {
-	server, err := net.ResolveTCPAddr("tcp", ipAddress+":22")
-	if err != nil {
-		return err
-	}
-	conn, err := net.DialTCP("tcp", nil, server)
+	conn, err := net.DialTimeout("tcp", ipAddress+":22", 60*time.Second)
 	if err != nil {
 		return err
 	}
 	return conn.Close()
 }
 
-// validateIPAddress returns the IP address of the EC2 instance ec after determining that the address
-// can be resolved (if the instance has one).
+// validateIPAddress returns the IP address of the EC2 instance after verifying SSH connectivity.
+// Returns an error if no IP is available or if the instance is not reachable via SSH.
 func (ec AWSEc2DynamicConfig) validateIPAddress(ctx context.Context, instance *types.Instance) (string, error) {
+	log := logr.FromContextOrDiscard(ctx)
 	var ip string
-	var err error
+
+	// Select IP address based on priority: PublicDnsName > PublicIpAddress > PrivateIpAddress
 	if instance.PublicDnsName != nil && *instance.PublicDnsName != "" {
 		ip = *instance.PublicDnsName
 	} else if instance.PublicIpAddress != nil && *instance.PublicIpAddress != "" {
@@ -46,15 +46,24 @@ func (ec AWSEc2DynamicConfig) validateIPAddress(ctx context.Context, instance *t
 		ip = *instance.PrivateIpAddress
 	}
 
-	if ip != "" {
-		err = pingIPAddress(ip)
+	// Return error if no IP address is available
+	if ip == "" {
+		return "", fmt.Errorf("instance %s has no accessible IP address", aws.ToString(instance.InstanceId))
 	}
-	if err != nil {
-		log := logr.FromContextOrDiscard(ctx)
-		log.Error(err, "failed to connect to AWS instance")
-		err = fmt.Errorf("failed to resolve IP address %s: %w", ip, err)
+
+	// Verify SSH connectivity
+	if err := pingIPAddress(ip); err != nil {
+		log.Error(err, "failed to connect to AWS instance via SSH",
+			"instanceID", aws.ToString(instance.InstanceId),
+			"ipAddress", ip)
+		return "", fmt.Errorf("failed to resolve IP address %s: %w", ip, err)
 	}
-	return ip, err
+
+	log.Info("Successfully validated IP address",
+		"instanceID", aws.ToString(instance.InstanceId),
+		"ipAddress", ip)
+
+	return ip, nil
 }
 
 // createClient uses AWS credentials and an EC2 configuration to create and return an EC2 client.

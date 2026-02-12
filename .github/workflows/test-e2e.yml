@@ -36,6 +36,7 @@ jobs:
       AWS_REGION: us-east-1
       AWS_ROLE_DURATION: 900 # 15 minutes
       INSTANCE_TAG: ${{ github.run_id }}-development
+      S3_LOGS_BUCKET: otelcol-logs
       KIND_EXPERIMENTAL_PROVIDER: podman
       E2E_DEBUG_LOG_DIR: ${{ github.workspace }}/e2e-debug-logs
     steps:
@@ -52,7 +53,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v5.1.1
+        uses: aws-actions/configure-aws-credentials@v6.0.0
         with:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -112,7 +113,7 @@ jobs:
 
       - name: Configure AWS Credentials for Cleanup
         if: always()
-        uses: aws-actions/configure-aws-credentials@v5.1.1
+        uses: aws-actions/configure-aws-credentials@v6.0.0
         with:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -121,6 +122,10 @@ jobs:
       - name: Delete AWS EC2 Instances
         if: always()
         run: ./out/devsetup cleanup-instances ${{ env.INSTANCE_TAG }}
+
+      - name: Delete AWS S3 Logs
+        if: always()
+        run: ./out/devsetup cleanup-s3-logs ${{ github.run_id }}
 
       - name: Delete AWS EC2 Key Pair
         if: always()

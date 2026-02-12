@@ -7,7 +7,10 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
-GOLANGCI_LINT ?= go run -modfile $(shell realpath ./hack/tools/golang-ci/go.mod) github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+# renovate: datasource=github-releases depName=golangci-lint packageName=golangci/golangci-lint
+GOLANGCI_LINT_VERSION ?= v2.8.0
+
+GOLANGCI_LINT ?= go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 GINKGO ?= go run github.com/onsi/ginkgo/v2/ginkgo
 
 .EXPORT_ALL_VARIABLES:
