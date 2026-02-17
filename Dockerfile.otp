@@ -12,7 +12,7 @@ RUN GOTOOLCHAIN=auto CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o otp-serve
 
 # Use ubi-minimal as minimal base image to package the manager binary
 # Refer to https://catalog.redhat.com/software/containers/ubi8/ubi-minimal/5c359a62bed8bd75a2c3fba8 for more details
-FROM registry.access.redhat.com/ubi9/ubi-minimal:9.6-1755695350@sha256:2f06ae0e6d3d9c4f610d32c480338eef474867f435d8d28625f2985e8acde6e8
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.7-1771346502@sha256:c7d44146f826037f6873d99da479299b889473492d3c1ab8af86f08af04ec8a0
 COPY --from=builder /opt/app-root/src/otp-server /
 USER 65532:65532
 EXPOSE 8443
