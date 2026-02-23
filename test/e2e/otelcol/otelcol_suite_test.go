@@ -34,9 +34,9 @@ func TestOtelcol(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	if common.S3LogsBucket() == "" {
-		Skip(fmt.Sprintf("%s is not set, skipping otelcol tests", common.S3BucketEnvVar))
+		Skip(common.S3BucketEnvVar + " is not set, skipping otelcol tests")
 	}
 	if common.GitHubRunID() == "" {
-		Skip(fmt.Sprintf("%s is not set, skipping otelcol tests", common.GitHubRunIDEnvVar))
+		Skip(common.GitHubRunIDEnvVar + " is not set, skipping otelcol tests")
 	}
 })

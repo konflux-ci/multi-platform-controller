@@ -29,9 +29,9 @@ import (
 )
 
 const (
-	S3BucketEnvVar   = "S3_LOGS_BUCKET"
+	S3BucketEnvVar    = "S3_LOGS_BUCKET"
 	GitHubRunIDEnvVar = "GITHUB_RUN_ID"
-	S3BasePrefix     = "mpc"
+	S3BasePrefix      = "mpc"
 )
 
 // S3LogsBucket returns the S3 bucket name from the environment.
@@ -93,7 +93,12 @@ func GetObjectContent(ctx context.Context, client *s3.Client, bucket, key string
 	if err != nil {
 		return nil, fmt.Errorf("getting S3 object %s: %w", key, err)
 	}
-	defer output.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			// skip
+		}
+	}(output.Body)
 
 	data, err := io.ReadAll(output.Body)
 	if err != nil {
