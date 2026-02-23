@@ -93,12 +93,9 @@ func GetObjectContent(ctx context.Context, client *s3.Client, bucket, key string
 	if err != nil {
 		return nil, fmt.Errorf("getting S3 object %s: %w", key, err)
 	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			// skip
-		}
-	}(output.Body)
+	defer func() {
+		_ = output.Body.Close()
+	}()
 
 	data, err := io.ReadAll(output.Body)
 	if err != nil {
