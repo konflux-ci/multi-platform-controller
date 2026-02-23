@@ -1,0 +1,10 @@
+apiVersion: tekton.dev/v1beta1
+kind: TaskRun
+metadata:
+  name: local-failed
+status:
+  conditions:
+  - message: '"step-show-platform-and-sleep" exited with code 1: Error'
+    reason: Failed
+    status: "False"
+    type: Succeeded
