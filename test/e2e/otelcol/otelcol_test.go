@@ -78,7 +78,7 @@ var _ = Describe("Otelcol logs verification", Ordered, func() {
 		Expect(err).ShouldNot(HaveOccurred(), "failed to create S3 client")
 
 		bucket = common.S3LogsBucket()
-		runPrefix = common.S3RunPrefix(common.GitHubRunID())
+		runPrefix = common.S3RunPrefix(common.ResolveRunID())
 
 		_, _ = fmt.Fprintf(GinkgoWriter, "S3 bucket: %s, prefix: %s\n", bucket, runPrefix)
 	})

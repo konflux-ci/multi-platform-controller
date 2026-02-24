@@ -36,7 +36,4 @@ var _ = BeforeSuite(func() {
 	if common.S3LogsBucket() == "" {
 		Skip(common.S3BucketEnvVar + " is not set, skipping otelcol tests")
 	}
-	if common.GitHubRunID() == "" {
-		Skip(common.GitHubRunIDEnvVar + " is not set, skipping otelcol tests")
-	}
 })

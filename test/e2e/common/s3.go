@@ -31,6 +31,7 @@ import (
 const (
 	S3BucketEnvVar    = "S3_LOGS_BUCKET"
 	GitHubRunIDEnvVar = "GITHUB_RUN_ID"
+	InstanceTagEnvVar = "INSTANCE_TAG"
 	S3BasePrefix      = "mpc"
 )
 
@@ -39,9 +40,18 @@ func S3LogsBucket() string {
 	return strings.TrimSpace(os.Getenv(S3BucketEnvVar))
 }
 
-// GitHubRunID returns the GitHub run ID from the environment.
-func GitHubRunID() string {
-	return strings.TrimSpace(os.Getenv(GitHubRunIDEnvVar))
+// ResolveRunID returns the effective run ID used as the S3 prefix segment.
+// It mirrors the resolution logic in cmd/devsetup (prepareDeploymentOverlays):
+//
+//	GITHUB_RUN_ID  -> INSTANCE_TAG minus "-development" suffix  -> "local"
+func ResolveRunID() string {
+	if id := strings.TrimSpace(os.Getenv(GitHubRunIDEnvVar)); id != "" {
+		return id
+	}
+	if tag := strings.TrimSpace(os.Getenv(InstanceTagEnvVar)); tag != "" {
+		return strings.TrimSuffix(tag, "-development")
+	}
+	return "local"
 }
 
 // S3RunPrefix returns the S3 prefix for a given GitHub run ID,
