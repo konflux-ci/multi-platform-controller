@@ -86,12 +86,12 @@ var _ = Describe("Otelcol logs verification", Ordered, func() {
 	It("should find at least two Linux hosts with logs", func(ctx context.Context) {
 		Eventually(func(g Gomega) {
 			keys, err := common.ListLogObjects(ctx, s3Client, bucket, runPrefix)
-			g.Expect(err).NotTo(HaveOccurred(), "failed to list S3 objects")
+			g.Expect(err).ShouldNot(HaveOccurred(), "failed to list S3 objects")
 
 			hostIDs := common.ExtractHostIDs(keys, runPrefix)
 			_, _ = fmt.Fprintf(GinkgoWriter, "Found %d host(s): %v\n", len(hostIDs), hostIDs)
 
-			g.Expect(len(hostIDs)).To(BeNumerically(">=", minimumLinuxHosts),
+			g.Expect(len(hostIDs)).Should(BeNumerically(">=", minimumLinuxHosts),
 				"expected at least %d hosts, got %d", minimumLinuxHosts, len(hostIDs))
 		}, 5*time.Minute, 30*time.Second).Should(Succeed())
 	})
@@ -99,15 +99,15 @@ var _ = Describe("Otelcol logs verification", Ordered, func() {
 	It("should contain all three log types for each host", func(ctx context.Context) {
 		Eventually(func(g Gomega) {
 			allKeys, err := common.ListLogObjects(ctx, s3Client, bucket, runPrefix)
-			g.Expect(err).NotTo(HaveOccurred(), "failed to list S3 objects")
+			g.Expect(err).ShouldNot(HaveOccurred(), "failed to list S3 objects")
 
 			hostIDs := common.ExtractHostIDs(allKeys, runPrefix)
-			g.Expect(len(hostIDs)).To(BeNumerically(">=", minimumLinuxHosts),
+			g.Expect(len(hostIDs)).Should(BeNumerically(">=", minimumLinuxHosts),
 				"not enough hosts found yet")
 
 			for _, hostID := range hostIDs {
 				hostKeys := common.KeysForHost(allKeys, runPrefix, hostID)
-				g.Expect(hostKeys).NotTo(BeEmpty(),
+				g.Expect(hostKeys).ShouldNot(BeEmpty(),
 					"no log objects found for host %s", hostID)
 
 				sourceTypes := extractSourceTypes(ctx, g, s3Client, bucket, hostKeys)
@@ -115,7 +115,7 @@ var _ = Describe("Otelcol logs verification", Ordered, func() {
 					"Host %s: found sourcetypes %v\n", hostID, sourceTypes)
 
 				for _, required := range requiredSourceTypes {
-					g.Expect(sourceTypes).To(HaveKey(required),
+					g.Expect(sourceTypes).Should(HaveKey(required),
 						"host %s missing sourcetype %q (found: %v)",
 						hostID, required, sourceTypes)
 				}
