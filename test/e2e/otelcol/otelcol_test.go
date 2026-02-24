@@ -83,9 +83,7 @@ var _ = Describe("Otelcol logs verification", Ordered, func() {
 		_, _ = fmt.Fprintf(GinkgoWriter, "S3 bucket: %s, prefix: %s\n", bucket, runPrefix)
 	})
 
-	It("should find at least two Linux hosts with logs", func() {
-		ctx := context.Background()
-
+	It("should find at least two Linux hosts with logs", func(ctx context.Context) {
 		Eventually(func(g Gomega) {
 			keys, err := common.ListLogObjects(ctx, s3Client, bucket, runPrefix)
 			g.Expect(err).NotTo(HaveOccurred(), "failed to list S3 objects")
@@ -98,9 +96,7 @@ var _ = Describe("Otelcol logs verification", Ordered, func() {
 		}, 5*time.Minute, 30*time.Second).Should(Succeed())
 	})
 
-	It("should contain all three log types for each host", func() {
-		ctx := context.Background()
-
+	It("should contain all three log types for each host", func(ctx context.Context) {
 		Eventually(func(g Gomega) {
 			allKeys, err := common.ListLogObjects(ctx, s3Client, bucket, runPrefix)
 			g.Expect(err).NotTo(HaveOccurred(), "failed to list S3 objects")
