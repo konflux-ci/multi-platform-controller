@@ -75,7 +75,7 @@ var _ = Describe("Otelcol logs verification", Ordered, func() {
 
 		var err error
 		s3Client, err = common.NewS3Client(ctx)
-		Expect(err).NotTo(HaveOccurred(), "failed to create S3 client")
+		Expect(err).ShouldNot(HaveOccurred(), "failed to create S3 client")
 
 		bucket = common.S3LogsBucket()
 		runPrefix = common.S3RunPrefix(common.GitHubRunID())
