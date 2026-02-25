@@ -34,6 +34,7 @@ command -v podman >/dev/null 2>&1 || sudo dnf install podman -y
 
 if command -v otelcol-contrib >/dev/null 2>&1; then
   echo "Found Opentelemetry, re-apply config.."
+  sudo systemctl daemon-reload
   sudo systemctl restart otelcol-contrib
 else
   if [[ -f /etc/otelcol-contrib/config_mpc.yaml ]]; then
@@ -159,6 +160,12 @@ if [[ -f /otelcol/config.yaml ]]; then
   ssh "${SSH_OPTS[@]}" "$SSH_HOST" \
     'sudo mkdir -p /etc/otelcol-contrib && sudo tee /etc/otelcol-contrib/config_mpc.yaml > /dev/null' \
     < /otelcol/config.yaml
+
+ # Set INST_TAG as an env var for the otelcol-contrib service via systemd drop-in
+ # Name of the variable changed intentionally to avoid rewriting during provision e2e tests
+ ssh "${SSH_OPTS[@]}" "$SSH_HOST" "sudo mkdir -p /etc/systemd/system/otelcol-contrib.service.d"
+ printf '[Service]\nEnvironment=INST_TAG=%s\n' "${INSTANCE_TAG}" \
+   | ssh "${SSH_OPTS[@]}" "$SSH_HOST" "sudo tee /etc/systemd/system/otelcol-contrib.service.d/instance-tag.conf > /dev/null"
 else
   echo "Opentelemetry config not found, default one will be used"
 fi
