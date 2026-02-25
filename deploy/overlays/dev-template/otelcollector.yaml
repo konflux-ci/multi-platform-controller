@@ -49,7 +49,7 @@ stringData:
         attributes:
           - action: insert
             key: instance.tag
-            value: "${INSTANCE_TAG:-default}"
+            value: "${env:INSTANCE_TAG:-default}"
       resourcedetection/ec2:
         detectors:
           - ec2
