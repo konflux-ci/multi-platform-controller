@@ -45,6 +45,11 @@ stringData:
           - action: insert
             key: appcode
             value: "ASSH-001"
+      resource/add_instance_tag:
+        attributes:
+          - action: insert
+            key: instance.tag
+            value: ${env:INSTANCE_TAG:-default}       
       resourcedetection/ec2:
         detectors:
           - ec2
@@ -129,6 +134,7 @@ stringData:
         logs:
           processors:
             - resource/add_appcode
+            - resource/add_instance_tag
             - resourcedetection/ec2
             - resourcedetection/system
             - transform/s3prefix
