@@ -39,12 +39,18 @@ stringData:
               - set(attributes["com.splunk.source"], attributes["log.file.path"])
               - set(attributes["host.name"], resource.attributes["host.name"])
               - set(attributes["appcode"], resource.attributes["appcode"])
-              - keep_keys(attributes, ["com.splunk.source", "host.name", "appcode", "com.splunk.index", "com.splunk.sourcetype"])
+              - set(attributes["instance.tag"], resource.attributes["instance.tag"])
+              - keep_keys(attributes, ["com.splunk.source", "host.name", "appcode", "instance.tag", "com.splunk.index", "com.splunk.sourcetype"])
       resource/add_appcode:
         attributes:
           - action: insert
             key: appcode
             value: "ASSH-001"
+      resource/add_instance_tag:
+        attributes:
+          - action: insert
+            key: instance.tag
+            value: ${env:INST_TAG:-default}
       resourcedetection/ec2:
         detectors:
           - ec2
@@ -129,6 +135,7 @@ stringData:
         logs:
           processors:
             - resource/add_appcode
+            - resource/add_instance_tag
             - resourcedetection/ec2
             - resourcedetection/system
             - transform/s3prefix
