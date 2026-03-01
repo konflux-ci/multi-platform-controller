@@ -80,7 +80,7 @@ func main() {
 		MaxConcurrentReconciles: concurrentReconciles,
 	}
 
-	mgr, err = controller.NewManager(restConfig, managerOptions, controllerOptions)
+	mgr, err = controller.NewManager(ctx, restConfig, managerOptions, controllerOptions)
 	if err != nil {
 		mainLog.Error(err, "unable to start manager")
 		os.Exit(1)
