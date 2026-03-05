@@ -91,6 +91,7 @@ const (
 	ParamUser              = "USER"
 	ParamSudoCommands      = "SUDO_COMMANDS"
 	ParamRawPlatform       = "RAW_PLATFORM"
+	ParamInstanceTag       = "INSTANCE_TAG"
 )
 
 type ReconcileTaskRun struct {
@@ -1003,6 +1004,12 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 	provision.Spec.ComputeResources = &kubecore.ResourceRequirements{Requests: computeRequests, Limits: computeLimits}
 	provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
 
+	hostCfg := kubecore.ConfigMap{}
+	instanceTag := ""
+	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: HostConfig}, &hostCfg); err == nil {
+		instanceTag = hostCfg.Data[DefaultInstanceTag]
+	}
+
 	provision.Spec.Params = []tektonapi.Param{
 		{
 			Name:  ParamSecretName,
@@ -1031,6 +1038,10 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 		{
 			Name:  ParamRawPlatform,
 			Value: *tektonapi.NewStructuredValues(rawPlatform(platform)),
+		},
+		{
+			Name:  ParamInstanceTag,
+			Value: *tektonapi.NewStructuredValues(instanceTag),
 		},
 	}
 
