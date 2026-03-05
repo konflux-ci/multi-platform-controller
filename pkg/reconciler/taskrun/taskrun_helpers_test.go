@@ -397,7 +397,7 @@ type MockCloud struct {
 }
 
 func (m *MockCloud) ListInstances(kubeClient runtimeclient.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
-	ret := []cloud.CloudVMInstance{}
+	ret := make([]cloud.CloudVMInstance, 0, len(m.Instances))
 	for _, v := range m.Instances {
 		ret = append(ret, v.CloudVMInstance)
 	}

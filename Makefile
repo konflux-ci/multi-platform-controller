@@ -7,7 +7,10 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
-GOLANGCI_LINT ?= go run -modfile $(shell realpath ./hack/tools/golang-ci/go.mod) github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+# renovate: datasource=github-releases depName=golangci-lint packageName=golangci/golangci-lint
+GOLANGCI_LINT_VERSION ?= v2.8.0
+
+GOLANGCI_LINT ?= go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 GINKGO ?= go run github.com/onsi/ginkgo/v2/ginkgo
 
 .EXPORT_ALL_VARIABLES:
@@ -132,7 +135,7 @@ load-image: build-controller-image build-otp-image
 	rm -r $${dir}
 
 .PHONY: test-e2e
-test-e2e: test-e2e-deployment test-e2e-taskrun ## Run all e2e tests: deployment tests first, then taskrun tests in parallel
+test-e2e: test-e2e-deployment test-e2e-taskrun test-e2e-otelcol ## Run all e2e tests: deployment, taskrun, then otelcol verification
 
 .PHONY: test-e2e-deployment
 test-e2e-deployment: ## Run deployment validation e2e tests
@@ -141,6 +144,10 @@ test-e2e-deployment: ## Run deployment validation e2e tests
 .PHONY: test-e2e-taskrun
 test-e2e-taskrun: ## Run TaskRun execution e2e tests in parallel
 	$(GINKGO) --github-output -coverprofile cover.out -covermode atomic -v -procs=4 ./test/e2e/taskrun/
+
+.PHONY: test-e2e-otelcol
+test-e2e-otelcol: ## Run otelcol log verification e2e tests
+	$(GINKGO) --github-output -coverprofile cover.out -covermode atomic -v ./test/e2e/otelcol/
 
 # go-get-tool will 'go get' any package $2 and install it to $1.
 PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
