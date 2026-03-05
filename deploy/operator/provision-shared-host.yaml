@@ -21,6 +21,8 @@ spec:
       type: string
     - name: RAW_PLATFORM
       type: string
+    - name: INSTANCE_TAG
+      type: string
   workspaces:
     - name: ssh
   stepTemplate:
@@ -39,6 +41,8 @@ spec:
         value: $(params.SUDO_COMMANDS)
       - name: RAW_PLATFORM
         value: $(params.RAW_PLATFORM)
+      - name: INSTANCE_TAG
+        value: $(params.INSTANCE_TAG)
       - name: SSH_WORKSPACE_PATH
         value: $(workspaces.ssh.path)
   steps:
