@@ -16,6 +16,7 @@ import (
 	"knative.dev/pkg/kmeta"
 
 	mpcmetrics "github.com/konflux-ci/multi-platform-controller/pkg/metrics"
+	"github.com/konflux-ci/multi-platform-controller/pkg/util"
 
 	"github.com/konflux-ci/multi-platform-controller/pkg/aws"
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
@@ -90,6 +91,7 @@ const (
 	ParamUser              = "USER"
 	ParamSudoCommands      = "SUDO_COMMANDS"
 	ParamRawPlatform       = "RAW_PLATFORM"
+	ParamInstanceTag       = "INSTANCE_TAG"
 )
 
 type ReconcileTaskRun struct {
@@ -114,7 +116,7 @@ type ReconcileTaskRun struct {
 func newReconciler(mgr ctrl.Manager, operatorNamespace string) reconcile.Reconciler {
 	return &ReconcileTaskRun{
 		apiReader:         mgr.GetAPIReader(),
-		client:            mgr.GetClient(),
+		client:            util.NewRetryClient(mgr.GetClient(), retry.DefaultBackoff),
 		scheme:            mgr.GetScheme(),
 		eventRecorder:     mgr.GetEventRecorderFor("MultiPlatformTaskRun"),
 		operatorNamespace: operatorNamespace,
@@ -1002,6 +1004,12 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 	provision.Spec.ComputeResources = &kubecore.ResourceRequirements{Requests: computeRequests, Limits: computeLimits}
 	provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
 
+	hostCfg := kubecore.ConfigMap{}
+	instanceTag := ""
+	if err := r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: HostConfig}, &hostCfg); err == nil {
+		instanceTag = hostCfg.Data[DefaultInstanceTag]
+	}
+
 	provision.Spec.Params = []tektonapi.Param{
 		{
 			Name:  ParamSecretName,
@@ -1030,6 +1038,10 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 		{
 			Name:  ParamRawPlatform,
 			Value: *tektonapi.NewStructuredValues(rawPlatform(platform)),
+		},
+		{
+			Name:  ParamInstanceTag,
+			Value: *tektonapi.NewStructuredValues(instanceTag),
 		},
 	}
 

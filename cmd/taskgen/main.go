@@ -96,9 +96,11 @@ func convertToSsh(task *tektonapi.Task) {
 		if step.Name != "build" {
 			continue
 		}
-		podmanArgs := ""
+		podmanArgs := strings.Builder{}
+		retBuilder := strings.Builder{}
+		env := strings.Builder{}
 
-		ret := `set -o verbose
+		retBuilder.WriteString(`set -o verbose
 mkdir -p ~/.ssh
 if [ -e "/ssh/error" ]; then
   #no server could be provisioned
@@ -124,73 +126,74 @@ if [ -n "$JVM_BUILD_WORKSPACE_ARTIFACT_CACHE_PORT_80_TCP_ADDR" ] ; then
 PORT_FORWARD=" -L 80:$JVM_BUILD_WORKSPACE_ARTIFACT_CACHE_PORT_80_TCP_ADDR:80"
 PODMAN_PORT_FORWARD=" -e JVM_BUILD_WORKSPACE_ARTIFACT_CACHE_PORT_80_TCP_ADDR=localhost"
 fi
-`
+`)
 
-		env := "$PODMAN_PORT_FORWARD \\\n"
+		env.WriteString("$PODMAN_PORT_FORWARD \\\n")
 		// Before the build we sync the contents of the workspace to the remote host
 		for _, workspace := range task.Spec.Workspaces {
-			ret += "\nrsync -ra $(workspaces." + workspace.Name + ".path)/ \"$SSH_HOST:$BUILD_DIR/workspaces/" + workspace.Name + "/\""
-			podmanArgs += " -v \"$BUILD_DIR/workspaces/" + workspace.Name + ":$(workspaces." + workspace.Name + ".path):Z\" \\\n"
+			retBuilder.WriteString("\nrsync -ra $(workspaces." + workspace.Name + ".path)/ \"$SSH_HOST:$BUILD_DIR/workspaces/" + workspace.Name + "/\"")
+			podmanArgs.WriteString(" -v \"$BUILD_DIR/workspaces/" + workspace.Name + ":$(workspaces." + workspace.Name + ".path):Z\" \\\n")
 		}
 		// Also sync the volume mounts from the template
 		for _, volume := range task.Spec.StepTemplate.VolumeMounts {
-			ret += "\nrsync -ra " + volume.MountPath + "/ \"$SSH_HOST:$BUILD_DIR/volumes/" + volume.Name + "/\""
-			podmanArgs += " -v \"$BUILD_DIR/volumes/" + volume.Name + ":" + volume.MountPath + ":Z\" \\\n"
+			retBuilder.WriteString("\nrsync -ra " + volume.MountPath + "/ \"$SSH_HOST:$BUILD_DIR/volumes/" + volume.Name + "/\"")
+			podmanArgs.WriteString(" -v \"$BUILD_DIR/volumes/" + volume.Name + ":" + volume.MountPath + ":Z\" \\\n")
 		}
 		for _, volume := range step.VolumeMounts {
 			if syncVolumes[volume.Name] {
-				ret += "\nrsync -ra " + volume.MountPath + "/ \"$SSH_HOST:$BUILD_DIR/volumes/" + volume.Name + "/\""
-				podmanArgs += " -v \"$BUILD_DIR/volumes/" + volume.Name + ":" + volume.MountPath + ":Z\" \\\n"
+				retBuilder.WriteString("\nrsync -ra " + volume.MountPath + "/ \"$SSH_HOST:$BUILD_DIR/volumes/" + volume.Name + "/\"")
+				podmanArgs.WriteString(" -v \"$BUILD_DIR/volumes/" + volume.Name + ":" + volume.MountPath + ":Z\" \\\n")
 			}
 		}
-		ret += "\nrsync -ra \"$HOME/.docker/\" \"$SSH_HOST:$BUILD_DIR/.docker/\""
-		podmanArgs += " -v \"$BUILD_DIR/.docker/:/root/.docker:Z\" \\\n"
-		ret += "\nrsync -ra \"/tekton/results/\" \"$SSH_HOST:$BUILD_DIR/tekton-results/\""
-		podmanArgs += " -v \"$BUILD_DIR/tekton-results/:/tekton/results:Z\" \\\n"
+		retBuilder.WriteString("\nrsync -ra \"$HOME/.docker/\" \"$SSH_HOST:$BUILD_DIR/.docker/\"")
+		podmanArgs.WriteString(" -v \"$BUILD_DIR/.docker/:/root/.docker:Z\" \\\n")
+		retBuilder.WriteString("\nrsync -ra \"/tekton/results/\" \"$SSH_HOST:$BUILD_DIR/tekton-results/\"")
+		podmanArgs.WriteString(" -v \"$BUILD_DIR/tekton-results/:/tekton/results:Z\" \\\n")
 
 		script := "scripts/script-" + step.Name + ".sh"
 
-		ret += "\ncat >" + script + " <<'REMOTESSHEOF'\n"
+		retBuilder.WriteString("\ncat >" + script + " <<'REMOTESSHEOF'\n")
 		if !strings.HasPrefix(step.Script, "#!") {
-			ret += "#!/bin/bash\nset -o verbose\nset -e\n"
+			retBuilder.WriteString("#!/bin/bash\nset -o verbose\nset -e\n")
 		}
 		if step.WorkingDir != "" {
-			ret += "cd " + step.WorkingDir + "\n"
+			retBuilder.WriteString("cd " + step.WorkingDir + "\n")
 		}
-		ret += step.Script
-		ret += "\nbuildah push \"$IMAGE\" oci:rhtap-final-image"
-		ret += "\nREMOTESSHEOF"
-		ret += "\nchmod +x " + script
+		retBuilder.WriteString(step.Script)
+		retBuilder.WriteString("\nbuildah push \"$IMAGE\" oci:rhtap-final-image")
+		retBuilder.WriteString("\nREMOTESSHEOF")
+		retBuilder.WriteString("\nchmod +x " + script)
 
 		if task.Spec.StepTemplate != nil {
 			for _, e := range task.Spec.StepTemplate.Env {
-				env += " -e " + e.Name + "=\"$" + e.Name + "\" \\\n"
+				env.WriteString(" -e " + e.Name + "=\"$" + e.Name + "\" \\\n")
 			}
 		}
-		ret += "\nrsync -ra scripts \"$SSH_HOST:$BUILD_DIR\""
+		retBuilder.WriteString("\nrsync -ra scripts \"$SSH_HOST:$BUILD_DIR\"")
 		containerScript := "/script/script-" + step.Name + ".sh"
 		for _, e := range step.Env {
-			env += " -e " + e.Name + "=\"$" + e.Name + "\" \\\n"
+			env.WriteString(" -e " + e.Name + "=\"$" + e.Name + "\" \\\n")
 		}
-		podmanArgs += " -v $BUILD_DIR/scripts:/script:Z \\\n"
-		ret += "\nssh $SSH_ARGS \"$SSH_HOST\" $PORT_FORWARD podman  run " + env + "" + podmanArgs + "--user=0  --rm  \"$BUILDER_IMAGE\" " + containerScript
+		podmanArgs.WriteString(" -v $BUILD_DIR/scripts:/script:Z \\\n")
+		retBuilder.WriteString("\nssh $SSH_ARGS \"$SSH_HOST\" $PORT_FORWARD podman  run " + env.String() + "" + podmanArgs.String() + "--user=0  --rm  \"$BUILDER_IMAGE\" " + containerScript)
 
 		// Sync the contents of the workspaces back so subsequent tasks can use them
 		for _, workspace := range task.Spec.Workspaces {
-			ret += "\nrsync -ra \"$SSH_HOST:$BUILD_DIR/workspaces/" + workspace.Name + "/\" \"$(workspaces." + workspace.Name + ".path)/\""
+			retBuilder.WriteString("\nrsync -ra \"$SSH_HOST:$BUILD_DIR/workspaces/" + workspace.Name + "/\" \"$(workspaces." + workspace.Name + ".path)/\"")
 		}
 
 		for _, volume := range task.Spec.StepTemplate.VolumeMounts {
-			ret += "\nrsync -ra \"$SSH_HOST:$BUILD_DIR/volumes/" + volume.Name + "/\" " + volume.MountPath + "/"
+			retBuilder.WriteString("\nrsync -ra \"$SSH_HOST:$BUILD_DIR/volumes/" + volume.Name + "/\" " + volume.MountPath + "/")
 		}
 		//sync back results
-		ret += "\nrsync -ra \"$SSH_HOST:$BUILD_DIR/tekton-results/\" \"/tekton/results/\""
+		retBuilder.WriteString("\nrsync -ra \"$SSH_HOST:$BUILD_DIR/tekton-results/\" \"/tekton/results/\"")
 
-		ret += "\nbuildah pull oci:rhtap-final-image"
-		ret += "\nbuildah images"
-		ret += "\nbuildah tag localhost/rhtap-final-image \"$IMAGE\""
-		ret += "\ncontainer=$(buildah from --pull-never \"$IMAGE\")\nbuildah mount \"$container\" | tee /shared/container_path\necho $container > /shared/container_name"
+		retBuilder.WriteString("\nbuildah pull oci:rhtap-final-image")
+		retBuilder.WriteString("\nbuildah images")
+		retBuilder.WriteString("\nbuildah tag localhost/rhtap-final-image \"$IMAGE\"")
+		retBuilder.WriteString("\ncontainer=$(buildah from --pull-never \"$IMAGE\")\nbuildah mount \"$container\" | tee /shared/container_path\necho $container > /shared/container_name")
 
+		ret := retBuilder.String()
 		for _, i := range strings.Split(ret, "\n") {
 			if strings.HasSuffix(i, " ") {
 				panic(i)
