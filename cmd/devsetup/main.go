@@ -131,18 +131,28 @@ This is typically used to clean up instances created during e2e tests.`,
 
 func newCleanupS3LogsCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "cleanup-s3-logs <github-run-id>",
-		Short: "Delete S3 logs for a GitHub Actions run",
-		Long: `Remove all logs stored under the GitHub Actions run ID prefix in S3.
+		Use:   "cleanup-s3-logs [github-run-id]",
+		Short: "Delete S3 logs for a GitHub Actions run or local development",
+		Long: `Remove all logs stored under a run ID prefix in S3.
 
 This command deletes the prefix:
-  mpc/<github-run-id>/
+  mpc/<run-id>/
+
+The run ID is resolved using the same logic as deploy:
+  1. The CLI argument (if provided)
+  2. GITHUB_RUN_ID environment variable
+  3. INSTANCE_TAG environment variable (minus "-development" suffix)
+  4. "local" (fallback for local development)
 
 Required environment variables:
   S3_LOGS_BUCKET - S3 bucket for log cleanup.`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runCleanupS3Logs(args[0])
+			var override string
+			if len(args) > 0 {
+				override = args[0]
+			}
+			return runCleanupS3Logs(override)
 		},
 	}
 }
@@ -284,17 +294,24 @@ func logsBucketName() (string, error) {
 	return value, nil
 }
 
-func runCleanupS3Logs(githubRunID string) error {
+// resolveRunID determines the effective run ID using a fallback chain:
+// override input argument -> INSTANCE_TAG env (minus "-development" suffix) -> "local".
+func resolveRunID(input string) string {
+	if id := strings.TrimSpace(input); id != "" {
+		return id
+	}
+	if tag := strings.TrimSpace(os.Getenv("INSTANCE_TAG")); tag != "" {
+		return strings.TrimSuffix(tag, "-development")
+	}
+	return "local"
+}
+
+func runCleanupS3Logs(githubRunId string) error {
 	if err := validateAWSCredentials(); err != nil {
 		return err
 	}
 
-	githubRunID = strings.TrimSpace(githubRunID)
-	if githubRunID == "" {
-		return errors.New("github-run-id is required for cleanup-s3-logs")
-	}
-
-	fmt.Printf("Deleting S3 logs for GITHUB_RUN_ID=%s\n", githubRunID)
+	runID := resolveRunID(githubRunId)
 
 	ctx := context.Background()
 	awsCfg, err := config.LoadDefaultConfig(ctx)
@@ -308,7 +325,8 @@ func runCleanupS3Logs(githubRunID string) error {
 		return err
 	}
 
-	prefix := fmt.Sprintf("mpc/%s/", githubRunID)
+	prefix := fmt.Sprintf("mpc/%s/", runID)
+	fmt.Printf("Deleting S3 logs with prefix %s\n", prefix)
 	return cleanupS3LogsPrefix(ctx, s3Client, logsBucket, prefix)
 }
 
@@ -647,13 +665,7 @@ func prepareDeploymentOverlays(cfg *Config) error {
 		return fmt.Errorf("replacing INSTANCE_TAG: %w", err)
 	}
 
-	githubRunID := strings.TrimSpace(cfg.GithubRunID)
-	if githubRunID == "" && cfg.InstanceTag != "" {
-		githubRunID = strings.TrimSuffix(cfg.InstanceTag, "-development")
-	}
-	if githubRunID == "" {
-		githubRunID = "local"
-	}
+	githubRunID := resolveRunID(cfg.GithubRunID)
 	if err := replaceInFiles(developmentDir, "GITHUB_RUN_ID", githubRunID); err != nil {
 		return fmt.Errorf("replacing GITHUB_RUN_ID: %w", err)
 	}
