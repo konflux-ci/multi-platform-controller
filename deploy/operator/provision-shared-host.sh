@@ -34,6 +34,8 @@ command -v podman >/dev/null 2>&1 || sudo dnf install podman -y
 
 if command -v otelcol-contrib >/dev/null 2>&1; then
   echo "Found Opentelemetry, re-apply config.."
+  # Make sure ACLs are still there, because logrotate might actually rotate the file so ACLs are lost
+  sudo setfacl -m u:otelcol-contrib:r /var/log/audit/audit.log
   sudo systemctl daemon-reload
   sudo systemctl restart otelcol-contrib
 else
