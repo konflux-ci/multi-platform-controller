@@ -4,6 +4,14 @@
   "extends": ["config:recommended"],
   "pinDigests": true,
   "postUpdateOptions": ["gomodTidy"],
+  "packageRules": [
+    {
+      "matchManagers": [
+        "tekton"
+      ],
+      "prPriority": 10
+    },
+  ],
   "customManagers": [
     {
       "customType": "regex",
