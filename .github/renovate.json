@@ -11,6 +11,26 @@
       ],
       "prPriority": 10
     },
+    {
+      "groupName": "go-modules automerge",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest"
+      ],
+    },
+    {
+      "groupName": "go-modules major",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ]
+    }
   ],
   "customManagers": [
     {
