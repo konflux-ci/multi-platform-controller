@@ -4,6 +4,50 @@
   "extends": ["config:recommended"],
   "pinDigests": true,
   "postUpdateOptions": ["gomodTidy"],
+  "packageRules": [
+    {
+      "matchManagers": [
+        "tekton"
+      ],
+      "prPriority": 10
+    },
+    {
+      "groupName": "go-modules automerge",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest"
+      ],
+    },
+    {
+      "groupName": "go-modules major",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ]
+    },
+    {
+      "groupName": "go-modules controller-runtime and k8s",
+      "description": "group kubernetes updates together",
+      "matchPackageNames": [
+        "k8s.io/api",
+        "k8s.io/apimachinery",
+        "k8s.io/client-go",
+        "k8s.io/utils",
+        "sigs.k8s.io/controller-runtime"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "major",
+        "digest"
+      ],
+    }
+  ],
   "customManagers": [
     {
       "customType": "regex",
