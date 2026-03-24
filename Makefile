@@ -119,11 +119,11 @@ cert-manager:
 
 .PHONY: build-controller-image
 build-controller-image:
-	$(CONTAINER_TOOL) build -t $(CONTROLLER_IMAGE) -f Dockerfile .
+	$(CONTAINER_TOOL) build --build-arg ENABLE_COVERAGE=$(ENABLE_COVERAGE) -t $(CONTROLLER_IMAGE) -f Dockerfile .
 
 .PHONY: build-otp-image
 build-otp-image:
-	$(CONTAINER_TOOL) build -t $(OTP_IMAGE) -f Dockerfile.otp .
+	$(CONTAINER_TOOL) build --build-arg ENABLE_COVERAGE=$(ENABLE_COVERAGE) -t $(OTP_IMAGE) -f Dockerfile.otp .
 
 .PHONY: load-image
 load-image: build-controller-image build-otp-image
