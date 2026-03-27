@@ -6,6 +6,12 @@
   "postUpdateOptions": ["gomodTidy"],
   "packageRules": [
     {
+      "description": "Disable Go toolchain version updates until cachi2/prefetch supports them",
+      "matchManagers": ["gomod"],
+      "matchDepNames": ["go"],
+      "enabled": false
+    },
+    {
       "matchManagers": [
         "tekton"
       ],
