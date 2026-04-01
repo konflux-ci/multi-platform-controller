@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/rand"
+	"errors"
 	"io"
 	"math/big"
 	"net/http"
@@ -13,8 +14,6 @@ import (
 var mutex = sync.Mutex{}
 var globalMap = map[string][]byte{}
 
-// otp service example implementation.
-// The example methods log the requests and return zero values.
 type storekey struct {
 	logger *logr.Logger
 }
@@ -39,13 +38,13 @@ func (s *storekey) ServeHTTP(writer http.ResponseWriter, request *http.Request) 
 	_, err = writer.Write([]byte(otp))
 	if err != nil {
 		s.logger.Error(err, "failed to write http response", "address", request.RemoteAddr)
-		writer.WriteHeader(500)
-	} else {
-		s.logger.Info("stored SSH key in OTP map", "address", request.RemoteAddr)
+		delete(globalMap, otp)
+		return
 	}
+	s.logger.Info("stored SSH key in OTP map", "address", request.RemoteAddr, "mapSize", len(globalMap))
 }
 
-// NewOtp returns the otp service implementation.
+// NewStoreKey returns the store-key service implementation.
 func NewStoreKey(logger *logr.Logger) *storekey {
 	return &storekey{logger}
 }
@@ -62,26 +61,27 @@ func NewOtp(logger *logr.Logger) *otp {
 func (s *otp) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	body, err := io.ReadAll(request.Body)
 	if err != nil {
-		s.logger.Error(err, "failed to read request body")
+		s.logger.Error(err, "failed to read request body", "address", request.RemoteAddr)
 		writer.WriteHeader(500)
 		return
 	}
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	res, loaded := globalMap[string(body)]
-	delete(globalMap, string(body))
+	token := string(body)
+
+	res, loaded := globalMap[token]
+	delete(globalMap, token)
 	if !loaded {
-		s.logger.Error(err, "no OTP found for provided SSH key", "address", request.RemoteAddr)
+		s.logger.Error(errors.New("token not found in OTP map"), "no OTP found for provided token", "address", request.RemoteAddr, "mapSize", len(globalMap))
 		writer.WriteHeader(400)
 	} else {
 		_, err := writer.Write(res)
 		if err != nil {
 			s.logger.Error(err, "failed to write http response", "address", request.RemoteAddr)
-			writer.WriteHeader(500)
-		} else {
-			s.logger.Info("served one time password", "address", request.RemoteAddr)
+			return
 		}
+		s.logger.Info("served one time password", "address", request.RemoteAddr, "mapSize", len(globalMap))
 	}
 }
 
