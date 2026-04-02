@@ -1,5 +1,9 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "timezone": "UTC",
+  "schedule": [
+    "before 7am on Monday"
+  ],
   "prConcurrentLimit": 20,
   "extends": [
     "config:recommended"
