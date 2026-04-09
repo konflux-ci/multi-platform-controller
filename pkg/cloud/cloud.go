@@ -28,7 +28,6 @@ type CloudProvider interface {
 	CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error)
 	ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]CloudVMInstance, error)
 	GetState(kubeClient client.Client, ctx context.Context, instanceId InstanceIdentifier) (VMState, error)
-	CleanUpVms(ctx context.Context, kubeClient client.Client, existingTaskRuns map[string][]string) error
 	SshUser() string
 }
 

@@ -314,45 +314,6 @@ func (ec AWSEc2DynamicConfig) GetState(kubeClient client.Client, ctx context.Con
 	return cloud.FailedState, nil
 }
 
-// CleanUpVms deletes any VMs in the ec cloud that are not associated with an existing Tekton TaskRun.
-func (ec AWSEc2DynamicConfig) CleanUpVms(ctx context.Context, kubeClient client.Client, existingTaskRuns map[string][]string) error {
-	log := logr.FromContextOrDiscard(ctx)
-	log.Info("Attempting to clean up orphaned AWS EC2 instances")
-
-	// Create an EC2 client
-	ec2Client, err := ec.createClient(kubeClient, ctx)
-	if err != nil {
-		return fmt.Errorf("failed to create an EC2 client: %w", err)
-	}
-
-	// Retrieve instances
-	instancesOutput, err := ec2Client.DescribeInstances(
-		ctx,
-		&ec2.DescribeInstancesInput{
-			Filters: []types.Filter{
-				{Name: aws.String("tag:" + MultiPlatformManaged), Values: []string{"true"}},
-			},
-		},
-	)
-	if err != nil {
-		log.Error(err, "failed to retrieve EC2 instances")
-		return fmt.Errorf("failed to retrieve EC2 instances: %w", err)
-	}
-
-	errs := []error{}
-	// Retrieve and delete VM instances whose TaskRun does not exist.
-	vmsWithoutTaskRuns := ec.findInstancesWithoutTaskRuns(log, instancesOutput.Reservations, existingTaskRuns)
-	for _, vmName := range vmsWithoutTaskRuns {
-		err := ec.TerminateInstance(kubeClient, ctx, cloud.InstanceIdentifier(vmName))
-		if err != nil {
-			log.Error(err, "failed to terminate instance", "instanceID", vmName)
-			errs = append(errs, err)
-		}
-	}
-
-	return errors.Join(errs...)
-}
-
 // An AWSEc2DynamicConfig represents a configuration for an AWS EC2 instance.
 // The zero value (where each field will be assigned its type's zero value) is not a
 // valid AWSEc2DynamicConfig.

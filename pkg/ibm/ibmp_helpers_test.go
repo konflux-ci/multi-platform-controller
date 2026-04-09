@@ -5,45 +5,9 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/IBM-Cloud/power-go-client/power/models"
-	"github.com/go-logr/logr"
 )
 
 var _ = Describe("IBM Power Cloud Helper Functions", func() {
-
-	Describe("doesInstanceHaveTaskRun helper function tests", func() {
-		var instance *models.PVMInstance
-
-		BeforeEach(func() {
-			instance = &models.PVMInstance{
-				PvmInstanceID: ptr("id"),
-			}
-		})
-		DescribeTable("Determine if a VM instance is linked to a non-existing TaskRun",
-			func(userTags models.Tags, existingTaskRuns map[string][]string, expectedResult bool) {
-				ibmp := IBMPowerDynamicConfig{}
-				instance.UserTags = userTags
-				Expect(ibmp.doesInstanceHaveTaskRun(logr.Discard(), instance, existingTaskRuns)).
-					Should(Equal(expectedResult))
-			},
-			Entry("no user tags",
-				models.Tags{},
-				map[string][]string{}, false),
-			Entry("no existing TaskRuns",
-				models.Tags{"test-namespace:test-task"},
-				map[string][]string{}, false),
-			Entry("no valid TaskRun ID",
-				models.Tags{"a", "b", "c"},
-				map[string][]string{}, false),
-			Entry("non-existing TaskRun ID",
-				models.Tags{"test-namespace:test-task"},
-				map[string][]string{"namespace": {"task"}}, false),
-			Entry("existing TaskRun ID",
-				models.Tags{"test-namespace:test-task"},
-				map[string][]string{"test-namespace": {"test-task"}},
-				true,
-			),
-		)
-	})
 
 	// A unit test for retrieveInstanceIp. For now only tests the logic paths for retrieving an IP address from
 	// PVMInstanceNetwork's ExternalIP or IPAddress, as it is currently written:

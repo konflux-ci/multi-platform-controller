@@ -2,7 +2,6 @@ package ibm
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -292,41 +291,6 @@ func (iz IBMZDynamicConfig) GetState(kubeClient client.Client, ctx context.Conte
 		return cloud.OKState, nil
 	}
 	return cloud.FailedState, nil
-}
-
-// CleanUpVms deletes any VMs in the iz cloud instance that are associated with a non-existing Tekton TaskRun.
-// Each VM instance should have a tag with the associated TaskRun's namespace and name. This is compared to
-// existingTaskRuns, which is a map of namespaces to a list of TaskRuns in that namespace, to determine if this
-// VM's TaskRun still exists.
-func (iz IBMZDynamicConfig) CleanUpVms(ctx context.Context, kubeClient client.Client, existingTaskRuns map[string][]string) error {
-	// Get all VM instances
-	log := logr.FromContextOrDiscard(ctx)
-	log.Info("Attempting to clean up orphaned IBM System Z instances")
-	vpcService, err := iz.createAuthenticatedVpcService(ctx, kubeClient)
-	if err != nil {
-		return fmt.Errorf("failed to create an authenticated VPC service: %w", err)
-	}
-	vpc, err := iz.lookUpVpc(vpcService)
-	if err != nil {
-		return err
-	}
-	vpcInstances, _, err := vpcService.ListInstances(&vpcv1.ListInstancesOptions{ResourceGroupID: vpc.ResourceGroup.ID, VPCName: &iz.Vpc})
-	if err != nil {
-		return fmt.Errorf("failed to list VPC instances in the VPC network %s: %w", *vpc.ID, err)
-	}
-
-	errs := []error{}
-	// Retrieve and delete VM instances whose TaskRun does not exist.
-	vmsWithoutTaskRuns := iz.findInstancesWithoutTaskRuns(log, vpcService, vpcInstances.Instances, existingTaskRuns)
-	for _, vmName := range vmsWithoutTaskRuns {
-		err := iz.TerminateInstance(kubeClient, ctx, cloud.InstanceIdentifier(vmName))
-		if err != nil {
-			log.Error(err, "failed to terminate instance", "instanceID", vmName)
-			errs = append(errs, err)
-		}
-	}
-
-	return errors.Join(errs...)
 }
 
 func (iz IBMZDynamicConfig) SshUser() string {
