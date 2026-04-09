@@ -63,11 +63,14 @@ var _ = Describe("ServeHTTP handlers", Serial, func() {
 
 		Context("with valid SSH key (otp)", func() {
 
-			It("serves a one-time password", func() {
+			It("serves a one-time password and logs success", func() {
 				By("Initializing a new store with a valid ssh key")
 				store := NewStoreKey(&logCapture.Logger)
 				storedKey := storeKeyAndGetOTP(store, rsaKey)
 				GinkgoWriter.Printf("Stored key used for OTP: %q\n", storedKey)
+
+				By("Resetting the log buffer so assertions only cover the /otp call")
+				logCapture.Buffer.Reset()
 
 				By("Requiring an OTP for that ssh key")
 				req = httptest.NewRequest("POST", "/otp", strings.NewReader(storedKey))
@@ -77,18 +80,23 @@ var _ = Describe("ServeHTTP handlers", Serial, func() {
 				By("Verifying that the OTP is returned successfully")
 				Expect(rr.Code).To(Equal(http.StatusOK))
 				Expect(rr.Body.String()).NotTo(BeEmpty())
-				Expect(logCapture.Contains("served one time password")).To(BeTrue(), "Log should indicate success of one time password provision")
+				logOutput := logCapture.Buffer.String()
+				Expect(logOutput).To(ContainSubstring("served one time password"),
+					"Log should indicate success of one time password provision")
 			})
 		})
 
 		Context("when the key is valid but missing from the store", func() {
-			It("returns 400 and logs a missing key error", func() {
+			It("returns 400 and logs a missing key error with proper error", func() {
 				req = httptest.NewRequest("POST", "/otp", strings.NewReader("doesn't really matter, does it?"))
 				testOtp.ServeHTTP(rr, req)
 
 				Expect(rr.Code).To(Equal(http.StatusBadRequest))
-				Expect(logCapture.Contains("no OTP found for provided SSH key")).To(BeTrue(),
-					"Log should indicate the SSH key wasn't found in the store")
+				logOutput := logCapture.Buffer.String()
+				Expect(logOutput).To(ContainSubstring("no OTP found for provided token"),
+					"Log should indicate the token wasn't found in the store")
+				Expect(logOutput).To(ContainSubstring("token not found in OTP map"),
+					"Log should contain a proper error message, not nil")
 			})
 		})
 	})
@@ -102,13 +110,17 @@ var _ = Describe("ServeHTTP handlers", Serial, func() {
 
 		Context("with valid SSH key (storekey)", func() {
 
-			It("completely valid SSH key - stores the SSH key in OTP map when given a valid key", func() {
+			It("completely valid SSH key - stores the SSH key in OTP map and logs map size", func() {
 				req = httptest.NewRequest("POST", "/store", strings.NewReader(rsaKey))
 				testStorekey.ServeHTTP(rr, req)
 
 				Expect(rr.Code).To(Equal(http.StatusOK))
 				Expect(rr.Body.String()).NotTo(BeEmpty())
-				Expect(logCapture.Contains("stored SSH key in OTP map")).To(BeTrue(), "Log should indicate success of SSH key placement in globalMap")
+				logOutput := logCapture.Buffer.String()
+				Expect(logOutput).To(ContainSubstring("stored SSH key in OTP map"),
+					"Log should indicate success of SSH key placement in globalMap")
+				Expect(logOutput).To(ContainSubstring("mapSize"),
+					"Log should contain the map size for debugging")
 			})
 
 			DescribeTable("valid-but-borderline SSH keys - stores the SSH key in OTP map when given a valid key",
@@ -130,6 +142,31 @@ var _ = Describe("ServeHTTP handlers", Serial, func() {
 				Entry("very long key", func() string { return rsaKey + rsaKey + rsaKey }, "a very long rsa key"),
 				Entry("ed25519 key", func() string { return edKey }, "an ed25519 key"),
 			)
+		})
+	})
+
+	Describe("Testing storekey write failure cleanup", func() {
+		It("cleans up globalMap entry when response write fails", func() {
+			store := NewStoreKey(&logCapture.Logger)
+
+			mutex.Lock()
+			globalMap = map[string][]byte{}
+			mutex.Unlock()
+
+			fw := &failingWriter{header: http.Header{}}
+			req := httptest.NewRequest("POST", "/store", strings.NewReader(rsaKey))
+			store.ServeHTTP(fw, req)
+
+			By("Verifying the globalMap is empty after write failure")
+			mutex.Lock()
+			mapLen := len(globalMap)
+			mutex.Unlock()
+			Expect(mapLen).To(Equal(0),
+				"globalMap should not retain an entry when the HTTP response write failed")
+
+			logOutput := logCapture.Buffer.String()
+			Expect(logOutput).To(ContainSubstring("failed to write http response"),
+				"Log should indicate the write failure")
 		})
 	})
 
@@ -203,6 +240,24 @@ func generateValidSSHKey(keyType string) (string, error) {
 	default:
 		return "", errors.New("unsupported key type")
 	}
+}
+
+// failingWriter is an http.ResponseWriter that always fails on Write.
+type failingWriter struct {
+	header     http.Header
+	statusCode int
+}
+
+func (fw *failingWriter) Header() http.Header {
+	return fw.header
+}
+
+func (fw *failingWriter) WriteHeader(statusCode int) {
+	fw.statusCode = statusCode
+}
+
+func (fw *failingWriter) Write([]byte) (int, error) {
+	return 0, errors.New("simulated write failure")
 }
 
 // A helper to search for substrings in logs
