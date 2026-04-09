@@ -321,4 +321,3 @@ func (iz IBMZDynamicConfig) assignIPToInstance(instance *vpcv1.Instance, vpcServ
 	ip, err = assignNewlyAllocatedIP(instance, vpcService)
 	return ip, err
 }
-

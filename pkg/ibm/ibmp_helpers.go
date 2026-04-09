@@ -395,4 +395,3 @@ func (pw IBMPowerDynamicConfig) updateVolume(ctx context.Context, service *core.
 	log.Info("Volume size updated", "volumeID", vRef.VolumeID, "size", vRef.Size)
 	return nil
 }
-
