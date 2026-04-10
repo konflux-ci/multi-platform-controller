@@ -120,7 +120,7 @@ jobs:
 
       - name: Upload e2e coverage to Codecov
         if: always()
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           use_oidc: true
           flags: e2e-tests
