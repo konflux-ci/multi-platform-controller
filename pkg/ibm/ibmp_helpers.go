@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"slices"
 	"strings"
 	"time"
 
@@ -395,28 +394,4 @@ func (pw IBMPowerDynamicConfig) updateVolume(ctx context.Context, service *core.
 	}
 	log.Info("Volume size updated", "volumeID", vRef.VolumeID, "size", vRef.Size)
 	return nil
-}
-
-// doesInstanceHaveTaskRun returns whether or not an instance on the pw cloud is associated with an existing
-// TaskRun. Each instance should have a tag with the associated TaskRun's namespace and name. This is compared
-// to existingTaskRuns, which is a map of namespaces to a list of TaskRuns in that namespace, to determine if
-// this instance's TaskRun still exists.
-func (pw IBMPowerDynamicConfig) doesInstanceHaveTaskRun(log logr.Logger, instance *models.PVMInstance, existingTaskRuns map[string][]string) bool {
-	// Try to find the instance's TaskRun ID tag
-	instanceTagIndex := slices.IndexFunc(instance.UserTags, func(tag string) bool {
-		return cloud.ValidateTaskRunID(tag) == nil
-	})
-	if instanceTagIndex == -1 {
-		msg := "WARN: failed to find a valid TaskRun ID; counting as having no TaskRun anyway..."
-		log.Info(msg, "instanceID", *instance.PvmInstanceID)
-		return false
-	}
-	tag := instance.UserTags[instanceTagIndex]
-
-	// Try to find this instance's TaskRun
-	taskRunInfo := strings.Split(tag, ":")
-	taskRunNamespace, taskRunName := taskRunInfo[0], taskRunInfo[1]
-	taskRuns, ok := existingTaskRuns[taskRunNamespace]
-	// Return true if the associated TaskRun exists in a TaskRun namespace
-	return ok && slices.Contains(taskRuns, taskRunName)
 }

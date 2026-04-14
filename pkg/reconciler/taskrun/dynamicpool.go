@@ -27,10 +27,6 @@ type DynamicHostPool struct {
 	additionalInstanceTags map[string]string
 }
 
-func (a DynamicHostPool) InstanceTag() string {
-	return a.instanceTag
-}
-
 func (a DynamicHostPool) buildHostPool(r *ReconcileTaskRun, ctx context.Context, instanceTag string) (*HostPool, int, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	ret := map[string]*Host{}
