@@ -53,7 +53,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v6.0.0
+        uses: aws-actions/configure-aws-credentials@v6.1.0
         with:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -81,6 +81,8 @@ jobs:
         run: kind create cluster
 
       - name: Build and load images
+        env:
+          ENABLE_COVERAGE: "true"
         run: |
           go mod tidy
           make load-image
@@ -99,9 +101,35 @@ jobs:
         run: |
           make test-e2e
 
+      - name: Collect e2e coverage
+        if: always()
+        run: |
+          mkdir -p coverage-output && chmod 777 coverage-output
+          cp $HOME/.kube/config /tmp/kubeconfig && chmod 644 /tmp/kubeconfig
+          podman run --rm \
+            --network host \
+            -v /tmp/kubeconfig:/kubeconfig:ro \
+            -v $PWD/coverage-output:/workspace/coverage-output \
+            -e KUBECONFIG=/kubeconfig \
+            quay.io/konflux-ci/konflux-devprod/coverport-cli \
+            collect \
+              --namespace=multi-platform-controller \
+              --label-selector="app in (multi-platform-controller,multi-platform-otp-server)" \
+              --test-name=e2e-tests \
+              --output=/workspace/coverage-output || true
+
+      - name: Upload e2e coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v6
+        with:
+          use_oidc: true
+          flags: e2e-tests
+          directory: coverage-output
+          fail_ci_if_error: false
+
       - name: Upload E2E Debug Logs
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-debug-logs
           path: ${{ env.E2E_DEBUG_LOG_DIR }}
@@ -113,7 +141,7 @@ jobs:
 
       - name: Configure AWS Credentials for Cleanup
         if: always()
-        uses: aws-actions/configure-aws-credentials@v6.0.0
+        uses: aws-actions/configure-aws-credentials@v6.1.0
         with:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}

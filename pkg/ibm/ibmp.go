@@ -8,7 +8,6 @@ package ibm
 import (
 	"context"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -247,46 +246,6 @@ func (pw IBMPowerDynamicConfig) GetState(kubeClient client.Client, ctx context.C
 		return cloud.FailedState, nil
 	}
 	return cloud.OKState, nil
-}
-
-// CleanUpVms deletes any VMs in the pw cloud instance that are associated with a non-existing Tekton TaskRun.
-// Each VM instance should have a tag with the associated TaskRun's namespace and name. This is compared to
-// existingTaskRuns, which is a map of namespaces to a list of TaskRuns in that namespace, to determine if this
-// VM's TaskRun still exists.
-func (pw IBMPowerDynamicConfig) CleanUpVms(ctx context.Context, kubeClient client.Client, existingTaskRuns map[string][]string) error {
-	// Get all VM instances
-	log := logr.FromContextOrDiscard(ctx)
-	log.Info("Attempting to clean up orphaned IBM Power Systems instances")
-	service, err := pw.createAuthenticatedBaseService(ctx, kubeClient)
-	if err != nil {
-		return fmt.Errorf("failed to create an authenticated base service: %w", err)
-	}
-	pvmInstancesCollection, err := pw.listInstances(ctx, service)
-	if err != nil {
-		return fmt.Errorf("failed to fetch Power Systems instances: %w", err)
-	}
-
-	// Iterate over all VM instances
-	errs := []error{}
-	for _, instanceRef := range pvmInstancesCollection.PvmInstances {
-		pvmInstance, err := pw.getInstance(ctx, service, *instanceRef.PvmInstanceID)
-		if err != nil {
-			msg := fmt.Sprintf("WARN: failed to get instance - %s; skipping this instance...", err.Error())
-			log.Info(msg, "instanceID", *pvmInstance.PvmInstanceID)
-			continue
-		}
-		// Delete the VM instance if the TaskRun namespace or TaskRun does not exist
-		taskRunExists := pw.doesInstanceHaveTaskRun(log, pvmInstance, existingTaskRuns)
-		if !taskRunExists {
-			err := pw.TerminateInstance(kubeClient, ctx, cloud.InstanceIdentifier(*pvmInstance.PvmInstanceID))
-			if err != nil {
-				log.Error(err, "failed to terminate instance", "instanceID", *pvmInstance.PvmInstanceID)
-				errs = append(errs, err)
-			}
-		}
-	}
-
-	return errors.Join(errs...)
 }
 
 func (pw IBMPowerDynamicConfig) SshUser() string {

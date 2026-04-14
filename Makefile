@@ -119,11 +119,11 @@ cert-manager:
 
 .PHONY: build-controller-image
 build-controller-image:
-	$(CONTAINER_TOOL) build -t $(CONTROLLER_IMAGE) -f Dockerfile .
+	$(CONTAINER_TOOL) build --build-arg ENABLE_COVERAGE=$(ENABLE_COVERAGE) -t $(CONTROLLER_IMAGE) -f Dockerfile .
 
 .PHONY: build-otp-image
 build-otp-image:
-	$(CONTAINER_TOOL) build -t $(OTP_IMAGE) -f Dockerfile.otp .
+	$(CONTAINER_TOOL) build --build-arg ENABLE_COVERAGE=$(ENABLE_COVERAGE) -t $(OTP_IMAGE) -f Dockerfile.otp .
 
 .PHONY: load-image
 load-image: build-controller-image build-otp-image
@@ -135,7 +135,7 @@ load-image: build-controller-image build-otp-image
 	rm -r $${dir}
 
 .PHONY: test-e2e
-test-e2e: test-e2e-deployment test-e2e-taskrun ## Run all e2e tests: deployment tests first, then taskrun tests in parallel
+test-e2e: test-e2e-deployment test-e2e-taskrun test-e2e-otelcol ## Run all e2e tests: deployment, taskrun, then otelcol verification
 
 .PHONY: test-e2e-deployment
 test-e2e-deployment: ## Run deployment validation e2e tests
@@ -144,6 +144,10 @@ test-e2e-deployment: ## Run deployment validation e2e tests
 .PHONY: test-e2e-taskrun
 test-e2e-taskrun: ## Run TaskRun execution e2e tests in parallel
 	$(GINKGO) --github-output -coverprofile cover.out -covermode atomic -v -procs=4 ./test/e2e/taskrun/
+
+.PHONY: test-e2e-otelcol
+test-e2e-otelcol: ## Run otelcol log verification e2e tests
+	$(GINKGO) --github-output -coverprofile cover.out -covermode atomic -v ./test/e2e/otelcol/
 
 # go-get-tool will 'go get' any package $2 and install it to $1.
 PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))

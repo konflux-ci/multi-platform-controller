@@ -30,10 +30,13 @@ export USERNAME
 
 # Create script to provision VM
 cat >script.sh <<EOF
-sudo dnf install podman -y
+command -v podman >/dev/null 2>&1 || sudo dnf install podman -y
 
 if command -v otelcol-contrib >/dev/null 2>&1; then
   echo "Found Opentelemetry, re-apply config.."
+  # Make sure ACLs are still there, because logrotate might actually rotate the file so ACLs are lost
+  sudo setfacl -m u:otelcol-contrib:r /var/log/audit/audit.log
+  sudo systemctl daemon-reload
   sudo systemctl restart otelcol-contrib
 else
   if [[ -f /etc/otelcol-contrib/config_mpc.yaml ]]; then
@@ -159,6 +162,12 @@ if [[ -f /otelcol/config.yaml ]]; then
   ssh "${SSH_OPTS[@]}" "$SSH_HOST" \
     'sudo mkdir -p /etc/otelcol-contrib && sudo tee /etc/otelcol-contrib/config_mpc.yaml > /dev/null' \
     < /otelcol/config.yaml
+
+ # Set INST_TAG as an env var for the otelcol-contrib service via systemd drop-in
+ # Name of the variable changed intentionally to avoid rewriting during provision e2e tests
+ ssh "${SSH_OPTS[@]}" "$SSH_HOST" "sudo mkdir -p /etc/systemd/system/otelcol-contrib.service.d"
+ printf '[Service]\nEnvironment=INST_TAG=%s\n' "${INSTANCE_TAG}" \
+   | ssh "${SSH_OPTS[@]}" "$SSH_HOST" "sudo tee /etc/systemd/system/otelcol-contrib.service.d/instance-tag.conf > /dev/null"
 else
   echo "Opentelemetry config not found, default one will be used"
 fi
@@ -196,7 +205,15 @@ DIR=$(echo /home/"$USERNAME" | base64 -w 0)
 if [ -e "/tls/tls.crt" ]; then
   echo "{message: \"Creating secret file using TLS certificate...\", level: \"INFO\"}"
   KEY=$(cat id_rsa)
-  OTP=$(curl --cacert /tls/tls.crt -XPOST -d "$KEY" https://multi-platform-otp-server.multi-platform-controller.svc.cluster.local/store-key | base64 -w 0)
+  if ! otp_raw=$(curl --fail --cacert /tls/tls.crt -XPOST -d "$KEY" https://multi-platform-otp-server.multi-platform-controller.svc.cluster.local/store-key); then
+    echo "{message: \"Failed to store SSH key in OTP server. Please, retry build in a few minutes, and if problem persists, please report it as an MPC bug.\", level: \"ERROR\"}" >&2
+    exit 1
+  fi
+  OTP=$(printf '%s' "$otp_raw" | base64 -w 0)
+  if [ -z "$OTP" ]; then
+    echo "{message: \"OTP server returned an empty token. Please, retry build in a few minutes, and if problem persists, please report it as an MPC bug.\", level: \"ERROR\"}" >&2
+    exit 1
+  fi
   OTP_SERVER="$(echo https://multi-platform-otp-server.multi-platform-controller.svc.cluster.local/otp | base64 -w 0)"
   echo "$OTP" | base64 -d
 

@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"slices"
-	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -181,50 +179,6 @@ func (ec AWSEc2DynamicConfig) configureInstance(taskRunName string, instanceTag 
 			{ResourceType: types.ResourceTypeInstance, Tags: instanceTags},
 		},
 	}, nil
-}
-
-// findInstancesWithoutTaskRuns iterates over instances retrieved from the ec cloud and returns a list of those that
-// are associated with a non-existing Tekton TaskRun. Each instance should have a tag with the associated TaskRun's
-// namespace and name. This is compared to existingTaskRuns, which is a map of namespaces to a list of TaskRuns in
-// that namespace, to determine if this instance's TaskRun still exists.
-func (ec AWSEc2DynamicConfig) findInstancesWithoutTaskRuns(log logr.Logger, reservations []types.Reservation, existingTaskRuns map[string][]string) []string {
-	var instancesWithoutTaskRuns []string
-
-	// Iterate over all VM instances
-	for _, reservation := range reservations {
-		for _, instance := range reservation.Instances {
-			// Try to get this instance's TaskRun ID
-			// **Assumes the Key & Value of the tag are non-nil
-			tagIndex := slices.IndexFunc(instance.Tags, func(tag types.Tag) bool {
-				return *tag.Key == cloud.TaskRunTagKey
-			})
-			if tagIndex == -1 {
-				msg := "WARN: no taskRun ID tag found; appending to no TaskRun list anyway..."
-				log.Info(msg, "instanceID", *instance.InstanceId)
-				instancesWithoutTaskRuns = append(instancesWithoutTaskRuns, *instance.InstanceId)
-				continue
-			}
-
-			taskRunID := *instance.Tags[tagIndex].Value
-			err := cloud.ValidateTaskRunID(taskRunID)
-			if err != nil {
-				msg := fmt.Sprintf("WARN: invalid TaskRun ID - %s; appending to no TaskRun list anyway...", err.Error())
-				log.Info(msg, "instanceID", *instance.InstanceId)
-				instancesWithoutTaskRuns = append(instancesWithoutTaskRuns, *instance.InstanceId)
-				continue
-			}
-
-			// Try to find this instance's TaskRun
-			taskRunInfo := strings.Split(taskRunID, ":")
-			taskRunNamespace, taskRunName := taskRunInfo[0], taskRunInfo[1]
-			taskRuns, ok := existingTaskRuns[taskRunNamespace]
-			// Add the VM instance to the no TaskRun list if the TaskRun namespace or TaskRun does not exist
-			if !ok || !slices.Contains(taskRuns, taskRunName) {
-				instancesWithoutTaskRuns = append(instancesWithoutTaskRuns, *instance.InstanceId)
-			}
-		}
-	}
-	return instancesWithoutTaskRuns
 }
 
 // A SecretCredentialsProvider is a collection of information needed to generate

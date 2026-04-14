@@ -2,7 +2,6 @@ package ibm
 
 import (
 	"context"
-	"slices"
 
 	// #nosec is added to bypass the golang security scan since the cryptographic
 	// strength doesn't matter here
@@ -19,7 +18,6 @@ import (
 	"github.com/IBM/go-sdk-core/v5/core"
 	"github.com/IBM/vpc-go-sdk/vpcv1"
 	"github.com/go-logr/logr"
-	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
 	v1 "k8s.io/api/core/v1"
 	types2 "k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -322,45 +320,4 @@ func (iz IBMZDynamicConfig) assignIPToInstance(instance *vpcv1.Instance, vpcServ
 	// we are charged for the full month TODO: clarify this portion of comment -> (60c)
 	ip, err = assignNewlyAllocatedIP(instance, vpcService)
 	return ip, err
-}
-
-// findInstancesWithoutTaskRuns iterates over instances retrieved from the iz cloud and returns a list of those that
-// are associated with a non-existing Tekton TaskRun. Each instance's volume should have a tag with the associated
-// TaskRun's namespace and name. This is compared to existingTaskRuns, which is a map of namespaces to a list of
-// TaskRuns in that namespace, to determine if this instance's TaskRun still exists.
-func (iz IBMZDynamicConfig) findInstancesWithoutTaskRuns(log logr.Logger, vpcService *vpcv1.VpcV1, instances []vpcv1.Instance, existingTaskRuns map[string][]string) []string {
-	var instancesWithoutTaskRuns []string
-
-	// Iterate over all VM instances
-	for _, instance := range instances {
-		volumeId := instance.VolumeAttachments[0].ID
-		// Get instance's volume; assumes only one volume per instance
-		volume, _, err := vpcService.GetVolume(&vpcv1.GetVolumeOptions{ID: volumeId})
-		if err != nil {
-			msg := "WARN failed to get instance's volume; skipping this instance..."
-			log.Info(msg, "instanceID", *instance.ID)
-			continue
-		}
-
-		// Try to find the volume's TaskRun ID tag
-		volumeTagIndex := slices.IndexFunc(volume.UserTags, func(tag string) bool {
-			return cloud.ValidateTaskRunID(tag) == nil
-		})
-		if volumeTagIndex == -1 {
-			log.Info("WARN: failed to find a valid TaskRun ID; appending to no TaskRun list anyway...", "instanceID", *instance.ID)
-			instancesWithoutTaskRuns = append(instancesWithoutTaskRuns, *instance.ID)
-			continue
-		}
-		volumeTag := volume.UserTags[volumeTagIndex]
-
-		// Try to find this instance's TaskRun
-		taskRunInfo := strings.Split(volumeTag, ":")
-		taskRunNamespace, taskRunName := taskRunInfo[0], taskRunInfo[1]
-		taskRuns, ok := existingTaskRuns[taskRunNamespace]
-		// Add the VM instance to the no TaskRun list if the TaskRun namespace or TaskRun does not exist
-		if !ok || !slices.Contains(taskRuns, taskRunName) {
-			instancesWithoutTaskRuns = append(instancesWithoutTaskRuns, *instance.ID)
-		}
-	}
-	return instancesWithoutTaskRuns
 }

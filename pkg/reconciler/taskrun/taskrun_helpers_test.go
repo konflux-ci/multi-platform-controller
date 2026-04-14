@@ -393,7 +393,6 @@ type MockCloud struct {
 	FailGetAddress    bool
 	TimeoutGetAddress bool
 	FailGetState      bool
-	FailCleanUpVMs    bool
 }
 
 func (m *MockCloud) ListInstances(kubeClient runtimeclient.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
@@ -467,30 +466,6 @@ func (m *MockCloud) GetState(kubeClient runtimeclient.Client, ctx context.Contex
 		return cloud.FailedState, nil
 	}
 	return cloud.OKState, nil
-}
-
-// In this implementation of the function, the MockInstance's taskRun value is compared to the keys in existingTaskRuns for
-// a speedier return.
-func (m *MockCloud) CleanUpVms(ctx context.Context, kubeClient runtimeclient.Client, existingTaskRuns map[string][]string) error {
-	if m.FailCleanUpVMs {
-		return errors.New("failed")
-	}
-
-	var instancesToDelete []string
-	for k, v := range m.Instances {
-		_, ok := existingTaskRuns[v.taskRun]
-		if !ok {
-			instancesToDelete = append(instancesToDelete, string(k))
-		}
-	}
-
-	for _, instance := range instancesToDelete {
-		m.Running--
-		m.Terminated++
-		delete(m.Instances, cloud.InstanceIdentifier(instance))
-	}
-
-	return nil
 }
 
 func MockCloudSetup(platform string, data map[string]string, systemnamespace string) cloud.CloudProvider {

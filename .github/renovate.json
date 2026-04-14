@@ -1,14 +1,77 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "prConcurrentLimit": 20,
-  "extends": ["config:recommended"],
+  "extends": [
+    "config:recommended"
+  ],
   "pinDigests": true,
-  "postUpdateOptions": ["gomodTidy"],
+  "postUpdateOptions": [
+    "gomodTidy"
+  ],
+  "constraints": {
+    "go": "1.25"
+  },
+  "packageRules": [
+    {
+      "matchManagers": [
+        "tekton"
+      ],
+      "prPriority": 10
+    },
+    {
+      "groupName": "go-modules automerge",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest"
+      ]
+    },
+    {
+      "groupName": "go-modules major",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ]
+    },
+    {
+      "groupName": "go-modules controller-runtime and k8s",
+      "description": "group kubernetes updates together",
+      "matchPackageNames": [
+        "k8s.io/api",
+        "k8s.io/apimachinery",
+        "k8s.io/client-go",
+        "k8s.io/utils",
+        "sigs.k8s.io/controller-runtime"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "major",
+        "digest"
+      ]
+    },
+    {
+      "groupName": "Go version update",
+      "description": "dedicated group for Go version updates",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchDepTypes": [
+        "golang"
+      ]
+    }
+  ],
   "customManagers": [
     {
       "customType": "regex",
       "description": "Update _VERSION variables in Makefiles",
-      "managerFilePatterns": ["Makefile"],
+      "managerFilePatterns": [
+        "Makefile"
+      ],
       "matchStrings": [
         "#\\s+?renovate:\\s+?datasource=(?<datasource>[a-z-]+?)(?: depName=(?<depName>.+?))? packageName=(?<packageName>.+?)(?: versioning=(?<versioning>[a-z-]+?))?\\s+?.+?_VERSION\\s+?\\?=\\s+?(?<currentValue>.+?)\\s"
       ]
