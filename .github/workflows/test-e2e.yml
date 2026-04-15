@@ -137,7 +137,7 @@ jobs:
           retention-days: 14
 
       # Reconfigure AWS credentials for cleanup to ensure they're available even if
-      # The credentials expired (15-minute duration) during long-running tests
+      # The credentials expired (1-hour duration) during long-running tests
 
       - name: Configure AWS Credentials for Cleanup
         if: always()
