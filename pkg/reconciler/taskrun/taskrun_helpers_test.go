@@ -387,14 +387,14 @@ type MockInstance struct {
 // allowing tests to simulate cloud provider interactions like launching and
 // terminating instances without needing real credentials or infrastructure.
 type MockCloud struct {
-	Running           int
-	Terminated        int
-	Instances         map[cloud.InstanceIdentifier]MockInstance
-	FailGetAddress      bool
-	TimeoutGetAddress   bool
-	FailGetState        bool
-	FailLaunch          bool
-	FailCountInstances  bool
+	Running            int
+	Terminated         int
+	Instances          map[cloud.InstanceIdentifier]MockInstance
+	FailGetAddress     bool
+	TimeoutGetAddress  bool
+	FailGetState       bool
+	FailLaunch         bool
+	FailCountInstances bool
 }
 
 func (m *MockCloud) ListInstances(kubeClient runtimeclient.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
