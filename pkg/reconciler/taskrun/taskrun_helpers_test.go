@@ -390,9 +390,11 @@ type MockCloud struct {
 	Running           int
 	Terminated        int
 	Instances         map[cloud.InstanceIdentifier]MockInstance
-	FailGetAddress    bool
-	TimeoutGetAddress bool
-	FailGetState      bool
+	FailGetAddress      bool
+	TimeoutGetAddress   bool
+	FailGetState        bool
+	FailLaunch          bool
+	FailCountInstances  bool
 }
 
 func (m *MockCloud) ListInstances(kubeClient runtimeclient.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
@@ -404,6 +406,9 @@ func (m *MockCloud) ListInstances(kubeClient runtimeclient.Client, ctx context.C
 }
 
 func (m *MockCloud) CountInstances(kubeClient runtimeclient.Client, ctx context.Context, instanceTag string) (int, error) {
+	if m.FailCountInstances {
+		return 0, errors.New("count instances failed")
+	}
 	return m.Running, nil
 }
 
@@ -412,6 +417,9 @@ func (m *MockCloud) SshUser() string {
 }
 
 func (m *MockCloud) LaunchInstance(kubeClient runtimeclient.Client, ctx context.Context, taskRunID string, instanceTag string, additionalTags map[string]string) (cloud.InstanceIdentifier, error) {
+	if m.FailLaunch {
+		return "", errors.New("launch failed")
+	}
 	m.Running++
 	// Check that taskRunID is the correct format
 	if strings.Count(taskRunID, ":") != 1 {
