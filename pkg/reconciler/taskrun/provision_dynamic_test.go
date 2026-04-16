@@ -166,6 +166,122 @@ var _ = Describe("Test Dynamic Host Provisioning", func() {
 		})
 	})
 
+	When("the VM instance enters a failed state while waiting for an address", func() {
+
+		It("should terminate the instance and requeue when GetState returns FailedState", func(ctx SpecContext) {
+			cloudImpl.TimeoutGetAddress = true
+			defer func() { cloudImpl.TimeoutGetAddress = false }()
+
+			createUserTaskRun(ctx, client, "test-failed-state", "linux/arm64")
+			// 1st reconcile: launches instance
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-failed-state"}})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			// Mark the instance as failed
+			tr := getUserTaskRun(ctx, client, "test-failed-state")
+			instanceId := cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId])
+			Expect(instanceId).ShouldNot(BeEmpty())
+			inst := cloudImpl.Instances[instanceId]
+			inst.statusOK = false
+			cloudImpl.Instances[instanceId] = inst
+
+			// 2nd reconcile: address is empty, GetState returns FailedState → terminate + unassign
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-failed-state"}})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			tr = getUserTaskRun(ctx, client, "test-failed-state")
+			Expect(tr.Annotations[CloudInstanceId]).Should(BeEmpty())
+			Expect(cloudImpl.Running).Should(Equal(0))
+		})
+
+		It("should requeue quickly when GetState returns an error", func(ctx SpecContext) {
+			cloudImpl.TimeoutGetAddress = true
+			cloudImpl.FailGetState = true
+			defer func() {
+				cloudImpl.TimeoutGetAddress = false
+				cloudImpl.FailGetState = false
+			}()
+
+			createUserTaskRun(ctx, client, "test-getstate-err", "linux/arm64")
+			// 1st reconcile: launches instance
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-getstate-err"}})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			// 2nd reconcile: address is empty, GetState fails → requeue (no error returned)
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-getstate-err"}})
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(result.RequeueAfter).Should(BeNumerically(">", 0))
+
+			// Instance should still exist (not terminated on GetState error)
+			Expect(cloudImpl.Running).Should(Equal(1))
+		})
+	})
+
+	When("launching a new instance fails", func() {
+
+		It("should retry on first launch failure and requeue", func(ctx SpecContext) {
+			cloudImpl.FailLaunch = true
+			defer func() { cloudImpl.FailLaunch = false }()
+
+			createUserTaskRun(ctx, client, "test-launch-fail", "linux/arm64")
+			// 1st reconcile: tries to launch, fails → sets failure count to 1, requeues
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-launch-fail"}})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			tr := getUserTaskRun(ctx, client, "test-launch-fail")
+			Expect(tr.Annotations[CloudFailures]).Should(Equal("1"))
+
+			// 2nd reconcile: tries again, fails → sets failure count to 2, requeues
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-launch-fail"}})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			tr = getUserTaskRun(ctx, client, "test-launch-fail")
+			Expect(tr.Annotations[CloudFailures]).Should(Equal("2"))
+
+			// 3rd reconcile: retries exceeded (failureCount == 2) → returns error
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-launch-fail"}})
+			Expect(err).Should(HaveOccurred())
+		})
+	})
+
+	When("counting instances fails", func() {
+
+		It("should return error when CountInstances fails", func(ctx SpecContext) {
+			cloudImpl.FailCountInstances = true
+			defer func() { cloudImpl.FailCountInstances = false }()
+
+			createUserTaskRun(ctx, client, "test-count-fail", "linux/arm64")
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-count-fail"}})
+			Expect(err).Should(HaveOccurred())
+			Expect(err.Error()).Should(ContainSubstring("count instances failed"))
+		})
+	})
+
+	When("the instance pool is at capacity", func() {
+
+		It("should wait and requeue when maxInstances is reached", func(ctx SpecContext) {
+			// Fill the pool to capacity (maxInstances=2)
+			_, err := cloudImpl.LaunchInstance(nil, ctx, "default:existing-1", "test-tag", nil)
+			Expect(err).ShouldNot(HaveOccurred())
+			_, err = cloudImpl.LaunchInstance(nil, ctx, "default:existing-2", "test-tag", nil)
+			Expect(err).ShouldNot(HaveOccurred())
+
+			createUserTaskRun(ctx, client, "test-pool-full", "linux/arm64")
+			// Reconcile: pool is full → adds waiting label, requeues
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-pool-full"}})
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(result.RequeueAfter).Should(Equal(time.Minute))
+
+			tr := getUserTaskRun(ctx, client, "test-pool-full")
+			Expect(tr.Labels[WaitingForPlatformLabel]).ShouldNot(BeEmpty())
+
+			// Reconcile again while still full → already waiting, just requeues
+			result, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-pool-full"}})
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(result.RequeueAfter).Should(Equal(time.Minute))
+		})
+	})
+
 	// Tests for buildDynamicResolver function - only the sad paths since happy paths are thoroughly tested elsewhere
 	When("testing buildDynamicResolver error paths", func() {
 		It("should use default instance tag when platform config doesn't specify one", func(ctx SpecContext) {
