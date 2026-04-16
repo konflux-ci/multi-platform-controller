@@ -34,7 +34,7 @@ jobs:
     env:
       AWS_ROLE_ARN: arn:aws:iam::418272753558:role/multi-platform-github-action
       AWS_REGION: us-east-1
-      AWS_ROLE_DURATION: 900 # 15 minutes
+      AWS_ROLE_DURATION: 3600 # 1 hour
       INSTANCE_TAG: ${{ github.run_id }}-development
       S3_LOGS_BUCKET: otelcol-logs
       KIND_EXPERIMENTAL_PROVIDER: podman
@@ -137,7 +137,7 @@ jobs:
           retention-days: 14
 
       # Reconfigure AWS credentials for cleanup to ensure they're available even if
-      # The credentials expired (15-minute duration) during long-running tests
+      # The credentials expired (1-hour duration) during long-running tests
 
       - name: Configure AWS Credentials for Cleanup
         if: always()
