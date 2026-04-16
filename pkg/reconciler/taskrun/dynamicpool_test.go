@@ -215,12 +215,35 @@ var _ = Describe("DynamicHostPool test", func() {
 			}
 		})
 
-		It("should terminate an old idle selectedHost", func(ctx SpecContext) {
+		It("should not terminate an old selectedHost when the current TaskRun is still assigned to it", func(ctx SpecContext) {
+			// In production, the controller removes the AssignedHost label AFTER
+			// Deallocate returns (see handleHostAssigned in taskrun.go). So when
+			// isHostIdle runs, the current TaskRun is still labelled and the host
+			// appears non-idle.
+			selectedHost := "old-host"
+			mockCloud.instances = []cloud.CloudVMInstance{
+				{InstanceId: cloud.InstanceIdentifier(selectedHost), Address: "1.2.3.4", StartTime: time.Now().Add(-1 * time.Hour)},
+			}
+			tr.Labels = map[string]string{AssignedHost: selectedHost}
+			r.client = fake.NewClientBuilder().WithScheme(s).WithObjects(tr).Build()
+
+			err := dhp.Deallocate(r, ctx, tr, "secret-name", selectedHost)
+
+			Expect(err).NotTo(HaveOccurred())
+			for _, id := range mockCloud.terminatedIDs {
+				Expect(string(id)).NotTo(Equal(selectedHost))
+			}
+		})
+
+		It("should terminate an old host once no TaskRuns reference it", func(ctx SpecContext) {
+			// After the controller removes the AssignedHost label and the
+			// TaskRun is cleaned up, a subsequent allocation cycle calls
+			// buildHostPool / Deallocate and finds the host truly idle.
 			selectedHost := "old-idle-host"
 			mockCloud.instances = []cloud.CloudVMInstance{
 				{InstanceId: cloud.InstanceIdentifier(selectedHost), Address: "1.2.3.4", StartTime: time.Now().Add(-1 * time.Hour)},
 			}
-			// No TaskRuns assigned → host is idle
+			// No TaskRuns in the cluster reference this host
 			r.client = fake.NewClientBuilder().WithScheme(s).Build()
 
 			err := dhp.Deallocate(r, ctx, tr, "secret-name", selectedHost)
@@ -235,7 +258,8 @@ var _ = Describe("DynamicHostPool test", func() {
 				{InstanceId: cloud.InstanceIdentifier(selectedHost), Address: "1.2.3.4", StartTime: time.Now().Add(-1 * time.Hour)},
 			}
 
-			// A TaskRun is still assigned to this host, making it non-idle
+			// Both the current TaskRun and another TaskRun are assigned to this host
+			tr.Labels = map[string]string{AssignedHost: selectedHost}
 			busyTr := &v1.TaskRun{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "other-task",
@@ -243,13 +267,11 @@ var _ = Describe("DynamicHostPool test", func() {
 					Labels:    map[string]string{AssignedHost: selectedHost},
 				},
 			}
-			r.client = fake.NewClientBuilder().WithScheme(s).WithObjects(busyTr).Build()
+			r.client = fake.NewClientBuilder().WithScheme(s).WithObjects(tr, busyTr).Build()
 
 			err := dhp.Deallocate(r, ctx, tr, "secret-name", selectedHost)
 
 			Expect(err).NotTo(HaveOccurred())
-			// buildHostPool also checks idleness for old hosts; with a TaskRun
-			// assigned, neither buildHostPool nor Deallocate should terminate it
 			for _, id := range mockCloud.terminatedIDs {
 				Expect(string(id)).NotTo(Equal(selectedHost))
 			}
@@ -280,7 +302,7 @@ var _ = Describe("DynamicHostPool test", func() {
 				{InstanceId: cloud.InstanceIdentifier(selectedHost), Address: "1.2.3.4", StartTime: time.Now().Add(-1 * time.Hour)},
 			}
 			mockCloud.failTerminate = true
-			// No TaskRuns assigned → host is idle
+			// No TaskRuns in the cluster reference this host
 			r.client = fake.NewClientBuilder().WithScheme(s).Build()
 
 			err := dhp.Deallocate(r, ctx, tr, "secret-name", selectedHost)
