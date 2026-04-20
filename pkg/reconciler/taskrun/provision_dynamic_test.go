@@ -185,9 +185,10 @@ var _ = Describe("Test Dynamic Host Provisioning", func() {
 			inst.statusOK = false
 			cloudImpl.Instances[instanceId] = inst
 
-			// 2nd reconcile: address is empty, GetState returns FailedState → terminate + unassign
-			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-failed-state"}})
+			// 2nd reconcile: address is empty, GetState returns FailedState → terminate + unassign + requeue at checkInterval
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-failed-state"}})
 			Expect(err).ShouldNot(HaveOccurred())
+			Expect(result.RequeueAfter).Should(Equal(60 * time.Second))
 
 			tr = getUserTaskRun(ctx, client, "test-failed-state")
 			Expect(tr.Annotations[CloudInstanceId]).Should(BeEmpty())
@@ -210,7 +211,7 @@ var _ = Describe("Test Dynamic Host Provisioning", func() {
 			// 2nd reconcile: address is empty, GetState fails → requeue (no error returned)
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-getstate-err"}})
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(result.RequeueAfter).Should(BeNumerically(">", 0))
+			Expect(result.RequeueAfter).Should(Equal(10 * time.Second))
 
 			// Instance should still exist (not terminated on GetState error)
 			Expect(cloudImpl.Running).Should(Equal(1))
