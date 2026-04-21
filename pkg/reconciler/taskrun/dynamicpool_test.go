@@ -18,45 +18,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
-// deallocTestCloud is a lightweight mock cloud provider for Deallocate tests.
-// It gives fine-grained control over ListInstances/TerminateInstance behaviour
-// without touching the global cloudImpl singleton used by integration tests.
-type deallocTestCloud struct {
-	instances     []cloud.CloudVMInstance
-	failList      bool
-	failTerminate bool
-	terminatedIDs []cloud.InstanceIdentifier
-}
-
-func (m *deallocTestCloud) ListInstances(_ client.Client, _ context.Context, _ string) ([]cloud.CloudVMInstance, error) {
-	if m.failList {
-		return nil, errors.New("list instances failed")
-	}
-	return m.instances, nil
-}
-
-func (m *deallocTestCloud) TerminateInstance(_ client.Client, _ context.Context, id cloud.InstanceIdentifier) error {
-	if m.failTerminate {
-		return errors.New("terminate failed")
-	}
-	m.terminatedIDs = append(m.terminatedIDs, id)
-	return nil
-}
-
-func (m *deallocTestCloud) LaunchInstance(_ client.Client, _ context.Context, _ string, _ string, _ map[string]string) (cloud.InstanceIdentifier, error) {
-	return "", nil
-}
-func (m *deallocTestCloud) GetInstanceAddress(_ client.Client, _ context.Context, _ cloud.InstanceIdentifier) (string, error) {
-	return "", nil
-}
-func (m *deallocTestCloud) CountInstances(_ client.Client, _ context.Context, _ string) (int, error) {
-	return len(m.instances), nil
-}
-func (m *deallocTestCloud) GetState(_ client.Client, _ context.Context, _ cloud.InstanceIdentifier) (cloud.VMState, error) {
-	return cloud.OKState, nil
-}
-func (m *deallocTestCloud) SshUser() string { return "test-user" }
-
 var _ = Describe("DynamicHostPool test", func() {
 	var (
 		dhp DynamicHostPool
@@ -127,12 +88,12 @@ var _ = Describe("DynamicHostPool test", func() {
 
 	Describe("Deallocate", func() {
 		var (
-			mockCloud *deallocTestCloud
+			mockCloud *MockCloud
 			tr        *v1.TaskRun
 		)
 
 		BeforeEach(func() {
-			mockCloud = &deallocTestCloud{}
+			mockCloud = &MockCloud{Instances: map[cloud.InstanceIdentifier]MockInstance{}}
 			dhp = DynamicHostPool{
 				cloudProvider: mockCloud,
 				platform:      "linux/arm64",
@@ -151,8 +112,16 @@ var _ = Describe("DynamicHostPool test", func() {
 			}
 		})
 
+		// Helper: populate MockCloud.Instances from a slice for concise Entry definitions
+		setInstances := func(vms []cloud.CloudVMInstance) {
+			for _, vm := range vms {
+				mockCloud.Instances[vm.InstanceId] = MockInstance{CloudVMInstance: vm, statusOK: true}
+			}
+			mockCloud.Running = len(vms)
+		}
+
 		It("should return error when buildHostPool fails", func(ctx SpecContext) {
-			mockCloud.failList = true
+			mockCloud.FailListInstances = true
 			r.client = fake.NewClientBuilder().WithScheme(s).Build()
 
 			err := dhp.Deallocate(r, ctx, tr, "secret-name", "any-host")
@@ -164,9 +133,9 @@ var _ = Describe("DynamicHostPool test", func() {
 			// A young instance so it lands in the pool and HostPool.Deallocate
 			// tries to create a cleanup TaskRun.
 			selectedHost := "young-host"
-			mockCloud.instances = []cloud.CloudVMInstance{
+			setInstances([]cloud.CloudVMInstance{
 				{InstanceId: cloud.InstanceIdentifier(selectedHost), Address: "1.2.3.4", StartTime: time.Now()},
-			}
+			})
 
 			// Intercept Create to make the cleanup TaskRun creation fail
 			createErr := errors.New("create failed")
@@ -195,7 +164,7 @@ var _ = Describe("DynamicHostPool test", func() {
 				extraClientObjects []client.Object,
 				expectSelectedHostTerminated bool,
 			) {
-				mockCloud.instances = instances
+				setInstances(instances)
 
 				var clientObjects []client.Object
 				if trAssignedHost != "" {
@@ -209,9 +178,9 @@ var _ = Describe("DynamicHostPool test", func() {
 
 				Expect(err).ShouldNot(HaveOccurred())
 				if expectSelectedHostTerminated {
-					Expect(mockCloud.terminatedIDs).Should(ContainElement(cloud.InstanceIdentifier(selectedHost)))
+					Expect(mockCloud.TerminatedIDs).Should(ContainElement(cloud.InstanceIdentifier(selectedHost)))
 				} else {
-					for _, id := range mockCloud.terminatedIDs {
+					for _, id := range mockCloud.TerminatedIDs {
 						Expect(string(id)).ShouldNot(Equal(selectedHost))
 					}
 				}
@@ -256,9 +225,9 @@ var _ = Describe("DynamicHostPool test", func() {
 
 		It("should return error when isHostIdle fails for old selectedHost", func(ctx SpecContext) {
 			selectedHost := "old-host"
-			mockCloud.instances = []cloud.CloudVMInstance{
+			setInstances([]cloud.CloudVMInstance{
 				{InstanceId: cloud.InstanceIdentifier(selectedHost), Address: "1.2.3.4", StartTime: time.Now().Add(-1 * time.Hour)},
-			}
+			})
 
 			listErr := errors.New("list error")
 			r.client = fake.NewClientBuilder().WithScheme(s).
@@ -275,10 +244,10 @@ var _ = Describe("DynamicHostPool test", func() {
 
 		It("should return error when TerminateInstance fails for old idle selectedHost", func(ctx SpecContext) {
 			selectedHost := "old-idle-host"
-			mockCloud.instances = []cloud.CloudVMInstance{
+			setInstances([]cloud.CloudVMInstance{
 				{InstanceId: cloud.InstanceIdentifier(selectedHost), Address: "1.2.3.4", StartTime: time.Now().Add(-1 * time.Hour)},
-			}
-			mockCloud.failTerminate = true
+			})
+			mockCloud.FailTerminate = true
 			// No TaskRuns in the cluster reference this host
 			r.client = fake.NewClientBuilder().WithScheme(s).Build()
 
