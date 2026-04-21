@@ -365,7 +365,6 @@ func createLocalHostConfig() []runtimeclient.Object {
 	return []runtimeclient.Object{&cm}
 }
 
-
 // ConflictingClient simulates conflict errors for testing
 type ConflictingClient struct {
 	runtimeclient.Client
