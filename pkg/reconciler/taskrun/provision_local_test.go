@@ -65,8 +65,8 @@ var _ = Describe("Test Local Host Provisioning", func() {
 	Describe("Local.Allocate error path", func() {
 		It("should return error when client.Update fails", func(ctx SpecContext) {
 			s := runtime.NewScheme()
-			Expect(pipelinev1.AddToScheme(s)).To(Succeed())
-			Expect(corev1.AddToScheme(s)).To(Succeed())
+			Expect(pipelinev1.AddToScheme(s)).Should(Succeed())
+			Expect(corev1.AddToScheme(s)).Should(Succeed())
 
 			updateErr := errors.New("update failed")
 			fakeClient := fake.NewClientBuilder().WithScheme(s).
@@ -90,7 +90,6 @@ var _ = Describe("Test Local Host Provisioning", func() {
 	Describe("createUserTaskSecret", func() {
 		var (
 			s  *runtime.Scheme
-			r  *ReconcileTaskRun
 			tr *pipelinev1.TaskRun
 		)
 
@@ -111,7 +110,7 @@ var _ = Describe("Test Local Host Provisioning", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: "my-secret", Namespace: "default"},
 			}
 			fakeClient := fake.NewClientBuilder().WithScheme(s).WithObjects(existing).Build()
-			r = &ReconcileTaskRun{client: fakeClient, scheme: s}
+			r := &ReconcileTaskRun{client: fakeClient, scheme: s}
 
 			err := createUserTaskSecret(r, ctx, tr, "my-secret", map[string][]byte{"host": []byte("localhost")})
 			Expect(err).ShouldNot(HaveOccurred())
@@ -125,7 +124,7 @@ var _ = Describe("Test Local Host Provisioning", func() {
 						return createErr
 					},
 				}).Build()
-			r = &ReconcileTaskRun{client: fakeClient, scheme: s}
+			r := &ReconcileTaskRun{client: fakeClient, scheme: s}
 
 			err := createUserTaskSecret(r, ctx, tr, "my-secret", map[string][]byte{"host": []byte("localhost")})
 			Expect(err).Should(MatchError(createErr))
@@ -135,13 +134,13 @@ var _ = Describe("Test Local Host Provisioning", func() {
 			// Use a scheme without TaskRun registered so SetOwnerReference
 			// cannot determine the owner's GVK and returns an error.
 			emptyScheme := runtime.NewScheme()
-			Expect(corev1.AddToScheme(emptyScheme)).To(Succeed())
+			Expect(corev1.AddToScheme(emptyScheme)).Should(Succeed())
 
 			fakeClient := fake.NewClientBuilder().WithScheme(emptyScheme).Build()
-			r = &ReconcileTaskRun{client: fakeClient, scheme: emptyScheme}
+			r := &ReconcileTaskRun{client: fakeClient, scheme: emptyScheme}
 
 			err := createUserTaskSecret(r, ctx, tr, "my-secret", map[string][]byte{"host": []byte("localhost")})
-			Expect(err).Should(HaveOccurred())
+			Expect(err).Should(MatchError(ContainSubstring("no kind is registered")))
 		})
 	})
 })

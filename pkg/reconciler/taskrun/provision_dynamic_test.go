@@ -220,7 +220,7 @@ var _ = Describe("Test Dynamic Host Provisioning", func() {
 
 	When("launching a new instance fails", func() {
 
-		It("should retry on first launch failure and requeue", func(ctx SpecContext) {
+		It("should exhaust launch  retries then return error", func(ctx SpecContext) {
 			cloudImpl.FailLaunch = true
 			defer func() { cloudImpl.FailLaunch = false }()
 
@@ -241,7 +241,7 @@ var _ = Describe("Test Dynamic Host Provisioning", func() {
 
 			// 3rd reconcile: retries exceeded (failureCount == 2) → returns error
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-launch-fail"}})
-			Expect(err).Should(HaveOccurred())
+			Expect(err).Should(MatchError(ContainSubstring("launch failed")))
 		})
 	})
 

@@ -157,7 +157,7 @@ var _ = Describe("DynamicHostPool test", func() {
 
 			err := dhp.Deallocate(r, ctx, tr, "secret-name", "any-host")
 
-			Expect(err).To(MatchError(ContainSubstring("list instances failed")))
+			Expect(err).Should(MatchError(ContainSubstring("list instances failed")))
 		})
 
 		It("should return error when inner hostPool.Deallocate fails", func(ctx SpecContext) {
@@ -180,7 +180,7 @@ var _ = Describe("DynamicHostPool test", func() {
 
 			err := dhp.Deallocate(r, ctx, tr, "secret-name", selectedHost)
 
-			Expect(err).To(MatchError(createErr))
+			Expect(err).Should(MatchError(createErr))
 		})
 
 		// These cases all follow the same pattern: configure instances (young/old),
@@ -207,12 +207,12 @@ var _ = Describe("DynamicHostPool test", func() {
 
 				err := dhp.Deallocate(r, ctx, tr, "secret-name", selectedHost)
 
-				Expect(err).NotTo(HaveOccurred())
+				Expect(err).ShouldNot(HaveOccurred())
 				if expectSelectedHostTerminated {
-					Expect(mockCloud.terminatedIDs).To(ContainElement(cloud.InstanceIdentifier(selectedHost)))
+					Expect(mockCloud.terminatedIDs).Should(ContainElement(cloud.InstanceIdentifier(selectedHost)))
 				} else {
 					for _, id := range mockCloud.terminatedIDs {
-						Expect(string(id)).NotTo(Equal(selectedHost))
+						Expect(string(id)).ShouldNot(Equal(selectedHost))
 					}
 				}
 			},
