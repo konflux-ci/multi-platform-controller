@@ -394,6 +394,6 @@ type AWSEc2DynamicConfig struct {
 	StrictPublicAddress bool
 
 	// ec2Client allows tests to inject a mock EC2 API client.
-	// When nil, createClient builds a real client from AWS credentials.
+	// When nil, getEC2Client builds a real client from AWS credentials.
 	ec2Client ec2API
 }
