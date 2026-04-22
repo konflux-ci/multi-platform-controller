@@ -2,9 +2,14 @@
 package aws
 
 import (
+	"context"
 	"encoding/base64"
+	"errors"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -104,6 +109,270 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 			sshUser := awsTestInstance.SshUser()
 
 			Expect(sshUser).Should(Equal("ec2-user"))
+		})
+	})
+
+	Describe("LaunchInstance", func() {
+		var (
+			mock *mockEC2Client
+			cfg  AWSEc2DynamicConfig
+		)
+
+		BeforeEach(func() {
+			mock = &mockEC2Client{}
+			cfg = AWSEc2DynamicConfig{
+				InstanceType: "t4g.medium",
+				KeyName:      "test-key",
+				Ami:          "ami-123",
+				Disk:         40,
+				ec2Client:    mock,
+			}
+		})
+
+		When("the EC2 API returns an instance", func() {
+			It("should return the instance ID", func(ctx SpecContext) {
+				mock.RunInstancesOutput = &ec2.RunInstancesOutput{
+					Instances: []types.Instance{{InstanceId: aws.String("i-abc123")}},
+				}
+
+				id, err := cfg.LaunchInstance(nil, ctx, "ns:task", "tag", map[string]string{})
+
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(string(id)).Should(Equal("i-abc123"))
+			})
+		})
+
+		When("the EC2 API returns an error without spot options", func() {
+			It("should return the error immediately", func(ctx SpecContext) {
+				mock.RunInstancesErr = errors.New("ec2 launch failed")
+
+				_, err := cfg.LaunchInstance(nil, ctx, "ns:task", "tag", map[string]string{})
+
+				Expect(err).Should(MatchError(ContainSubstring("failed to launch EC2 instance")))
+			})
+		})
+
+		When("the spot instance launch fails", func() {
+			It("should retry without spot options and succeed", func(ctx SpecContext) {
+				cfg.MaxSpotInstancePrice = "0.05"
+				calls := 0
+				cfg.ec2Client = mockEC2ClientFunc(func(ctx context.Context, params *ec2.RunInstancesInput, optFns ...func(*ec2.Options)) (*ec2.RunInstancesOutput, error) {
+					calls++
+					if calls == 1 {
+						return nil, errors.New("spot unavailable")
+					}
+					return &ec2.RunInstancesOutput{
+						Instances: []types.Instance{{InstanceId: aws.String("i-fallback")}},
+					}, nil
+				})
+
+				id, err := cfg.LaunchInstance(nil, ctx, "ns:task", "tag", map[string]string{})
+
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(string(id)).Should(Equal("i-fallback"))
+			})
+		})
+
+		When("the EC2 API returns zero instances", func() {
+			It("should return a 'no instances created' error", func(ctx SpecContext) {
+				mock.RunInstancesOutput = &ec2.RunInstancesOutput{Instances: []types.Instance{}}
+
+				_, err := cfg.LaunchInstance(nil, ctx, "ns:task", "tag", map[string]string{})
+
+				Expect(err).Should(MatchError("no EC2 instances were created"))
+			})
+		})
+
+		When("the TaskRun ID is invalid", func() {
+			It("should return a validation error", func(ctx SpecContext) {
+				_, err := cfg.LaunchInstance(nil, ctx, "invalid-no-colon", "tag", map[string]string{})
+
+				Expect(err).Should(MatchError(ContainSubstring("invalid TaskRun ID")))
+			})
+		})
+	})
+
+	Describe("CountInstances", func() {
+		var (
+			mock *mockEC2Client
+			cfg  AWSEc2DynamicConfig
+		)
+
+		BeforeEach(func() {
+			mock = &mockEC2Client{}
+			cfg = AWSEc2DynamicConfig{InstanceType: "t4g.medium", ec2Client: mock}
+		})
+
+		When("there are matching running instances", func() {
+			It("should count only non-terminated instances of the correct type", func(ctx SpecContext) {
+				mock.DescribeInstancesOutput = &ec2.DescribeInstancesOutput{
+					Reservations: []types.Reservation{{
+						Instances: []types.Instance{
+							{InstanceId: aws.String("i-1"), State: &types.InstanceState{Name: types.InstanceStateNameRunning}, InstanceType: "t4g.medium"},
+							{InstanceId: aws.String("i-2"), State: &types.InstanceState{Name: types.InstanceStateNameTerminated}, InstanceType: "t4g.medium"},
+							{InstanceId: aws.String("i-3"), State: &types.InstanceState{Name: types.InstanceStateNameRunning}, InstanceType: "m5.large"},
+						},
+					}},
+				}
+
+				count, err := cfg.CountInstances(nil, ctx, "tag")
+
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(count).Should(Equal(1))
+			})
+		})
+
+		When("the EC2 API returns an error", func() {
+			It("should return -1 and the error", func(ctx SpecContext) {
+				mock.DescribeInstancesErr = errors.New("api failure")
+
+				count, err := cfg.CountInstances(nil, ctx, "tag")
+
+				Expect(err).Should(MatchError(ContainSubstring("failed to retrieve EC2 instances")))
+				Expect(count).Should(Equal(-1))
+			})
+		})
+	})
+
+	Describe("TerminateInstance", func() {
+		When("the EC2 API succeeds", func() {
+			It("should return nil", func(ctx SpecContext) {
+				cfg := AWSEc2DynamicConfig{ec2Client: &mockEC2Client{}}
+
+				Expect(cfg.TerminateInstance(nil, ctx, "i-123")).ShouldNot(HaveOccurred())
+			})
+		})
+
+		When("the EC2 API fails", func() {
+			It("should return the error", func(ctx SpecContext) {
+				cfg := AWSEc2DynamicConfig{ec2Client: &mockEC2Client{TerminateInstancesErr: errors.New("terminate failed")}}
+
+				Expect(cfg.TerminateInstance(nil, ctx, "i-123")).Should(MatchError("terminate failed"))
+			})
+		})
+	})
+
+	Describe("GetInstanceAddress", func() {
+		var (
+			mock *mockEC2Client
+			cfg  AWSEc2DynamicConfig
+		)
+
+		BeforeEach(func() {
+			mock = &mockEC2Client{}
+			cfg = AWSEc2DynamicConfig{ec2Client: mock}
+		})
+
+		When("DescribeInstances returns an error", func() {
+			It("should return empty string without error (transient)", func(ctx SpecContext) {
+				mock.DescribeInstancesErr = errors.New("api error")
+
+				addr, err := cfg.GetInstanceAddress(nil, ctx, "i-123")
+
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(addr).Should(BeEmpty())
+			})
+		})
+
+		When("no reservations are returned", func() {
+			It("should return empty string", func(ctx SpecContext) {
+				mock.DescribeInstancesOutput = &ec2.DescribeInstancesOutput{}
+
+				addr, err := cfg.GetInstanceAddress(nil, ctx, "i-123")
+
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(addr).Should(BeEmpty())
+			})
+		})
+	})
+
+	Describe("GetState", func() {
+		var (
+			mock *mockEC2Client
+			cfg  AWSEc2DynamicConfig
+		)
+
+		BeforeEach(func() {
+			mock = &mockEC2Client{}
+			cfg = AWSEc2DynamicConfig{ec2Client: mock}
+		})
+
+		DescribeTable("instance state mapping",
+			func(ctx SpecContext, stateName types.InstanceStateName, expectedState cloud.VMState) {
+				mock.DescribeInstancesOutput = &ec2.DescribeInstancesOutput{
+					Reservations: []types.Reservation{{
+						Instances: []types.Instance{{
+							State: &types.InstanceState{Name: stateName},
+						}},
+					}},
+				}
+
+				state, err := cfg.GetState(nil, ctx, "i-123")
+
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(state).Should(Equal(expectedState))
+			},
+			Entry("running instance should return OKState", types.InstanceStateNameRunning, cloud.OKState),
+			Entry("pending instance should return OKState", types.InstanceStateNamePending, cloud.OKState),
+			Entry("terminated instance should return OKState", types.InstanceStateNameTerminated, cloud.OKState),
+			Entry("stopped instance should return OKState", types.InstanceStateNameStopped, cloud.OKState),
+			Entry("shutting-down instance should return OKState", types.InstanceStateNameShuttingDown, cloud.OKState),
+			Entry("stopping instance should return OKState", types.InstanceStateNameStopping, cloud.OKState),
+		)
+
+		When("DescribeInstances returns an error", func() {
+			It("should return empty state without error (transient)", func(ctx SpecContext) {
+				mock.DescribeInstancesErr = errors.New("api error")
+
+				state, err := cfg.GetState(nil, ctx, "i-123")
+
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(state).Should(BeEmpty())
+			})
+		})
+
+		When("no reservations are returned", func() {
+			It("should return FailedState", func(ctx SpecContext) {
+				mock.DescribeInstancesOutput = &ec2.DescribeInstancesOutput{}
+
+				state, err := cfg.GetState(nil, ctx, "i-123")
+
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(state).Should(Equal(cloud.FailedState))
+			})
+		})
+	})
+
+	Describe("ListInstances", func() {
+		var (
+			mock *mockEC2Client
+			cfg  AWSEc2DynamicConfig
+		)
+
+		BeforeEach(func() {
+			mock = &mockEC2Client{}
+			cfg = AWSEc2DynamicConfig{InstanceType: "t4g.medium", ec2Client: mock}
+		})
+
+		When("the EC2 API returns an error", func() {
+			It("should return the error", func(ctx SpecContext) {
+				mock.DescribeInstancesErr = errors.New("api failure")
+
+				_, err := cfg.ListInstances(nil, ctx, "tag")
+
+				Expect(err).Should(MatchError(ContainSubstring("failed to retrieve EC2 instances")))
+			})
+		})
+
+		When("no instances match", func() {
+			It("should return an empty list", func(ctx SpecContext) {
+				mock.DescribeInstancesOutput = &ec2.DescribeInstancesOutput{}
+
+				instances, err := cfg.ListInstances(nil, ctx, "tag")
+
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(instances).Should(BeEmpty())
+			})
 		})
 	})
 })

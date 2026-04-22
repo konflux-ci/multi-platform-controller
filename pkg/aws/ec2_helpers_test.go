@@ -11,6 +11,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	ec2 "github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 var _ = Describe("AWS EC2 Helper Functions", func() {
@@ -322,6 +326,74 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 					},
 				),
 			)
+		})
+	})
+
+	Describe("SecretCredentialsProvider Retrieve", func() {
+		var s *runtime.Scheme
+
+		BeforeEach(func() {
+			s = runtime.NewScheme()
+			Expect(corev1.AddToScheme(s)).Should(Succeed())
+		})
+
+		When("kubeClient is nil", func() {
+			It("should return credentials from environment variables without error", func(ctx SpecContext) {
+				provider := SecretCredentialsProvider{Client: nil}
+
+				_, err := provider.Retrieve(ctx)
+
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+		})
+
+		When("kubeClient is provided", func() {
+			It("should return credentials from the Kubernetes secret", func(ctx SpecContext) {
+				secret := &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{Name: "aws-creds", Namespace: "ns"},
+					Data: map[string][]byte{
+						"access-key-id":     []byte("AKID"),
+						"secret-access-key": []byte("SECRET"),
+						"session-token":     []byte("TOKEN"),
+					},
+				}
+				fakeClient := fake.NewClientBuilder().WithScheme(s).WithObjects(secret).Build()
+				provider := SecretCredentialsProvider{Name: "aws-creds", Namespace: "ns", Client: fakeClient}
+
+				creds, err := provider.Retrieve(ctx)
+
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(creds.AccessKeyID).Should(Equal("AKID"))
+				Expect(creds.SecretAccessKey).Should(Equal("SECRET"))
+				Expect(creds.SessionToken).Should(Equal("TOKEN"))
+			})
+
+			It("should return credentials without session token when it is absent", func(ctx SpecContext) {
+				secret := &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{Name: "aws-creds", Namespace: "ns"},
+					Data: map[string][]byte{
+						"access-key-id":     []byte("AKID"),
+						"secret-access-key": []byte("SECRET"),
+					},
+				}
+				fakeClient := fake.NewClientBuilder().WithScheme(s).WithObjects(secret).Build()
+				provider := SecretCredentialsProvider{Name: "aws-creds", Namespace: "ns", Client: fakeClient}
+
+				creds, err := provider.Retrieve(ctx)
+
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(creds.SessionToken).Should(BeEmpty())
+			})
+
+			It("should return error when the secret does not exist", func(ctx SpecContext) {
+				fakeClient := fake.NewClientBuilder().WithScheme(s).Build()
+				provider := SecretCredentialsProvider{Name: "missing", Namespace: "ns", Client: fakeClient}
+
+				_, err := provider.Retrieve(ctx)
+
+				Expect(err).Should(HaveOccurred())
+				Expect(err.Error()).Should(ContainSubstring("failed to retrieve the secret"))
+			})
 		})
 	})
 

@@ -64,8 +64,12 @@ func (ec AWSEc2DynamicConfig) validateIPAddress(ctx context.Context, instance *t
 	return ip, nil
 }
 
-// createClient uses AWS credentials and an EC2 configuration to create and return an EC2 client.
-func (ec AWSEc2DynamicConfig) createClient(kubeClient client.Client, ctx context.Context) (*ec2.Client, error) {
+// getEC2Client returns the injected mock client if set, otherwise builds a real
+// EC2 client from AWS credentials.
+func (ec AWSEc2DynamicConfig) getEC2Client(kubeClient client.Client, ctx context.Context) (ec2API, error) {
+	if ec.ec2Client != nil {
+		return ec.ec2Client, nil
+	}
 	secretCredentials := SecretCredentialsProvider{Name: ec.Secret, Namespace: ec.SystemNamespace, Client: kubeClient}
 	cfg, err := config.LoadDefaultConfig(ctx,
 		config.WithCredentialsProvider(secretCredentials),

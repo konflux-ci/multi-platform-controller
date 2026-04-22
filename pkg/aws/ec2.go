@@ -93,7 +93,7 @@ func (ec AWSEc2DynamicConfig) LaunchInstance(kubeClient client.Client, ctx conte
 	log.Info("Attempting to launch AWS EC2 instance", "taskRunName", taskRunName)
 
 	// Use AWS credentials and configuration to create an EC2 client
-	ec2Client, err := ec.createClient(kubeClient, ctx)
+	ec2Client, err := ec.getEC2Client(kubeClient, ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to create an EC2 client: %w", err)
 	}
@@ -136,7 +136,7 @@ func (ec AWSEc2DynamicConfig) CountInstances(kubeClient client.Client, ctx conte
 	log.Info("Attempting to count AWS EC2 instances")
 
 	// Use AWS credentials and configuration to create an EC2 client
-	ec2Client, err := ec.createClient(kubeClient, ctx)
+	ec2Client, err := ec.getEC2Client(kubeClient, ctx)
 	if err != nil {
 		return -1, fmt.Errorf("failed to create an EC2 client: %w", err)
 	}
@@ -176,7 +176,7 @@ func (ec AWSEc2DynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx c
 	log.Info("Attempting to get AWS EC2 instance's IP address", "instanceID", instanceID)
 
 	// Use AWS credentials and configuration to create an EC2 client
-	ec2Client, err := ec.createClient(kubeClient, ctx)
+	ec2Client, err := ec.getEC2Client(kubeClient, ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to create an EC2 client: %w", err)
 	}
@@ -211,7 +211,7 @@ func (ec AWSEc2DynamicConfig) TerminateInstance(kubeClient client.Client, ctx co
 	log.Info("Attempting to terminate AWS EC2 instance", "instanceID", instanceID)
 
 	// Use AWS credentials and configuration to create an EC2 client
-	ec2Client, err := ec.createClient(kubeClient, ctx)
+	ec2Client, err := ec.getEC2Client(kubeClient, ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create an EC2 client: %w", err)
 	}
@@ -226,7 +226,7 @@ func (ec AWSEc2DynamicConfig) ListInstances(kubeClient client.Client, ctx contex
 	log.Info("Attempting to list AWS EC2 instances")
 
 	// Use AWS credentials and configuration to create an EC2 client
-	ec2Client, err := ec.createClient(kubeClient, ctx)
+	ec2Client, err := ec.getEC2Client(kubeClient, ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create an EC2 client: %w", err)
 	}
@@ -291,7 +291,7 @@ func (ec AWSEc2DynamicConfig) GetState(kubeClient client.Client, ctx context.Con
 	}
 
 	// Create an EC2 client and get instance
-	ec2Client, err := ec.createClient(kubeClient, ctx)
+	ec2Client, err := ec.getEC2Client(kubeClient, ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to create an EC2 client: %w", err)
 	}
@@ -392,4 +392,8 @@ type AWSEc2DynamicConfig struct {
 	// StrictPublicAddress specifies whether the instance must use a public IP address.
 	// If false, it would be also possible for the instance to use a private IP address.
 	StrictPublicAddress bool
+
+	// ec2Client allows tests to inject a mock EC2 API client.
+	// When nil, createClient builds a real client from AWS credentials.
+	ec2Client ec2API
 }
