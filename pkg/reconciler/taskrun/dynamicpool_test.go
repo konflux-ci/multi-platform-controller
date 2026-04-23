@@ -28,7 +28,7 @@ var _ = Describe("DynamicHostPool test", func() {
 	BeforeEach(func() {
 		// Initialize the scheme and add the TaskRun type
 		s = runtime.NewScheme()
-		Expect(v1.AddToScheme(s)).To(Succeed())
+		Expect(v1.AddToScheme(s)).Should(Succeed())
 		r = &ReconcileTaskRun{}
 	})
 
@@ -43,8 +43,8 @@ var _ = Describe("DynamicHostPool test", func() {
 			r.client = client
 
 			idle, err := dhp.isHostIdle(r, ctx, "idle-host")
-			Expect(err).NotTo(HaveOccurred())
-			Expect(idle).To(BeTrue())
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(idle).Should(BeTrue())
 		})
 
 		It("should return false if the host is not idle", func(ctx SpecContext) {
@@ -60,8 +60,8 @@ var _ = Describe("DynamicHostPool test", func() {
 			r.client = client
 
 			idle, err := dhp.isHostIdle(r, ctx, selectedHost)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(idle).To(BeFalse())
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(idle).Should(BeFalse())
 		})
 
 		It("should return false if an error occurs", func(ctx SpecContext) {
@@ -81,8 +81,8 @@ var _ = Describe("DynamicHostPool test", func() {
 			idle, err := dhp.isHostIdle(r, ctx, selectedHost)
 
 			// Verify that the error is returned and the host is not considered idle
-			Expect(err).To(MatchError(errToReturn))
-			Expect(idle).To(BeFalse())
+			Expect(err).Should(MatchError(errToReturn))
+			Expect(idle).Should(BeFalse())
 		})
 	})
 
@@ -239,7 +239,7 @@ var _ = Describe("DynamicHostPool test", func() {
 
 			err := dhp.Deallocate(r, ctx, tr, "secret-name", selectedHost)
 
-			Expect(err).To(MatchError(listErr))
+			Expect(err).Should(MatchError(listErr))
 		})
 
 		It("should return error when TerminateInstance fails for old idle selectedHost", func(ctx SpecContext) {
@@ -253,7 +253,7 @@ var _ = Describe("DynamicHostPool test", func() {
 
 			err := dhp.Deallocate(r, ctx, tr, "secret-name", selectedHost)
 
-			Expect(err).To(MatchError(ContainSubstring("terminate failed")))
+			Expect(err).Should(MatchError(ContainSubstring("terminate failed")))
 		})
 	})
 })
