@@ -2,7 +2,6 @@
 package aws
 
 import (
-	"context"
 	"encoding/base64"
 	"errors"
 
@@ -41,8 +40,7 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 					"dynamic." + platformName + ".security-group":        "test-security-group",
 					"dynamic." + platformName + ".security-group-id":     "test-security-group-id",
 					"dynamic." + platformName + ".subnet-id":             "test-subnet-id",
-					"dynamic." + platformName + ".spot-price":            "test-spot-price",
-					"dynamic." + platformName + ".instance-profile-name": "test-instance-profile-name",
+				"dynamic." + platformName + ".instance-profile-name": "test-instance-profile-name",
 					"dynamic." + platformName + ".instance-profile-arn":  "test-instance-profile-arn",
 					"dynamic." + platformName + ".disk":                  testConfig["disk"],
 					"dynamic." + platformName + ".iops":                  testConfig["iops"],
@@ -63,8 +61,7 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 				Expect(providerConfig.SecurityGroup).To(Equal("test-security-group"))
 				Expect(providerConfig.SecurityGroupId).To(Equal("test-security-group-id"))
 				Expect(providerConfig.SubnetId).To(Equal("test-subnet-id"))
-				Expect(providerConfig.MaxSpotInstancePrice).To(Equal("test-spot-price"))
-				Expect(providerConfig.InstanceProfileName).To(Equal("test-instance-profile-name"))
+			Expect(providerConfig.InstanceProfileName).To(Equal("test-instance-profile-name"))
 				Expect(providerConfig.InstanceProfileArn).To(Equal("test-instance-profile-arn"))
 				Expect(providerConfig.Disk).To(Equal(int32(expectedDisk)))
 				Expect(providerConfig.Iops).To(Equal(expectedIops))
@@ -143,38 +140,17 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 				})
 			})
 
-			When("the EC2 API returns an error without spot options", func() {
-				It("should return the error immediately", func(ctx SpecContext) {
-					mock.RunInstancesErr = errors.New("ec2 launch failed")
+		When("the EC2 API returns an error", func() {
+			It("should return the error", func(ctx SpecContext) {
+				mock.RunInstancesErr = errors.New("ec2 launch failed")
 
-					_, err := cfg.LaunchInstance(nil, ctx, "ns:task", "tag", map[string]string{})
+				_, err := cfg.LaunchInstance(nil, ctx, "ns:task", "tag", map[string]string{})
 
-					Expect(err).Should(MatchError(ContainSubstring("failed to launch EC2 instance")))
-				})
+				Expect(err).Should(MatchError(ContainSubstring("failed to launch EC2 instance")))
 			})
+		})
 
-			When("the spot instance launch fails", func() {
-				It("should retry without spot options and succeed", func(ctx SpecContext) {
-					cfg.MaxSpotInstancePrice = "0.05"
-					calls := 0
-					cfg.ec2Client = mockEC2ClientFunc(func(ctx context.Context, params *ec2.RunInstancesInput, optFns ...func(*ec2.Options)) (*ec2.RunInstancesOutput, error) {
-						calls++
-						if calls == 1 {
-							return nil, errors.New("spot unavailable")
-						}
-						return &ec2.RunInstancesOutput{
-							Instances: []types.Instance{{InstanceId: aws.String("i-fallback")}},
-						}, nil
-					})
-
-					id, err := cfg.LaunchInstance(nil, ctx, "ns:task", "tag", map[string]string{})
-
-					Expect(err).ShouldNot(HaveOccurred())
-					Expect(string(id)).Should(Equal("i-fallback"))
-				})
-			})
-
-			When("the EC2 API returns zero instances", func() {
+		When("the EC2 API returns zero instances", func() {
 				It("should return a 'no instances created' error", func(ctx SpecContext) {
 					mock.RunInstancesOutput = &ec2.RunInstancesOutput{Instances: []types.Instance{}}
 

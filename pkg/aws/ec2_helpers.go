@@ -97,7 +97,6 @@ func (ec AWSEc2DynamicConfig) configureInstance(taskRunName string, instanceTag 
 	var securityGroups []string
 	var securityGroupIds []string
 	var instanceProfile *types.IamInstanceProfileSpecification
-	var instanceMarketOpts *types.InstanceMarketOptionsRequest
 	var placement *types.Placement
 	var licenseSpecifications []types.LicenseConfigurationRequest
 
@@ -117,17 +116,6 @@ func (ec AWSEc2DynamicConfig) configureInstance(taskRunName string, instanceTag 
 		}
 		if ec.InstanceProfileArn != "" {
 			instanceProfile.Arn = aws.String(ec.InstanceProfileArn)
-		}
-	}
-
-	if ec.MaxSpotInstancePrice != "" {
-		instanceMarketOpts = &types.InstanceMarketOptionsRequest{
-			MarketType: types.MarketTypeSpot,
-			SpotOptions: &types.SpotMarketOptions{
-				MaxPrice:                     aws.String(ec.MaxSpotInstancePrice),
-				InstanceInterruptionBehavior: types.InstanceInterruptionBehaviorTerminate,
-				SpotInstanceType:             types.SpotInstanceTypeOneTime,
-			},
 		}
 	}
 
@@ -176,7 +164,6 @@ func (ec AWSEc2DynamicConfig) configureInstance(taskRunName string, instanceTag 
 			},
 		}},
 		InstanceInitiatedShutdownBehavior: types.ShutdownBehaviorTerminate,
-		InstanceMarketOptions:             instanceMarketOpts,
 		Placement:                         placement,
 		LicenseSpecifications:             licenseSpecifications,
 		TagSpecifications: []types.TagSpecification{

@@ -198,25 +198,6 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 			)
 		})
 
-		When("configuring spot instances", func() {
-			It("should configure InstanceMarketOptions if MaxSpotInstancePrice is set", func() {
-				ecConfig.MaxSpotInstancePrice = "0.075"
-				runInput, _ := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
-				Expect(runInput.InstanceMarketOptions).NotTo(BeNil())
-				Expect(runInput.InstanceMarketOptions.MarketType).To(Equal(types.MarketTypeSpot))
-				Expect(runInput.InstanceMarketOptions.SpotOptions).NotTo(BeNil())
-				Expect(runInput.InstanceMarketOptions.SpotOptions.MaxPrice).To(PointTo(Equal("0.075")))
-				Expect(runInput.InstanceMarketOptions.SpotOptions.InstanceInterruptionBehavior).To(Equal(types.InstanceInterruptionBehaviorTerminate))
-				Expect(runInput.InstanceMarketOptions.SpotOptions.SpotInstanceType).To(Equal(types.SpotInstanceTypeOneTime))
-			})
-
-			It("should not set InstanceMarketOptions if MaxSpotInstancePrice is empty", func() {
-				ecConfig.MaxSpotInstancePrice = ""
-				runInput, _ := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
-				Expect(runInput.InstanceMarketOptions).To(BeNil())
-			})
-		})
-
 		When("configuring tags", func() {
 			It("should include default and Name tags correctly with baseline config", func() {
 				runInput, _ := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
@@ -417,9 +398,8 @@ func newDefaultValidEC2ConfigForInstance() AWSEc2DynamicConfig {
 		SystemNamespace:      "default-sys-namespace",
 		SecurityGroupId:      "sg-default00000000000",
 		SubnetId:             "subnet-default00000000",
-		Disk:                 int32(40),
-		MaxSpotInstancePrice: "", // Default to on-demand
-		InstanceProfileArn:   "arn:aws:iam::000000000000:instance-profile/default-instance-profile",
+		Disk:               int32(40),
+		InstanceProfileArn: "arn:aws:iam::000000000000:instance-profile/default-instance-profile",
 		Iops:                 aws.Int32(3000),
 		Throughput:           aws.Int32(125),
 		UserData:             defaultUserDataPtr,

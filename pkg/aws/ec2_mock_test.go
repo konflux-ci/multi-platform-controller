@@ -28,16 +28,3 @@ func (m *mockEC2Client) TerminateInstances(_ context.Context, _ *ec2.TerminateIn
 	return m.TerminateInstancesOutput, m.TerminateInstancesErr
 }
 
-// mockEC2ClientFunc is a function adapter for ec2API that allows inline
-// definition of RunInstances behaviour (used for the spot-fallback test).
-type mockEC2ClientFunc func(ctx context.Context, params *ec2.RunInstancesInput, optFns ...func(*ec2.Options)) (*ec2.RunInstancesOutput, error)
-
-func (f mockEC2ClientFunc) RunInstances(ctx context.Context, params *ec2.RunInstancesInput, optFns ...func(*ec2.Options)) (*ec2.RunInstancesOutput, error) {
-	return f(ctx, params, optFns...)
-}
-func (f mockEC2ClientFunc) DescribeInstances(_ context.Context, _ *ec2.DescribeInstancesInput, _ ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
-	return nil, nil
-}
-func (f mockEC2ClientFunc) TerminateInstances(_ context.Context, _ *ec2.TerminateInstancesInput, _ ...func(*ec2.Options)) (*ec2.TerminateInstancesOutput, error) {
-	return nil, nil
-}

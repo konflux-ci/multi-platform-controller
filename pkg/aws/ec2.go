@@ -64,7 +64,6 @@ func CreateEc2CloudConfig(platformName string, config map[string]string, systemN
 		SecurityGroup:           config["dynamic."+platformName+".security-group"],
 		SecurityGroupId:         config["dynamic."+platformName+".security-group-id"],
 		SubnetId:                config["dynamic."+platformName+".subnet-id"],
-		MaxSpotInstancePrice:    config["dynamic."+platformName+".spot-price"],
 		InstanceProfileName:     config["dynamic."+platformName+".instance-profile-name"],
 		InstanceProfileArn:      config["dynamic."+platformName+".instance-profile-arn"],
 		StrictPublicAddress:     config["dynamic."+platformName+".strict-public-address"] == "true",
@@ -108,19 +107,7 @@ func (ec AWSEc2DynamicConfig) LaunchInstance(kubeClient client.Client, ctx conte
 	}
 	runInstancesOutput, err := ec2Client.RunInstances(ctx, launchInput)
 	if err != nil {
-		// Check to see if there were market options for spot instances.
-		// Launching can often fail if there are market options and no spot instances.
-		if launchInput.InstanceMarketOptions == nil {
-			return "", fmt.Errorf("failed to launch EC2 instance for %s: %w", taskRunName, err)
-		}
-		// If market options were specified, try launching again without any market options.
-		msg := fmt.Sprintf("WARN: failed to launch spot instance - %s; attempting to launch normal EC2 instance...", err.Error())
-		log.Info(msg, "taskRunName", taskRunName)
-		launchInput.InstanceMarketOptions = nil
-		runInstancesOutput, err = ec2Client.RunInstances(ctx, launchInput)
-		if err != nil {
-			return "", fmt.Errorf("failed to launch EC2 instance for %s: %w", taskRunName, err)
-		}
+		return "", fmt.Errorf("failed to launch EC2 instance for %s: %w", taskRunName, err)
 	}
 
 	if len(runInstancesOutput.Instances) > 0 {
@@ -355,10 +342,6 @@ type AWSEc2DynamicConfig struct {
 
 	// Disk is the amount of permanent storage (in GB) to allocate the instance.
 	Disk int32
-
-	// MaxSpotInstancePrice is the maximum price (TODO: find out format) the user
-	// is willing to pay for an EC2 [Spot instance](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-spot-instances.html)
-	MaxSpotInstancePrice string
 
 	// InstanceProfileName is the name of the instance profile (a container for
 	// an AWS IAM role attached to an EC2 instance).
