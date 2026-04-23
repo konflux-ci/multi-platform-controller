@@ -33,15 +33,10 @@ jobs:
         run: |
           echo "Invalid context for this workflow run. Exiting."
           exit 1
-      - name: Check out pull request head code - on pull_request event
-        if: env.on-event == 'pull_request'
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+      - name: Check out code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
-      - name: Check out main code - on push event
-        if: env.on-event == 'push' || env.on-event == 'merge_group'
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+          ref: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.target-branch || '' }}
       - name: Install Go
         uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v5
         with:
@@ -55,3 +50,4 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: unit-tests
+          files: cover.out
