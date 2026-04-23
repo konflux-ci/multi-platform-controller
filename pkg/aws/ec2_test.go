@@ -112,7 +112,7 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 		})
 	})
 
-	Describe("LaunchInstance", func() {
+	Describe("CloudProvider methods", func() {
 		var (
 			mock *mockEC2Client
 			cfg  AWSEc2DynamicConfig
@@ -129,6 +129,7 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 			}
 		})
 
+	Describe("LaunchInstance", func() {
 		When("the EC2 API returns an instance", func() {
 			It("should return the instance ID", func(ctx SpecContext) {
 				mock.RunInstancesOutput = &ec2.RunInstancesOutput{
@@ -193,16 +194,6 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 	})
 
 	Describe("CountInstances", func() {
-		var (
-			mock *mockEC2Client
-			cfg  AWSEc2DynamicConfig
-		)
-
-		BeforeEach(func() {
-			mock = &mockEC2Client{}
-			cfg = AWSEc2DynamicConfig{InstanceType: "t4g.medium", ec2Client: mock}
-		})
-
 		When("there are matching running instances", func() {
 			It("should count only non-terminated instances of the correct type", func(ctx SpecContext) {
 				mock.DescribeInstancesOutput = &ec2.DescribeInstancesOutput{
@@ -237,15 +228,13 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 	Describe("TerminateInstance", func() {
 		When("the EC2 API succeeds", func() {
 			It("should return nil", func(ctx SpecContext) {
-				cfg := AWSEc2DynamicConfig{ec2Client: &mockEC2Client{}}
-
 				Expect(cfg.TerminateInstance(nil, ctx, "i-123")).ShouldNot(HaveOccurred())
 			})
 		})
 
 		When("the EC2 API fails", func() {
 			It("should return the error", func(ctx SpecContext) {
-				cfg := AWSEc2DynamicConfig{ec2Client: &mockEC2Client{TerminateInstancesErr: errors.New("terminate failed")}}
+				mock.TerminateInstancesErr = errors.New("terminate failed")
 
 				Expect(cfg.TerminateInstance(nil, ctx, "i-123")).Should(MatchError("terminate failed"))
 			})
@@ -253,16 +242,6 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 	})
 
 	Describe("GetInstanceAddress", func() {
-		var (
-			mock *mockEC2Client
-			cfg  AWSEc2DynamicConfig
-		)
-
-		BeforeEach(func() {
-			mock = &mockEC2Client{}
-			cfg = AWSEc2DynamicConfig{ec2Client: mock}
-		})
-
 		When("DescribeInstances returns an error", func() {
 			It("should return empty string without error (transient)", func(ctx SpecContext) {
 				mock.DescribeInstancesErr = errors.New("api error")
@@ -287,16 +266,6 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 	})
 
 	Describe("GetState", func() {
-		var (
-			mock *mockEC2Client
-			cfg  AWSEc2DynamicConfig
-		)
-
-		BeforeEach(func() {
-			mock = &mockEC2Client{}
-			cfg = AWSEc2DynamicConfig{ec2Client: mock}
-		})
-
 		DescribeTable("instance state mapping",
 			func(ctx SpecContext, stateName types.InstanceStateName, expectedState cloud.VMState) {
 				mock.DescribeInstancesOutput = &ec2.DescribeInstancesOutput{
@@ -344,16 +313,6 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 	})
 
 	Describe("ListInstances", func() {
-		var (
-			mock *mockEC2Client
-			cfg  AWSEc2DynamicConfig
-		)
-
-		BeforeEach(func() {
-			mock = &mockEC2Client{}
-			cfg = AWSEc2DynamicConfig{InstanceType: "t4g.medium", ec2Client: mock}
-		})
-
 		When("the EC2 API returns an error", func() {
 			It("should return the error", func(ctx SpecContext) {
 				mock.DescribeInstancesErr = errors.New("api failure")
@@ -374,6 +333,7 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 				Expect(instances).Should(BeEmpty())
 			})
 		})
+	})
 	})
 })
 
