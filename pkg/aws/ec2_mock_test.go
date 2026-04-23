@@ -29,4 +29,3 @@ func (m *mockEC2Client) DescribeInstances(_ context.Context, input *ec2.Describe
 func (m *mockEC2Client) TerminateInstances(_ context.Context, _ *ec2.TerminateInstancesInput, _ ...func(*ec2.Options)) (*ec2.TerminateInstancesOutput, error) {
 	return nil, m.TerminateInstancesErr
 }
-

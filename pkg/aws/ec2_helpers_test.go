@@ -390,18 +390,18 @@ func newDefaultValidEC2ConfigForInstance() AWSEc2DynamicConfig {
 	}
 
 	return AWSEc2DynamicConfig{
-		Region:               "us-west-1", // Neutral baseline values
-		Ami:                  "ami-default123",
-		InstanceType:         "t2.medium",
-		KeyName:              "default-key",
-		Secret:               "default-secret",
-		SystemNamespace:      "default-sys-namespace",
-		SecurityGroupId:      "sg-default00000000000",
-		SubnetId:             "subnet-default00000000",
+		Region:             "us-west-1", // Neutral baseline values
+		Ami:                "ami-default123",
+		InstanceType:       "t2.medium",
+		KeyName:            "default-key",
+		Secret:             "default-secret",
+		SystemNamespace:    "default-sys-namespace",
+		SecurityGroupId:    "sg-default00000000000",
+		SubnetId:           "subnet-default00000000",
 		Disk:               int32(40),
 		InstanceProfileArn: "arn:aws:iam::000000000000:instance-profile/default-instance-profile",
-		Iops:                 aws.Int32(3000),
-		Throughput:           aws.Int32(125),
-		UserData:             defaultUserDataPtr,
+		Iops:               aws.Int32(3000),
+		Throughput:         aws.Int32(125),
+		UserData:           defaultUserDataPtr,
 	}
 }

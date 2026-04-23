@@ -40,7 +40,7 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 					"dynamic." + platformName + ".security-group":        "test-security-group",
 					"dynamic." + platformName + ".security-group-id":     "test-security-group-id",
 					"dynamic." + platformName + ".subnet-id":             "test-subnet-id",
-				"dynamic." + platformName + ".instance-profile-name": "test-instance-profile-name",
+					"dynamic." + platformName + ".instance-profile-name": "test-instance-profile-name",
 					"dynamic." + platformName + ".instance-profile-arn":  "test-instance-profile-arn",
 					"dynamic." + platformName + ".disk":                  testConfig["disk"],
 					"dynamic." + platformName + ".iops":                  testConfig["iops"],
@@ -61,7 +61,7 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 				Expect(providerConfig.SecurityGroup).To(Equal("test-security-group"))
 				Expect(providerConfig.SecurityGroupId).To(Equal("test-security-group-id"))
 				Expect(providerConfig.SubnetId).To(Equal("test-subnet-id"))
-			Expect(providerConfig.InstanceProfileName).To(Equal("test-instance-profile-name"))
+				Expect(providerConfig.InstanceProfileName).To(Equal("test-instance-profile-name"))
 				Expect(providerConfig.InstanceProfileArn).To(Equal("test-instance-profile-arn"))
 				Expect(providerConfig.Disk).To(Equal(int32(expectedDisk)))
 				Expect(providerConfig.Iops).To(Equal(expectedIops))
@@ -140,17 +140,17 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 				})
 			})
 
-		When("the EC2 API returns an error", func() {
-			It("should return the error", func(ctx SpecContext) {
-				mock.RunInstancesErr = errors.New("ec2 launch failed")
+			When("the EC2 API returns an error", func() {
+				It("should return the error", func(ctx SpecContext) {
+					mock.RunInstancesErr = errors.New("ec2 launch failed")
 
-				_, err := cfg.LaunchInstance(nil, ctx, "ns:task", "tag", map[string]string{})
+					_, err := cfg.LaunchInstance(nil, ctx, "ns:task", "tag", map[string]string{})
 
-				Expect(err).Should(MatchError(ContainSubstring("failed to launch EC2 instance")))
+					Expect(err).Should(MatchError(ContainSubstring("failed to launch EC2 instance")))
+				})
 			})
-		})
 
-		When("the EC2 API returns zero instances", func() {
+			When("the EC2 API returns zero instances", func() {
 				It("should return a 'no instances created' error", func(ctx SpecContext) {
 					mock.RunInstancesOutput = &ec2.RunInstancesOutput{Instances: []types.Instance{}}
 
@@ -170,51 +170,67 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 		})
 
 		Describe("CountInstances", func() {
-			// Each entry verifies both the tag filters passed to DescribeInstances
-			// and the client-side filtering (state + instance type).
-			// A "positive" instance (running + correct type) is always included;
-			// each entry adds a second instance that varies one dimension.
+			// Each entry provides the full set of instances and the instanceTag,
+			// verifying both the tag filters sent to DescribeInstances and the
+			// client-side filtering by state and instance type.
 			DescribeTable("tag filters and instance filtering",
-				func(ctx SpecContext, extraInstance types.Instance, expectedCount int) {
-					positiveInstance := types.Instance{
-						InstanceId:   aws.String("i-positive"),
-						State:        &types.InstanceState{Name: types.InstanceStateNameRunning},
-						InstanceType: "t4g.medium",
-					}
-
-					instances := []types.Instance{positiveInstance}
-					if extraInstance.InstanceId != nil {
-						instances = append(instances, extraInstance)
-					}
+				func(ctx SpecContext, instanceTag string, instances []types.Instance, expectedCount int) {
 					mock.DescribeInstancesOutput = &ec2.DescribeInstancesOutput{
 						Reservations: []types.Reservation{{Instances: instances}},
 					}
 
-					count, err := cfg.CountInstances(nil, ctx, "my-tag")
+					count, err := cfg.CountInstances(nil, ctx, instanceTag)
 
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(count).Should(Equal(expectedCount))
 
 					Expect(mock.DescribeInstancesInput.Filters).Should(HaveLen(2))
 					Expect(*mock.DescribeInstancesInput.Filters[0].Name).Should(Equal("tag:multi-platform-instance"))
-					Expect(mock.DescribeInstancesInput.Filters[0].Values).Should(ConsistOf("my-tag"))
+					Expect(mock.DescribeInstancesInput.Filters[0].Values).Should(ConsistOf(instanceTag))
 					Expect(*mock.DescribeInstancesInput.Filters[1].Name).Should(Equal("tag:MultiPlatformManaged"))
 					Expect(mock.DescribeInstancesInput.Filters[1].Values).Should(ConsistOf("true"))
 				},
-				Entry("only the positive instance - should count 1",
-					types.Instance{}, 1,
+				Entry("running + correct type = counted",
+					"my-tag",
+					[]types.Instance{
+						{InstanceId: aws.String("i-1"), State: &types.InstanceState{Name: types.InstanceStateNameRunning}, InstanceType: "t4g.medium"},
+					}, 1,
 				),
-				Entry("terminated instance with correct type - should not be counted",
-					types.Instance{InstanceId: aws.String("i-terminated"), State: &types.InstanceState{Name: types.InstanceStateNameTerminated}, InstanceType: "t4g.medium"}, 1,
+				Entry("running + correct type alongside terminated + correct type = only running counted",
+					"prod-tag",
+					[]types.Instance{
+						{InstanceId: aws.String("i-1"), State: &types.InstanceState{Name: types.InstanceStateNameRunning}, InstanceType: "t4g.medium"},
+						{InstanceId: aws.String("i-2"), State: &types.InstanceState{Name: types.InstanceStateNameTerminated}, InstanceType: "t4g.medium"},
+					}, 1,
 				),
-				Entry("running instance with wrong type - should not be counted",
-					types.Instance{InstanceId: aws.String("i-wrong-type"), State: &types.InstanceState{Name: types.InstanceStateNameRunning}, InstanceType: "m5.large"}, 1,
+				Entry("running + wrong type = not counted",
+					"my-tag",
+					[]types.Instance{
+						{InstanceId: aws.String("i-1"), State: &types.InstanceState{Name: types.InstanceStateNameRunning}, InstanceType: "m5.large"},
+					}, 0,
 				),
-				Entry("pending instance with correct type - should be counted",
-					types.Instance{InstanceId: aws.String("i-pending"), State: &types.InstanceState{Name: types.InstanceStateNamePending}, InstanceType: "t4g.medium"}, 2,
+				Entry("pending + correct type = counted (non-terminated states count)",
+					"my-tag",
+					[]types.Instance{
+						{InstanceId: aws.String("i-1"), State: &types.InstanceState{Name: types.InstanceStateNamePending}, InstanceType: "t4g.medium"},
+					}, 1,
 				),
-				Entry("stopped instance with correct type - should be counted",
-					types.Instance{InstanceId: aws.String("i-stopped"), State: &types.InstanceState{Name: types.InstanceStateNameStopped}, InstanceType: "t4g.medium"}, 2,
+				Entry("stopped + correct type = counted",
+					"my-tag",
+					[]types.Instance{
+						{InstanceId: aws.String("i-1"), State: &types.InstanceState{Name: types.InstanceStateNameStopped}, InstanceType: "t4g.medium"},
+					}, 1,
+				),
+				Entry("two matching instances across different tags = both counted",
+					"multi-tag",
+					[]types.Instance{
+						{InstanceId: aws.String("i-1"), State: &types.InstanceState{Name: types.InstanceStateNameRunning}, InstanceType: "t4g.medium"},
+						{InstanceId: aws.String("i-2"), State: &types.InstanceState{Name: types.InstanceStateNameRunning}, InstanceType: "t4g.medium"},
+					}, 2,
+				),
+				Entry("empty reservations = zero count",
+					"my-tag",
+					[]types.Instance{}, 0,
 				),
 			)
 
