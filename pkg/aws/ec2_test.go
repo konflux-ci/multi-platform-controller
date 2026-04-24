@@ -288,7 +288,7 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 
 		Describe("GetState", func() {
 			DescribeTable("instance state mapping",
-				func(ctx SpecContext, stateName types.InstanceStateName, expectedState cloud.VMState) {
+				func(ctx SpecContext, stateName types.InstanceStateName) {
 					mock.DescribeInstancesOutput = &ec2.DescribeInstancesOutput{
 						Reservations: []types.Reservation{{
 							Instances: []types.Instance{{
@@ -300,14 +300,14 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 					state, err := cfg.GetState(nil, ctx, "i-123")
 
 					Expect(err).ShouldNot(HaveOccurred())
-					Expect(state).Should(Equal(expectedState))
+					Expect(state).Should(Equal(cloud.OKState))
 				},
-				Entry("running instance should return OKState", types.InstanceStateNameRunning, cloud.OKState),
-				Entry("pending instance should return OKState", types.InstanceStateNamePending, cloud.OKState),
-				Entry("terminated instance should return OKState", types.InstanceStateNameTerminated, cloud.OKState),
-				Entry("stopped instance should return OKState", types.InstanceStateNameStopped, cloud.OKState),
-				Entry("shutting-down instance should return OKState", types.InstanceStateNameShuttingDown, cloud.OKState),
-				Entry("stopping instance should return OKState", types.InstanceStateNameStopping, cloud.OKState),
+				Entry("running instance should return OKState", types.InstanceStateNameRunning),
+				Entry("pending instance should return OKState", types.InstanceStateNamePending),
+				Entry("terminated instance should return OKState", types.InstanceStateNameTerminated),
+				Entry("stopped instance should return OKState", types.InstanceStateNameStopped),
+				Entry("shutting-down instance should return OKState", types.InstanceStateNameShuttingDown),
+				Entry("stopping instance should return OKState", types.InstanceStateNameStopping),
 			)
 
 			When("DescribeInstances returns an error", func() {
