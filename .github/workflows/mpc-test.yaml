@@ -14,9 +14,6 @@ on:
   push:
     branches: [ main ]
 
-  repository_dispatch:
-    types: [trigger-mpc-test]
-
 concurrency:
   group: ${{ github.workflow }}-${{ (github.event_name == 'pull_request' && github.event.pull_request.number) || github.ref }}
   cancel-in-progress: true
@@ -35,8 +32,6 @@ jobs:
           exit 1
       - name: Check out code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          ref: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.target-branch || '' }}
       - name: Install Go
         uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v5
         with:
