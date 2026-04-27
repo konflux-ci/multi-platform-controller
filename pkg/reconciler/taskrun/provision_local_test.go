@@ -126,8 +126,8 @@ var _ = Describe("Test Local Host Provisioning", func() {
 				}).Build()
 			r := &ReconcileTaskRun{client: fakeClient, scheme: s}
 
-			err := createUserTaskSecret(r, ctx, tr, "my-secret", map[string][]byte{"host": []byte("localhost")})
-			Expect(err).Should(MatchError(createErr))
+			data := map[string][]byte{"host": []byte("localhost")}
+			Expect(createUserTaskSecret(r, ctx, tr, "my-secret", data)).Should(MatchError(createErr))
 		})
 
 		It("should return error when SetOwnerReference fails", func(ctx SpecContext) {
@@ -139,8 +139,8 @@ var _ = Describe("Test Local Host Provisioning", func() {
 			fakeClient := fake.NewClientBuilder().WithScheme(emptyScheme).Build()
 			r := &ReconcileTaskRun{client: fakeClient, scheme: emptyScheme}
 
-			err := createUserTaskSecret(r, ctx, tr, "my-secret", map[string][]byte{"host": []byte("localhost")})
-			Expect(err).Should(MatchError(ContainSubstring("no kind is registered")))
+			data := map[string][]byte{"host": []byte("localhost")}
+			Expect(createUserTaskSecret(r, ctx, tr, "my-secret", data)).Should(MatchError(ContainSubstring("no kind is registered")))
 		})
 	})
 })
