@@ -4,6 +4,7 @@ package aws
 import (
 	"encoding/base64"
 	"errors"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -352,6 +353,30 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(instances).Should(BeEmpty())
+				})
+			})
+
+			When("instances match state and type filters", func() {
+				It("should return only matching reachable instances", func(ctx SpecContext) {
+					cfg.pingFunc = func(_ string) error { return nil }
+					now := time.Now()
+					mock.DescribeInstancesOutput = &ec2.DescribeInstancesOutput{
+						Reservations: []types.Reservation{{
+							Instances: []types.Instance{
+								{InstanceId: aws.String("i-match"), State: &types.InstanceState{Name: types.InstanceStateNameRunning}, InstanceType: "t4g.medium", PublicIpAddress: aws.String("10.0.0.1"), LaunchTime: &now},
+								{InstanceId: aws.String("i-terminated"), State: &types.InstanceState{Name: types.InstanceStateNameTerminated}, InstanceType: "t4g.medium", PublicIpAddress: aws.String("10.0.0.2"), LaunchTime: &now},
+								{InstanceId: aws.String("i-wrong-type"), State: &types.InstanceState{Name: types.InstanceStateNameRunning}, InstanceType: "m5.large", PublicIpAddress: aws.String("10.0.0.3"), LaunchTime: &now},
+							},
+						}},
+					}
+
+					instances, err := cfg.ListInstances(nil, ctx, "tag")
+
+					Expect(err).ShouldNot(HaveOccurred())
+					Expect(instances).Should(HaveLen(1))
+					Expect(string(instances[0].InstanceId)).Should(Equal("i-match"))
+					Expect(instances[0].Address).Should(Equal("10.0.0.1"))
+					Expect(instances[0].StartTime).Should(BeTemporally("~", now, time.Second))
 				})
 			})
 		})

@@ -379,4 +379,8 @@ type AWSEc2DynamicConfig struct {
 	// ec2Client allows tests to inject a mock EC2 API client.
 	// When nil, getEC2Client builds a real client from AWS credentials.
 	ec2Client ec2API
+
+	// pingFunc allows tests to inject a mock for SSH connectivity checks.
+	// When nil, the real pingIPAddress (TCP dial to port 22) is used.
+	pingFunc func(ip string) error
 }

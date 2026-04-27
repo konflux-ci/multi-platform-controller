@@ -50,7 +50,11 @@ func (ec AWSEc2DynamicConfig) validateIPAddress(ctx context.Context, instance *t
 	}
 
 	// Verify SSH connectivity
-	if err := pingIPAddress(ip); err != nil {
+	ping := pingIPAddress
+	if ec.pingFunc != nil {
+		ping = ec.pingFunc
+	}
+	if err := ping(ip); err != nil {
 		log.Error(err, "failed to connect to AWS instance via SSH",
 			"instanceID", aws.ToString(instance.InstanceId),
 			"ipAddress", ip)
