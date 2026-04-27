@@ -112,8 +112,8 @@ var _ = Describe("Test Local Host Provisioning", func() {
 			fakeClient := fake.NewClientBuilder().WithScheme(s).WithObjects(existing).Build()
 			r := &ReconcileTaskRun{client: fakeClient, scheme: s}
 
-			err := createUserTaskSecret(r, ctx, tr, "my-secret", map[string][]byte{"host": []byte("localhost")})
-			Expect(err).ShouldNot(HaveOccurred())
+			data := map[string][]byte{"host": []byte("localhost")}
+			Expect(createUserTaskSecret(r, ctx, tr, "my-secret", data)).To(Succeed())
 		})
 
 		It("should return error when client.Create fails with non-AlreadyExists error", func(ctx SpecContext) {
