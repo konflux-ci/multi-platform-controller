@@ -11,6 +11,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	ec2 "github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 var _ = Describe("AWS EC2 Helper Functions", func() {
@@ -194,25 +198,6 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 			)
 		})
 
-		When("configuring spot instances", func() {
-			It("should configure InstanceMarketOptions if MaxSpotInstancePrice is set", func() {
-				ecConfig.MaxSpotInstancePrice = "0.075"
-				runInput, _ := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
-				Expect(runInput.InstanceMarketOptions).NotTo(BeNil())
-				Expect(runInput.InstanceMarketOptions.MarketType).To(Equal(types.MarketTypeSpot))
-				Expect(runInput.InstanceMarketOptions.SpotOptions).NotTo(BeNil())
-				Expect(runInput.InstanceMarketOptions.SpotOptions.MaxPrice).To(PointTo(Equal("0.075")))
-				Expect(runInput.InstanceMarketOptions.SpotOptions.InstanceInterruptionBehavior).To(Equal(types.InstanceInterruptionBehaviorTerminate))
-				Expect(runInput.InstanceMarketOptions.SpotOptions.SpotInstanceType).To(Equal(types.SpotInstanceTypeOneTime))
-			})
-
-			It("should not set InstanceMarketOptions if MaxSpotInstancePrice is empty", func() {
-				ecConfig.MaxSpotInstancePrice = ""
-				runInput, _ := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
-				Expect(runInput.InstanceMarketOptions).To(BeNil())
-			})
-		})
-
 		When("configuring tags", func() {
 			It("should include default and Name tags correctly with baseline config", func() {
 				runInput, _ := ecConfig.configureInstance(taskRunName, instanceTag, additionalTags)
@@ -325,6 +310,74 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 		})
 	})
 
+	Describe("SecretCredentialsProvider Retrieve", func() {
+		var s *runtime.Scheme
+
+		BeforeEach(func() {
+			s = runtime.NewScheme()
+			Expect(corev1.AddToScheme(s)).Should(Succeed())
+		})
+
+		When("kubeClient is nil", func() {
+			It("should return credentials from environment variables without error", func(ctx SpecContext) {
+				provider := SecretCredentialsProvider{Client: nil}
+
+				_, err := provider.Retrieve(ctx)
+
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+		})
+
+		When("kubeClient is provided", func() {
+			It("should return credentials from the Kubernetes secret", func(ctx SpecContext) {
+				secret := &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{Name: "aws-creds", Namespace: "ns"},
+					Data: map[string][]byte{
+						"access-key-id":     []byte("AKID"),
+						"secret-access-key": []byte("SECRET"),
+						"session-token":     []byte("TOKEN"),
+					},
+				}
+				fakeClient := fake.NewClientBuilder().WithScheme(s).WithObjects(secret).Build()
+				provider := SecretCredentialsProvider{Name: "aws-creds", Namespace: "ns", Client: fakeClient}
+
+				creds, err := provider.Retrieve(ctx)
+
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(creds.AccessKeyID).Should(Equal("AKID"))
+				Expect(creds.SecretAccessKey).Should(Equal("SECRET"))
+				Expect(creds.SessionToken).Should(Equal("TOKEN"))
+			})
+
+			It("should return credentials without session token when it is absent", func(ctx SpecContext) {
+				secret := &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{Name: "aws-creds", Namespace: "ns"},
+					Data: map[string][]byte{
+						"access-key-id":     []byte("AKID"),
+						"secret-access-key": []byte("SECRET"),
+					},
+				}
+				fakeClient := fake.NewClientBuilder().WithScheme(s).WithObjects(secret).Build()
+				provider := SecretCredentialsProvider{Name: "aws-creds", Namespace: "ns", Client: fakeClient}
+
+				creds, err := provider.Retrieve(ctx)
+
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(creds.SessionToken).Should(BeEmpty())
+			})
+
+			It("should return error when the secret does not exist", func(ctx SpecContext) {
+				fakeClient := fake.NewClientBuilder().WithScheme(s).Build()
+				provider := SecretCredentialsProvider{Name: "missing", Namespace: "ns", Client: fakeClient}
+
+				_, err := provider.Retrieve(ctx)
+
+				Expect(err).Should(HaveOccurred())
+				Expect(err.Error()).Should(ContainSubstring("failed to retrieve the secret"))
+			})
+		})
+	})
+
 })
 
 // Helper function to create a baseline valid AWSEc2DynamicConfig for configureInstance tests
@@ -337,19 +390,18 @@ func newDefaultValidEC2ConfigForInstance() AWSEc2DynamicConfig {
 	}
 
 	return AWSEc2DynamicConfig{
-		Region:               "us-west-1", // Neutral baseline values
-		Ami:                  "ami-default123",
-		InstanceType:         "t2.medium",
-		KeyName:              "default-key",
-		Secret:               "default-secret",
-		SystemNamespace:      "default-sys-namespace",
-		SecurityGroupId:      "sg-default00000000000",
-		SubnetId:             "subnet-default00000000",
-		Disk:                 int32(40),
-		MaxSpotInstancePrice: "", // Default to on-demand
-		InstanceProfileArn:   "arn:aws:iam::000000000000:instance-profile/default-instance-profile",
-		Iops:                 aws.Int32(3000),
-		Throughput:           aws.Int32(125),
-		UserData:             defaultUserDataPtr,
+		Region:             "us-west-1", // Neutral baseline values
+		Ami:                "ami-default123",
+		InstanceType:       "t2.medium",
+		KeyName:            "default-key",
+		Secret:             "default-secret",
+		SystemNamespace:    "default-sys-namespace",
+		SecurityGroupId:    "sg-default00000000000",
+		SubnetId:           "subnet-default00000000",
+		Disk:               int32(40),
+		InstanceProfileArn: "arn:aws:iam::000000000000:instance-profile/default-instance-profile",
+		Iops:               aws.Int32(3000),
+		Throughput:         aws.Int32(125),
+		UserData:           defaultUserDataPtr,
 	}
 }

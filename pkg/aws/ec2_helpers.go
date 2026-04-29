@@ -50,7 +50,11 @@ func (ec AWSEc2DynamicConfig) validateIPAddress(ctx context.Context, instance *t
 	}
 
 	// Verify SSH connectivity
-	if err := pingIPAddress(ip); err != nil {
+	ping := pingIPAddress
+	if ec.pingFunc != nil {
+		ping = ec.pingFunc
+	}
+	if err := ping(ip); err != nil {
 		log.Error(err, "failed to connect to AWS instance via SSH",
 			"instanceID", aws.ToString(instance.InstanceId),
 			"ipAddress", ip)
@@ -64,8 +68,12 @@ func (ec AWSEc2DynamicConfig) validateIPAddress(ctx context.Context, instance *t
 	return ip, nil
 }
 
-// createClient uses AWS credentials and an EC2 configuration to create and return an EC2 client.
-func (ec AWSEc2DynamicConfig) createClient(kubeClient client.Client, ctx context.Context) (*ec2.Client, error) {
+// getEC2Client returns the injected mock client if set, otherwise builds a real
+// EC2 client from AWS credentials.
+func (ec AWSEc2DynamicConfig) getEC2Client(kubeClient client.Client, ctx context.Context) (ec2API, error) {
+	if ec.ec2Client != nil {
+		return ec.ec2Client, nil
+	}
 	secretCredentials := SecretCredentialsProvider{Name: ec.Secret, Namespace: ec.SystemNamespace, Client: kubeClient}
 	cfg, err := config.LoadDefaultConfig(ctx,
 		config.WithCredentialsProvider(secretCredentials),
@@ -93,7 +101,6 @@ func (ec AWSEc2DynamicConfig) configureInstance(taskRunName string, instanceTag 
 	var securityGroups []string
 	var securityGroupIds []string
 	var instanceProfile *types.IamInstanceProfileSpecification
-	var instanceMarketOpts *types.InstanceMarketOptionsRequest
 	var placement *types.Placement
 	var licenseSpecifications []types.LicenseConfigurationRequest
 
@@ -113,17 +120,6 @@ func (ec AWSEc2DynamicConfig) configureInstance(taskRunName string, instanceTag 
 		}
 		if ec.InstanceProfileArn != "" {
 			instanceProfile.Arn = aws.String(ec.InstanceProfileArn)
-		}
-	}
-
-	if ec.MaxSpotInstancePrice != "" {
-		instanceMarketOpts = &types.InstanceMarketOptionsRequest{
-			MarketType: types.MarketTypeSpot,
-			SpotOptions: &types.SpotMarketOptions{
-				MaxPrice:                     aws.String(ec.MaxSpotInstancePrice),
-				InstanceInterruptionBehavior: types.InstanceInterruptionBehaviorTerminate,
-				SpotInstanceType:             types.SpotInstanceTypeOneTime,
-			},
 		}
 	}
 
@@ -172,7 +168,6 @@ func (ec AWSEc2DynamicConfig) configureInstance(taskRunName string, instanceTag 
 			},
 		}},
 		InstanceInitiatedShutdownBehavior: types.ShutdownBehaviorTerminate,
-		InstanceMarketOptions:             instanceMarketOpts,
 		Placement:                         placement,
 		LicenseSpecifications:             licenseSpecifications,
 		TagSpecifications: []types.TagSpecification{
