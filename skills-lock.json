@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "make-repo-contribution": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "computedHash": "63448f43476e671552752ed4cda2c951cec43450f57792b667c7597e9d4d19b5"
+    }
+  }
+}
