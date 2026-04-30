@@ -57,10 +57,23 @@ func CreateIBMPowerCloudConfig(platform string, config map[string]string, system
 	}
 }
 
+// getPowerClient returns the injected powerClient (for tests) or creates a real
+// one backed by an authenticated IBM BaseService.
+func (pw IBMPowerDynamicConfig) getPowerClient(ctx context.Context, kubeClient client.Client) (powerAPI, error) {
+	if pw.pClient != nil {
+		return pw.pClient, nil
+	}
+	service, err := pw.createAuthenticatedBaseService(ctx, kubeClient)
+	if err != nil {
+		return nil, err
+	}
+	return &powerClient{service: service, config: pw}, nil
+}
+
 // LaunchInstance creates a Power Systems VM instance and returns its identifier. This function is implemented as
 // part of the CloudProvider interface, which is why some of the arguments are unused for this particular implementation.
 func (pw IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunID string, instanceTag string, _ map[string]string) (cloud.InstanceIdentifier, error) {
-	service, err := pw.createAuthenticatedBaseService(ctx, kubeClient)
+	pwClient, err := pw.getPowerClient(ctx, kubeClient)
 	if err != nil {
 		return "", fmt.Errorf("failed to create an authenticated base service: %w", err)
 	}
@@ -79,7 +92,7 @@ func (pw IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx con
 		"name":              instanceName,
 		cloud.TaskRunTagKey: taskRunID,
 	}
-	instance, err := pw.launchInstance(ctx, service, additionalInfo)
+	instance, err := pwClient.launchInstance(ctx, additionalInfo)
 	if err != nil {
 		err = fmt.Errorf("failed to create a Power Systems instance: %w", err)
 	}
@@ -89,12 +102,12 @@ func (pw IBMPowerDynamicConfig) LaunchInstance(kubeClient client.Client, ctx con
 // CountInstances returns the number of Power Systems VM instances on the pw cloud whose names start
 // with instanceTag.
 func (pw IBMPowerDynamicConfig) CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error) {
-	service, err := pw.createAuthenticatedBaseService(ctx, kubeClient)
+	pwClient, err := pw.getPowerClient(ctx, kubeClient)
 	if err != nil {
 		return -1, fmt.Errorf("failed to create an authenticated base service: %w", err)
 	}
 
-	instances, err := pw.listInstances(ctx, service)
+	instances, err := pwClient.listInstances(ctx)
 	if err != nil {
 		return -1, fmt.Errorf("failed to fetch Power Systems instances: %w", err)
 	}
@@ -111,7 +124,7 @@ func (pw IBMPowerDynamicConfig) CountInstances(kubeClient client.Client, ctx con
 // GetInstanceAddress returns the IP Address associated with the instanceID Power Systems VM instance.
 func (pw IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx context.Context, instanceID cloud.InstanceIdentifier) (string, error) {
 	log := logr.FromContextOrDiscard(ctx)
-	service, err := pw.createAuthenticatedBaseService(ctx, kubeClient)
+	pwClient, err := pw.getPowerClient(ctx, kubeClient)
 	if err != nil {
 		return "", fmt.Errorf("failed to create an authenticated base service: %w", err)
 	}
@@ -119,7 +132,7 @@ func (pw IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx
 	// Errors regarding finding the instance, getting it's IP address and checking if the
 	// address is live are not returned as we are waiting for the network interface to start up.
 	// This is a normal part of the instance allocation process.
-	instance, err := pw.getInstance(ctx, service, string(instanceID))
+	instance, err := pwClient.getInstance(ctx, string(instanceID))
 	if err != nil {
 		log.Error(err, "failed to get instance", "instanceID", instanceID)
 		return "", nil
@@ -129,8 +142,13 @@ func (pw IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx
 		log.Error(err, "failed to retrieve IP address", "instanceID", instanceID)
 		return "", nil
 	}
+
+	pingFn := pw.pingFunc
+	if pingFn == nil {
+		pingFn = checkIfIpIsLive
+	}
 	//Don't return an error here since an IP address can take a while to become "live"
-	if err = checkIfIpIsLive(ctx, ip); err != nil {
+	if err = pingFn(ctx, ip); err != nil {
 		log.Error(
 			err,
 			"failed to check if IP address was live",
@@ -147,18 +165,22 @@ func (pw IBMPowerDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx
 func (pw IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info("Listing Power Systems instances", "tag", instanceTag)
-	service, err := pw.createAuthenticatedBaseService(ctx, kubeClient)
+	pwClient, err := pw.getPowerClient(ctx, kubeClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create an authenticated base service: %w", err)
 	}
 
-	pvmInstancesCollection, err := pw.listInstances(ctx, service)
+	pvmInstancesCollection, err := pwClient.listInstances(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch Power Systems instances: %w", err)
 	}
 
+	pingFn := pw.pingFunc
+	if pingFn == nil {
+		pingFn = checkIfIpIsLive
+	}
+
 	vmInstances := make([]cloud.CloudVMInstance, 0, len(pvmInstancesCollection.PvmInstances))
-	// Ensure all listed instances have a reachable IP address
 	for _, instance := range pvmInstancesCollection.PvmInstances {
 		if !strings.HasPrefix(*instance.ServerName, instanceTag) {
 			continue
@@ -171,7 +193,7 @@ func (pw IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx cont
 			log.Info(msg, "instanceID", identifier)
 			continue
 		}
-		if err = checkIfIpIsLive(ctx, ip); err != nil {
+		if err = pingFn(ctx, ip); err != nil {
 			msg := fmt.Sprintf("WARN: failed to check if IP address is live - %s; not listing instance", err.Error())
 			log.Info(msg, "instanceID", identifier)
 			continue
@@ -188,31 +210,26 @@ func (pw IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx cont
 func (pw IBMPowerDynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instanceID cloud.InstanceIdentifier) error {
 	log := logr.FromContextOrDiscard(ctx)
 	log.Info("attempting to terminate power server", "instance", instanceID)
-	service, err := pw.createAuthenticatedBaseService(ctx, kubeClient)
+	pwClient, err := pw.getPowerClient(ctx, kubeClient)
 	if err != nil {
 		return fmt.Errorf("failed to create an authenticated base service: %w", err)
 	}
 
-	_ = pw.deleteInstance(ctx, service, string(instanceID))
+	_ = pwClient.deleteInstance(ctx, string(instanceID))
 
 	// Iterate for 10 minutes
 	timeout := time.Now().Add(time.Minute * 10)
 	go func() {
 		localCtx := context.WithoutCancel(ctx)
-		service, err := pw.createAuthenticatedBaseService(localCtx, kubeClient)
-		if err != nil {
-			return
-		}
-
 		for {
-			_, err := pw.getInstance(localCtx, service, string(instanceID))
+			_, err := pwClient.getInstance(localCtx, string(instanceID))
 			// Instance has already been deleted
 			if err != nil {
 				return
 			}
 			//TODO: clarify comment ->we want to make really sure it is gone, delete opts don't
 			// really work when the server is starting so we just try in a loop
-			err = pw.deleteInstance(localCtx, service, string(instanceID))
+			err = pwClient.deleteInstance(localCtx, string(instanceID))
 			if err != nil {
 				log.Error(err, "failed to delete Power System instance")
 			}
@@ -230,12 +247,12 @@ func (pw IBMPowerDynamicConfig) TerminateInstance(kubeClient client.Client, ctx 
 // GetState returns instanceID's VM state from the pw cloud on the IBM Power Systems Virtual Server service.
 // See https://cloud.ibm.com/apidocs/power-cloud#pcloud-pvminstances-get for more information.
 func (pw IBMPowerDynamicConfig) GetState(kubeClient client.Client, ctx context.Context, instanceID cloud.InstanceIdentifier) (cloud.VMState, error) {
-	service, err := pw.createAuthenticatedBaseService(ctx, kubeClient)
+	pwClient, err := pw.getPowerClient(ctx, kubeClient)
 	if err != nil {
 		return "", fmt.Errorf("failed to create an authenticated base service: %w", err)
 	}
 
-	instance, err := pw.getInstance(ctx, service, string(instanceID))
+	instance, err := pwClient.getInstance(ctx, string(instanceID))
 	// Probably still waiting for the instance to come up
 	if err != nil {
 		return "", nil
@@ -298,4 +315,12 @@ type IBMPowerDynamicConfig struct {
 	// ProcessorType is the processor type to be used in the instance.
 	// Possible values are "dedicated", "shared", and "capped".
 	ProcType string
+
+	// pClient allows tests to inject a mock Power API client.
+	// When nil, getPowerClient builds a real client from IBM credentials.
+	pClient powerAPI
+
+	// pingFunc allows tests to inject a mock for SSH connectivity checks.
+	// When nil, the real checkIfIpIsLive (TCP dial to port 22) is used.
+	pingFunc func(ctx context.Context, ip string) error
 }
