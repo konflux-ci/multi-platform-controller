@@ -201,7 +201,7 @@ func (pc *powerClient) resizeInstanceVolume(ctx context.Context, id *string) {
 			if err != nil {
 				log.Info("WARN: failed to get Power Systems VM instance for resize; retrying...",
 					"err", err,
-					"retry", time.Duration(sleepTime),
+					"retry", time.Duration(sleepTime)*time.Second,
 				)
 				continue
 			}
