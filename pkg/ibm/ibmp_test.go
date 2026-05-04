@@ -421,7 +421,35 @@ var _ = Describe("IBM Power Unit Tests", func() {
 					Expect(instances).Should(BeEmpty())
 				})
 			})
-		})
+			
+		When("an instance has a suspiciously old creation date", func() {                                                                                           
+          DescribeTable("it should still include the instance in the results",
+              func(ctx SpecContext, creationDate strfmt.DateTime) {
+                  mock.ListInstancesOutput = models.PVMInstances{                                                                                                 
+                      PvmInstances: []*models.PVMInstanceReference{
+                          {                                                                                                                                       
+                              ServerName:    ptr("moshe-kipod-tag-123x"),
+                              PvmInstanceID: ptr("id-1"),                                                                                                         
+                              Networks:      []*models.PVMInstanceNetwork{{ExternalIP: "1.2.3.4"}},
+                              CreationDate:  creationDate,                                                                                                        
+                          },                                                                                                                                      
+                      },
+                  }                                                                                                                                               
+                  
+                  instances, err := cfg.ListInstances(nil, ctx, "my-tag")                                                                                         
+  
+                  Expect(err).ShouldNot(HaveOccurred())                                                                                                           
+                  Expect(instances).Should(HaveLen(1))
+                  Expect(string(instances[0].InstanceId)).Should(Equal("id-1"))                                                                                   
+              },                                                                                                                                                  
+              Entry("when CreationDate is empty (null or missing from API)", 
+              strfmt.DateTime{},),                                                                                                                                                                                                                                                                                                                                                                   
+              Entry("when CreationDate is corrupt data interpreted as Unix epoch",
+              strfmt.DateTime(time.Unix(0, 0)),                                                                         
+              ),                                                                                                                                                  
+          )           
+      })
+	})
 
 		Describe("TerminateInstance", func() {
 			When("the Power API succeeds", func() {

@@ -187,6 +187,13 @@ func (pw IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx cont
 		}
 		identifier := cloud.InstanceIdentifier(*instance.PvmInstanceID)
 		createdAt := time.Time(instance.CreationDate)
+		
+	   if time.Since(createdAt) > 365*24*time.Hour {                                                                                                               
+           log.Info("WARN: instance creation date is over one year old — possible data integrity issue",
+           "instanceID", identifier,                                                                                                                           
+            "creationDate", createdAt,
+      )                                                                                                                                                       
+  }
 		ip, err := retrieveInstanceIp(*instance.PvmInstanceID, instance.Networks)
 		if err != nil {
 			msg := fmt.Sprintf("WARN: failed to retrieve IP address - %s; not listing instance", err.Error())
