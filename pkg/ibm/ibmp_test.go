@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
-	"strconv"
+	"fmt"
+	"net/http"
+    "strconv"
 
 	"github.com/IBM-Cloud/power-go-client/power/models"
+	"github.com/IBM/go-sdk-core/v5/core"
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -100,11 +103,27 @@ var _ = Describe("IBM Power Unit Tests", func() {
 		)
 
 		BeforeEach(func() {
-			mock = &mockPowerClient{}
-			cfg = IBMPowerDynamicConfig{
-				pClient:  mock,
-				pingFunc: func(_ context.Context, _ string) error { return nil },
-			}
+    service, err := core.NewBaseService(&core.ServiceOptions{
+		URL:           "https://test.power-iaas.cloud.ibm.com",
+		Authenticator: &core.NoAuthAuthenticator{},
+	})
+	Expect(err).ShouldNot(HaveOccurred())
+
+	cfg = IBMPowerDynamicConfig{
+		CRN:      "crn:v1:bluemix:public:power-iaas:dal10:a/123456789:test-service-id::",
+		Url:      "https://test.power-iaas.cloud.ibm.com",
+		Disk:     200,
+		pingFunc: func(_ context.Context, _ string) error { return nil },
+	}
+
+	mock = &mockPowerClient{
+		powerClient: powerClient{
+		    service: service,
+			config:  cfg,
+		},
+	}
+
+	cfg.pClient = mock
 		})
 
 		Describe("LaunchInstance", func() {
@@ -466,6 +485,117 @@ var _ = Describe("IBM Power Unit Tests", func() {
 				})
 			})
 		})
+		
+		Describe("updateVolume", func() {
+			When("the API request succeeds", func() {
+				It("should update the volume without error", func(ctx SpecContext) {
+					volumeID := "test-vol-id"
+					mock.requestFn = func(req *http.Request, result interface{}) (*core.DetailedResponse, error) {
+						Expect(req.Method).To(Equal("PUT"))
+						Expect(req.URL.Path).To(ContainSubstring(volumeID))
+
+						vRef, ok := result.(*models.VolumeReference)
+						Expect(ok).To(BeTrue())
+						vRef.VolumeID = &volumeID
+						size := 200.0
+						vRef.Size = &size
+						return &core.DetailedResponse{StatusCode: 200}, nil
+					}
+
+					Expect(mock.updateVolume(ctx, volumeID)).ShouldNot(HaveOccurred())
+				})
+			})
+
+			When("the API request fails", func() {
+				It("should return a descriptive error", func(ctx SpecContext) {
+					mock.requestFn = func(_ *http.Request, _ interface{}) (*core.DetailedResponse, error) {
+						return nil, fmt.Errorf("API timeout")
+					}
+
+					Expect(mock.updateVolume(ctx, "vol-123")).
+						Should(MatchError(ContainSubstring("failed to update volume")))
+				})
+			})
+
+			When("the CRN is invalid", func() {
+				It("should return a CRN parse error", func(ctx SpecContext) {
+					mock.config.CRN = "not-a-crn"
+
+					Expect(mock.updateVolume(ctx, "vol-123")).
+						Should(MatchError(ContainSubstring("failed to retrieve cloud service instance ID")))
+				})
+			})
+		})
+
+		Describe("resizeInstanceVolume", func() {
+			When("the volume size differs from the target", func() {
+				It("should call updateVolume to resize", func(ctx SpecContext) {
+					instanceID := "test-instance"
+					volumeID := "test-volume"
+					currentDisk := 100.0
+					targetDisk := 200.0
+					resizeDone := make(chan struct{})
+
+					mock.config.Disk = targetDisk
+					mock.requestFn = func(req *http.Request, result interface{}) (*core.DetailedResponse, error) {
+						switch req.Method {
+						case "GET":
+							inst, ok := result.(*models.PVMInstance)
+							Expect(ok).To(BeTrue())
+							inst.PvmInstanceID = &instanceID
+							inst.VolumeIDs = []string{volumeID}
+							inst.DiskSize = &currentDisk
+							return &core.DetailedResponse{StatusCode: 200}, nil
+						case "PUT":
+							vRef, ok := result.(*models.VolumeReference)
+							Expect(ok).To(BeTrue())
+							vRef.VolumeID = &volumeID
+							vRef.Size = &targetDisk
+							close(resizeDone)
+							return &core.DetailedResponse{StatusCode: 200}, nil
+						}
+						return nil, fmt.Errorf("unexpected method: %s", req.Method)
+					}
+
+					mock.resizeInstanceVolume(ctx, &instanceID)
+
+					Eventually(resizeDone).WithTimeout(15 * time.Second).Should(BeClosed())
+				})
+			})
+
+			When("the volume size already matches the target", func() {
+				It("should not call updateVolume", func(ctx SpecContext) {
+					instanceID := "test-instance"
+					diskSize := 200.0
+					updateCalled := make(chan struct{})
+					getDone := make(chan struct{}, 1)
+
+					mock.config.Disk = diskSize
+					mock.requestFn = func(req *http.Request, result interface{}) (*core.DetailedResponse, error) {
+						if req.Method == "GET" {
+							inst, ok := result.(*models.PVMInstance)
+							Expect(ok).To(BeTrue())
+							inst.PvmInstanceID = &instanceID
+							inst.VolumeIDs = []string{"vol-1"}
+							inst.DiskSize = &diskSize
+							select {
+							case getDone <- struct{}{}:
+							default:
+							}
+							return &core.DetailedResponse{StatusCode: 200}, nil
+						}
+						close(updateCalled)
+						return nil, nil
+					}
+
+					mock.resizeInstanceVolume(ctx, &instanceID)
+
+					Eventually(getDone).WithTimeout(15 * time.Second).Should(Receive())
+					Consistently(updateCalled).WithTimeout(1 * time.Second).ShouldNot(BeClosed())
+				})
+			})
+		})
+		
 	})
 })
 
