@@ -195,6 +195,11 @@ func (ec AWSEc2DynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx c
 // TerminateInstance tries to delete the instanceID EC2 instance.
 func (ec AWSEc2DynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instanceID cloud.InstanceIdentifier) error {
 	log := logr.FromContextOrDiscard(ctx)
+	if instanceID == "" {
+		err := errors.New("cannot terminate instance: empty instance ID")
+		log.Error(err, "cannot terminate instance: empty instance ID")
+		return err
+	}
 	log.Info("Attempting to terminate AWS EC2 instance", "instanceID", instanceID)
 
 	// Use AWS credentials and configuration to create an EC2 client

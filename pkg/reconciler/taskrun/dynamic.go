@@ -65,6 +65,8 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 				terr := r.TerminateInstance(taskRun.client, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
 				if terr != nil {
 					log.Error(err, "Failed to terminate instance")
+				} else {
+					delete(tr.Annotations, CloudInstanceId)
 				}
 				unassignErr := r.removeInstanceFromTask(taskRun, ctx, tr)
 				if unassignErr != nil {
@@ -90,6 +92,8 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 				message := fmt.Sprintf("failed to terminate %s instance for %s", r.instanceTag, tr.Name)
 				r.eventRecorder.Event(tr, "Normal", "TerminateFailed", message)
 				log.Error(terr, message)
+			} else {
+				delete(tr.Annotations, CloudInstanceId)
 			}
 			unassignErr := r.removeInstanceFromTask(taskRun, ctx, tr)
 			if unassignErr != nil {
@@ -113,6 +117,8 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 				if terr != nil {
 					message := fmt.Sprintf("failed to terminate %s instance for %s", r.instanceTag, tr.Name)
 					log.Error(terr, message)
+				} else {
+					delete(tr.Annotations, CloudInstanceId)
 				}
 				unassignErr := r.removeInstanceFromTask(taskRun, ctx, tr)
 				if unassignErr != nil {
@@ -140,6 +146,8 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 					message := fmt.Sprintf("failed to terminate %s instance for %s", r.instanceTag, tr.Name)
 					r.eventRecorder.Event(tr, "Normal", "TerminateFailed", message)
 					log.Error(terr, message)
+				} else {
+					delete(tr.Annotations, CloudInstanceId)
 				}
 				unassignErr := r.removeInstanceFromTask(taskRun, ctx, tr)
 				if unassignErr != nil {
@@ -236,7 +244,6 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 // Tries to remove the instance information from the task and returns a non-nil error if it was unable to.
 func (dr DynamicResolver) removeInstanceFromTask(reconcileTaskRun *ReconcileTaskRun, ctx context.Context, taskRun *v1.TaskRun) error {
 	delete(taskRun.Labels, constant.AssignedHost)
-	delete(taskRun.Annotations, CloudInstanceId)
 	delete(taskRun.Annotations, CloudDynamicPlatform)
 	return UpdateTaskRunWithRetry(ctx, reconcileTaskRun.client, reconcileTaskRun.apiReader, taskRun)
 }
