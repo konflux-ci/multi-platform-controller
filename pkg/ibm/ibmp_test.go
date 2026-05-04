@@ -27,6 +27,18 @@ func encodeUserData(s string) string {
 
 var _ = Describe("IBM Power Unit Tests", func() {
 
+	// Testing IBMPowerProvider - that provides a IBMPowerDynamicConfig for creating an IBMPowerPC machine for tasks.
+	// The spec checks that:
+	//	- Configuration data is passed to IBMPowerDynamicConfig correctly when the values are valid
+	//  - Default values are inserted whenever the configuration written to host-config.yaml are problematic in structure or value
+	//
+	// There are 5 test cases:
+	// 	1. A positive test to verify all is working correctly with valid config map keys
+	//	2. A negative test with a platform name unlike any the MPC covers
+	//	3. A negative test to verify default value completion - empty memory, core number and disk size values
+	//	4. A negative test to verify default value completion - non-numeric memory, core number and disk size values
+	//	5. A negative test to verify default value completion - Verifying disk size default number of 100 if the configuration aims for less than that
+	// Assisted-by: TAG
 	Describe("CreateIBMPowerCloudConfig", func() {
 		DescribeTable("config parsing",
 			func(platform string, testConfig map[string]string, expectedUserData string, expectedMemory string, expectedCores string, expectedDisk string) {
