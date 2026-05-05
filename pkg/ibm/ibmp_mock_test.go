@@ -8,8 +8,11 @@ import (
 )
 
 // mockPowerClient satisfies the powerAPI interface for testing.
-// Output/Err fields control return values.
+// Output/Err fields control return values. The embedded powerClient
+// provides updateVolume and resizeInstanceVolume via requestFn injection.
 type mockPowerClient struct {
+	powerClient
+
 	ListInstancesOutput models.PVMInstances
 	ListInstancesErr    error
 

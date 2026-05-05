@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-    "strconv"
+	"strconv"
+	"time"
 
 	"github.com/IBM-Cloud/power-go-client/power/models"
 	"github.com/IBM/go-sdk-core/v5/core"
+	"github.com/go-openapi/strfmt"
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -115,27 +117,27 @@ var _ = Describe("IBM Power Unit Tests", func() {
 		)
 
 		BeforeEach(func() {
-    service, err := core.NewBaseService(&core.ServiceOptions{
-		URL:           "https://test.power-iaas.cloud.ibm.com",
-		Authenticator: &core.NoAuthAuthenticator{},
-	})
-	Expect(err).ShouldNot(HaveOccurred())
+			service, err := core.NewBaseService(&core.ServiceOptions{
+				URL:           "https://test.power-iaas.cloud.ibm.com",
+				Authenticator: &core.NoAuthAuthenticator{},
+			})
+			Expect(err).ShouldNot(HaveOccurred())
 
-	cfg = IBMPowerDynamicConfig{
-		CRN:      "crn:v1:bluemix:public:power-iaas:dal10:a/123456789:test-service-id::",
-		Url:      "https://test.power-iaas.cloud.ibm.com",
-		Disk:     200,
-		pingFunc: func(_ context.Context, _ string) error { return nil },
-	}
+			cfg = IBMPowerDynamicConfig{
+				CRN:      "crn:v1:bluemix:public:power-iaas:dal10:a/123456789:test-service-id::",
+				Url:      "https://test.power-iaas.cloud.ibm.com",
+				Disk:     200,
+				pingFunc: func(_ context.Context, _ string) error { return nil },
+			}
 
-	mock = &mockPowerClient{
-		powerClient: powerClient{
-		    service: service,
-			config:  cfg,
-		},
-	}
+			mock = &mockPowerClient{
+				powerClient: powerClient{
+					service: service,
+					config:  cfg,
+				},
+			}
 
-	cfg.pClient = mock
+			cfg.pClient = mock
 		})
 
 		Describe("LaunchInstance", func() {
@@ -452,35 +454,36 @@ var _ = Describe("IBM Power Unit Tests", func() {
 					Expect(instances).Should(BeEmpty())
 				})
 			})
-			
-		When("an instance has a suspiciously old creation date", func() {                                                                                           
-          DescribeTable("it should still include the instance in the results",
-              func(ctx SpecContext, creationDate strfmt.DateTime) {
-                  mock.ListInstancesOutput = models.PVMInstances{                                                                                                 
-                      PvmInstances: []*models.PVMInstanceReference{
-                          {                                                                                                                                       
-                              ServerName:    ptr("moshe-kipod-tag-123x"),
-                              PvmInstanceID: ptr("id-1"),                                                                                                         
-                              Networks:      []*models.PVMInstanceNetwork{{ExternalIP: "1.2.3.4"}},
-                              CreationDate:  creationDate,                                                                                                        
-                          },                                                                                                                                      
-                      },
-                  }                                                                                                                                               
-                  
-                  instances, err := cfg.ListInstances(nil, ctx, "my-tag")                                                                                         
-  
-                  Expect(err).ShouldNot(HaveOccurred())                                                                                                           
-                  Expect(instances).Should(HaveLen(1))
-                  Expect(string(instances[0].InstanceId)).Should(Equal("id-1"))                                                                                   
-              },                                                                                                                                                  
-              Entry("when CreationDate is empty (null or missing from API)", 
-              strfmt.DateTime{},),                                                                                                                                                                                                                                                                                                                                                                   
-              Entry("when CreationDate is corrupt data interpreted as Unix epoch",
-              strfmt.DateTime(time.Unix(0, 0)),                                                                         
-              ),                                                                                                                                                  
-          )           
-      })
-	})
+
+			When("an instance has a suspiciously old creation date", func() {
+				DescribeTable("it should still include the instance in the results",
+					func(ctx SpecContext, creationDate strfmt.DateTime) {
+						mock.ListInstancesOutput = models.PVMInstances{
+							PvmInstances: []*models.PVMInstanceReference{
+								{
+									ServerName:    ptr("my-tag-123x"),
+									PvmInstanceID: ptr("id-1"),
+									Networks:      []*models.PVMInstanceNetwork{{ExternalIP: "1.2.3.4"}},
+									CreationDate:  creationDate,
+								},
+							},
+						}
+
+						instances, err := cfg.ListInstances(nil, ctx, "my-tag")
+
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(instances).Should(HaveLen(1))
+						Expect(string(instances[0].InstanceId)).Should(Equal("id-1"))
+					},
+					Entry("when CreationDate is empty (null or missing from API)",
+						strfmt.DateTime{},
+					),
+					Entry("when CreationDate is corrupt data interpreted as Unix epoch",
+						strfmt.DateTime(time.Unix(0, 0)),
+					),
+				)
+			})
+		})
 
 		Describe("TerminateInstance", func() {
 			When("the Power API succeeds", func() {
@@ -497,7 +500,7 @@ var _ = Describe("IBM Power Unit Tests", func() {
 				})
 			})
 		})
-		
+
 		Describe("updateVolume", func() {
 			When("the API request succeeds", func() {
 				It("should update the volume without error", func(ctx SpecContext) {
@@ -607,7 +610,7 @@ var _ = Describe("IBM Power Unit Tests", func() {
 				})
 			})
 		})
-		
+
 	})
 })
 

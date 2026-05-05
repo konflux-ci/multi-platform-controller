@@ -18,9 +18,9 @@ import (
 // powerClient implements powerAPI using the IBM Power Virtual Server REST API
 // via core.BaseService.
 type powerClient struct {
-	service *core.BaseService
-	config  IBMPowerDynamicConfig
-	requestFn func(req *http.Request, result interface{}) (*core.DetailedResponse, error) // requestFn allows tests to inject a mock for pc.service.Request calls.
+	service   *core.BaseService
+	config    IBMPowerDynamicConfig
+	requestFn func(req *http.Request, result interface{}) (*core.DetailedResponse, error)
 }
 
 func (pc *powerClient) listInstances(ctx context.Context) (models.PVMInstances, error) {
@@ -143,14 +143,14 @@ func (pc *powerClient) getInstance(ctx context.Context, pvmId string) (*models.P
 	if err != nil {
 		return nil, fmt.Errorf("failed to build the HTTP request: %w", err)
 	}
-	
+
 	reqFn := pc.requestFn
 	if reqFn == nil {
 		reqFn = pc.service.Request
 	}
 
 	instance := models.PVMInstance{}
-	_, err = pc.service.Request(request, &instance)
+	_, err = reqFn(request, &instance)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get the Power Systems VM instance %s: %w", pvmId, err)
 	}
@@ -268,14 +268,14 @@ func (pc *powerClient) updateVolume(ctx context.Context, volumeID string) error 
 	if err != nil {
 		return fmt.Errorf("failed to build the HTTP request: %w", err)
 	}
-	
+
 	reqFn := pc.requestFn
 	if reqFn == nil {
 		reqFn = pc.service.Request
 	}
-	
+
 	var vRef models.VolumeReference
-	_, err = pc.service.Request(request, &vRef)
+	_, err = reqFn(request, &vRef)
 	if err != nil {
 		return fmt.Errorf("failed to update volume %s: %w", volumeID, err)
 	}
