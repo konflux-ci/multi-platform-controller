@@ -521,7 +521,7 @@ var _ = Describe("IBM Power Unit Tests", func() {
 			When("the API request fails", func() {
 				It("should return a descriptive error", func(ctx SpecContext) {
 					mock.requestFn = func(_ *http.Request, _ interface{}) (*core.DetailedResponse, error) {
-						return nil, fmt.Errorf("API timeout")
+						return nil, errors.New("API timeout")
 					}
 
 					Expect(mock.updateVolume(ctx, "vol-123")).

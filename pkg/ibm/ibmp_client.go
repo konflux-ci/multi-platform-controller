@@ -20,7 +20,6 @@ import (
 type powerClient struct {
 	service *core.BaseService
 	config  IBMPowerDynamicConfig
-	config  IBMPowerDynamicConfig
 	requestFn func(req *http.Request, result interface{}) (*core.DetailedResponse, error) // requestFn allows tests to inject a mock for pc.service.Request calls.
 }
 
