@@ -691,7 +691,7 @@ func replaceInFiles(dir, old, new string) error {
 		}
 		newData := strings.ReplaceAll(string(data), old, new)
 		if newData != string(data) {
-			return os.WriteFile(path, []byte(newData), 0600)
+			return os.WriteFile(path, []byte(newData), 0600) //nolint:gosec // G703 - dev tool writing to controlled directory from WalkDir
 		}
 		return nil
 	})
