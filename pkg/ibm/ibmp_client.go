@@ -15,6 +15,14 @@ import (
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
 )
 
+const (
+	acceptHeader   = "application/json"
+	crnHeader      = "CRN"
+	pvmBasePath    = `/pcloud/v1/cloud-instances/{cloud}/pvm-instances`
+	pvmByIDPath    = pvmBasePath + `/{pvm_instance_id}`
+	volumeByIDPath = `/pcloud/v1/cloud-instances/{cloud}/volumes/{volume}`
+)
+
 // powerClient implements powerAPI using the IBM Power Virtual Server REST API
 // via core.BaseService.
 type powerClient struct {
@@ -34,13 +42,13 @@ func (pc *powerClient) listInstances(ctx context.Context) (models.PVMInstances, 
 	pathParamsMap := map[string]string{
 		"cloud": cloudId,
 	}
-	_, err = requestBuilder.ResolveRequestURL(pc.config.Url, `/pcloud/v1/cloud-instances/{cloud}/pvm-instances`, pathParamsMap)
+	_, err = requestBuilder.ResolveRequestURL(pc.config.Url, pvmBasePath, pathParamsMap)
 	if err != nil {
 		return models.PVMInstances{}, fmt.Errorf("failed to encode the request with parameters: %w", err)
 	}
 
-	requestBuilder.AddHeader("CRN", pc.config.CRN)
-	requestBuilder.AddHeader("Accept", "application/json")
+	requestBuilder.AddHeader(crnHeader, pc.config.CRN)
+	requestBuilder.AddHeader("Accept", acceptHeader)
 	request, err := requestBuilder.Build()
 	if err != nil {
 		return models.PVMInstances{}, fmt.Errorf("failed to build the HTTP request: %w", err)
@@ -68,7 +76,7 @@ func (pc *powerClient) launchInstance(ctx context.Context, additionalInfo map[st
 	pathParamsMap := map[string]string{
 		"cloud": cloudId,
 	}
-	_, err = requestBuilder.ResolveRequestURL(pc.config.Url, `/pcloud/v1/cloud-instances/{cloud}/pvm-instances`, pathParamsMap)
+	_, err = requestBuilder.ResolveRequestURL(pc.config.Url, pvmBasePath, pathParamsMap)
 	if err != nil {
 		return "", fmt.Errorf("failed to encode the request with parameters: %w", err)
 	}
@@ -99,9 +107,9 @@ func (pc *powerClient) launchInstance(ctx context.Context, additionalInfo map[st
 	if err != nil {
 		return "", fmt.Errorf("failed to set the body of the request: %w", err)
 	}
-	requestBuilder.AddHeader("CRN", pc.config.CRN)
-	requestBuilder.AddHeader("Content-Type", "application/json")
-	requestBuilder.AddHeader("Accept", "application/json")
+	requestBuilder.AddHeader(crnHeader, pc.config.CRN)
+	requestBuilder.AddHeader("Content-Type", acceptHeader)
+	requestBuilder.AddHeader("Accept", acceptHeader)
 
 	request, err := requestBuilder.Build()
 	if err != nil {
@@ -132,13 +140,13 @@ func (pc *powerClient) getInstance(ctx context.Context, pvmId string) (*models.P
 		"cloud":           cloudId,
 		"pvm_instance_id": pvmId,
 	}
-	_, err = requestBuilder.ResolveRequestURL(pc.config.Url, `/pcloud/v1/cloud-instances/{cloud}/pvm-instances/{pvm_instance_id}`, pathParamsMap)
+	_, err = requestBuilder.ResolveRequestURL(pc.config.Url, pvmByIDPath, pathParamsMap)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode the request with parameters: %w", err)
 	}
 
-	requestBuilder.AddHeader("CRN", pc.config.CRN)
-	requestBuilder.AddHeader("Accept", "application/json")
+	requestBuilder.AddHeader(crnHeader, pc.config.CRN)
+	requestBuilder.AddHeader("Accept", acceptHeader)
 	request, err := requestBuilder.Build()
 	if err != nil {
 		return nil, fmt.Errorf("failed to build the HTTP request: %w", err)
@@ -170,14 +178,14 @@ func (pc *powerClient) deleteInstance(ctx context.Context, pvmId string) error {
 		"cloud":           cloudId,
 		"pvm_instance_id": pvmId,
 	}
-	_, err = requestBuilder.ResolveRequestURL(pc.config.Url, `/pcloud/v1/cloud-instances/{cloud}/pvm-instances/{pvm_instance_id}`, pathParamsMap)
+	_, err = requestBuilder.ResolveRequestURL(pc.config.Url, pvmByIDPath, pathParamsMap)
 	if err != nil {
 		return fmt.Errorf("failed to encode the request with parameters: %w", err)
 	}
 
 	requestBuilder.AddQuery("delete_data_volumes", "true")
-	requestBuilder.AddHeader("CRN", pc.config.CRN)
-	requestBuilder.AddHeader("Accept", "application/json")
+	requestBuilder.AddHeader(crnHeader, pc.config.CRN)
+	requestBuilder.AddHeader("Accept", acceptHeader)
 	request, err := requestBuilder.Build()
 	if err != nil {
 		return fmt.Errorf("failed to build the HTTP request: %w", err)
@@ -248,7 +256,7 @@ func (pc *powerClient) updateVolume(ctx context.Context, volumeID string) error 
 		"cloud":  cloudID,
 		"volume": volumeID,
 	}
-	_, err = requestBuilder.ResolveRequestURL(pc.config.Url, `/pcloud/v1/cloud-instances/{cloud}/volumes/{volume}`, pathParamsMap)
+	_, err = requestBuilder.ResolveRequestURL(pc.config.Url, volumeByIDPath, pathParamsMap)
 	if err != nil {
 		return fmt.Errorf("failed to encode the request with parameters: %w", err)
 	}
@@ -260,9 +268,9 @@ func (pc *powerClient) updateVolume(ctx context.Context, volumeID string) error 
 	if err != nil {
 		return err
 	}
-	requestBuilder.AddHeader("CRN", pc.config.CRN)
-	requestBuilder.AddHeader("Content-Type", "application/json")
-	requestBuilder.AddHeader("Accept", "application/json")
+	requestBuilder.AddHeader(crnHeader, pc.config.CRN)
+	requestBuilder.AddHeader("Content-Type", acceptHeader)
+	requestBuilder.AddHeader("Accept", acceptHeader)
 
 	request, err := requestBuilder.Build()
 	if err != nil {

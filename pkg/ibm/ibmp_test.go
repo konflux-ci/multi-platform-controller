@@ -106,7 +106,7 @@ var _ = Describe("IBM Power Unit Tests", func() {
 
 	Describe("SshUser", func() {
 		It("should return root", func() {
-			Expect(IBMPowerDynamicConfig{}.SshUser()).Should(Equal("root"))
+			Expect(IBMPowerDynamicConfig{}.SshUser()).Should(Equal(defaultSSHUser))
 		})
 	})
 

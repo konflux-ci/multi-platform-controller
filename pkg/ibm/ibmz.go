@@ -294,7 +294,7 @@ func (iz IBMZDynamicConfig) GetState(kubeClient client.Client, ctx context.Conte
 }
 
 func (iz IBMZDynamicConfig) SshUser() string {
-	return "root"
+	return defaultSSHUser
 }
 
 // An IBMZDynamicConfig represents a configuration for an IBM System Z virtual server

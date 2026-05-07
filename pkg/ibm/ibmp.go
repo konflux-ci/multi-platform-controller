@@ -18,6 +18,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const (
+	staleInstanceThreshold = 365 * 24 * time.Hour
+	defaultSSHUser         = "root"
+)
+
 // CreateIBMPowerCloudConfig returns an IBM Power Systems cloud configuration that implements the CloudProvider interface.
 func CreateIBMPowerCloudConfig(platform string, config map[string]string, systemNamespace string) cloud.CloudProvider {
 	mem, err := strconv.ParseFloat(config["dynamic."+platform+".memory"], 64)
@@ -188,7 +193,7 @@ func (pw IBMPowerDynamicConfig) ListInstances(kubeClient client.Client, ctx cont
 		identifier := cloud.InstanceIdentifier(*instance.PvmInstanceID)
 		createdAt := time.Time(instance.CreationDate)
 
-		if time.Since(createdAt) > 365*24*time.Hour {
+		if time.Since(createdAt) > staleInstanceThreshold {
 			log.Info("WARN: instance creation date is over one year old — possible data integrity issue",
 				"instanceID", identifier,
 				"creationDate", createdAt,
@@ -273,7 +278,7 @@ func (pw IBMPowerDynamicConfig) GetState(kubeClient client.Client, ctx context.C
 }
 
 func (pw IBMPowerDynamicConfig) SshUser() string {
-	return "root"
+	return defaultSSHUser
 }
 
 // An IBMPowerDynamicConfig represents a configuration for an IBM Power Systems cloud instance.
