@@ -101,7 +101,7 @@ func ptr[V any](s V) *V {
 
 // lookUpSubnet looks for iz's subnet in the provided IBM Virtual Private Cloud service's API.
 // Either the corresponding subnet or an error with a nil object is returned.
-func (iz IBMZDynamicConfig) lookUpSubnet(vpcService *vpcv1.VpcV1) (*vpcv1.Subnet, error) {
+func (iz IBMZDynamicConfig) lookUpSubnet(vpcService vpcAPI) (*vpcv1.Subnet, error) {
 	subnets, _, err := vpcService.ListSubnets(&vpcv1.ListSubnetsOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list VPC subnets: %w", err)
@@ -122,7 +122,7 @@ func (iz IBMZDynamicConfig) lookUpSubnet(vpcService *vpcv1.VpcV1) (*vpcv1.Subnet
 
 // lookUpSSHKey looks for iz's SSH key in the provided IBM Virtual Private Cloud service's API.
 // Either the corresponding key or an error with a nil object is returned.
-func (iz IBMZDynamicConfig) lookUpSSHKey(vpcService *vpcv1.VpcV1) (*vpcv1.Key, error) {
+func (iz IBMZDynamicConfig) lookUpSSHKey(vpcService vpcAPI) (*vpcv1.Key, error) {
 	keys, _, err := vpcService.ListKeys(&vpcv1.ListKeysOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list VPC keys: %w", err)
@@ -143,7 +143,7 @@ func (iz IBMZDynamicConfig) lookUpSSHKey(vpcService *vpcv1.VpcV1) (*vpcv1.Key, e
 
 // lookUpVpc looks for iz's VPC network in the provided IBM Virtual Private Cloud service's API.
 // Either the corresponding VPC network or an error with a nil object is returned.
-func (iz IBMZDynamicConfig) lookUpVpc(vpcService *vpcv1.VpcV1) (*vpcv1.VPC, error) {
+func (iz IBMZDynamicConfig) lookUpVpc(vpcService vpcAPI) (*vpcv1.VPC, error) {
 	vpcs, _, err := vpcService.ListVpcs(&vpcv1.ListVpcsOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list VPC networks: %w", err)
@@ -198,7 +198,7 @@ func (iz IBMZDynamicConfig) createAuthenticatedVpcService(ctx context.Context, k
 
 // assignNetworkInterfaceFloatingIP returns an IP address that is already associated with the instance
 // network interface. If no IP addresses are found, an empty string is returned.
-func assignNetworkInterfaceFloatingIP(instance *vpcv1.Instance, vpcService *vpcv1.VpcV1) string {
+func assignNetworkInterfaceFloatingIP(instance *vpcv1.Instance, vpcService vpcAPI) string {
 	instanceNetworkInterfaceOpts := &vpcv1.ListInstanceNetworkInterfaceFloatingIpsOptions{
 		InstanceID:         instance.ID,
 		NetworkInterfaceID: instance.PrimaryNetworkInterface.ID,
@@ -213,7 +213,7 @@ func assignNetworkInterfaceFloatingIP(instance *vpcv1.Instance, vpcService *vpcv
 
 // assignFloatingIP returns a floating IP address in the region. If no floating IP addresses
 // are found, an empty string is returned.
-func assignFloatingIP(instance *vpcv1.Instance, vpcService *vpcv1.VpcV1) (string, error) {
+func assignFloatingIP(instance *vpcv1.Instance, vpcService vpcAPI) (string, error) {
 	floatingIps, _, err := vpcService.ListFloatingIps(&vpcv1.ListFloatingIpsOptions{ResourceGroupID: instance.ResourceGroup.ID})
 	if err != nil {
 		return "", fmt.Errorf("failed to retrieve any floating IP addresses: %w", err)
@@ -243,7 +243,7 @@ func assignFloatingIP(instance *vpcv1.Instance, vpcService *vpcv1.VpcV1) (string
 
 // assignFloatingIP creates and assigns an IP address to the instance network interface. A string
 // version of the newly allocated IP address is returned.
-func assignNewlyAllocatedIP(instance *vpcv1.Instance, vpcService *vpcv1.VpcV1) (string, error) {
+func assignNewlyAllocatedIP(instance *vpcv1.Instance, vpcService vpcAPI) (string, error) {
 	floatingIpPrototypeOpts := &vpcv1.CreateFloatingIPOptions{
 		FloatingIPPrototype: &vpcv1.FloatingIPPrototype{
 			Zone: &vpcv1.ZoneIdentityByName{Name: ptr("us-east-2")},
@@ -275,7 +275,7 @@ func assignNewlyAllocatedIP(instance *vpcv1.Instance, vpcService *vpcv1.VpcV1) (
 
 // assignIPToInstance finds an available IP address and assigns it to the Virtual Private Cloud instance and
 // its network interface. The string version of the IP address (an empty string if none was found) is returned.
-func (iz IBMZDynamicConfig) assignIPToInstance(instance *vpcv1.Instance, vpcService *vpcv1.VpcV1) (string, error) {
+func (iz IBMZDynamicConfig) assignIPToInstance(instance *vpcv1.Instance, vpcService vpcAPI) (string, error) {
 	if iz.PrivateIP {
 		for _, i := range instance.NetworkInterfaces {
 			if i.PrimaryIP != nil && i.PrimaryIP.Address != nil && *i.PrimaryIP.Address != "0.0.0.0" {
