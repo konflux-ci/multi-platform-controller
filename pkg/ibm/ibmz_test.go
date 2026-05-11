@@ -100,6 +100,19 @@ var _ = Describe("IBM System Z Unit Tests", func() {
 		})
 	})
 
+	Describe("getVpcClient", func() {
+		When("vClient is a typed-nil pointer", func() {
+			It("should return an error instead of panicking", func(ctx SpecContext) {
+				var nilClient *mockVpcClient
+				cfg := IBMZDynamicConfig{vClient: nilClient}
+
+				_, err := cfg.getVpcClient(ctx, nil)
+
+				Expect(err).Should(MatchError(ContainSubstring("typed-nil")))
+			})
+		})
+	})
+
 	Describe("CloudProvider methods", func() {
 		var (
 			mock *mockVpcClient

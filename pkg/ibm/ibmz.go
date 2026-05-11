@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -41,6 +42,11 @@ func CreateIbmZCloudConfig(arch string, config map[string]string, systemNamespac
 // one backed by an authenticated IBM VPC service.
 func (iz IBMZDynamicConfig) getVpcClient(ctx context.Context, kubeClient client.Client) (vpcAPI, error) {
 	if iz.vClient != nil {
+		// Guard against typed-nil interface values (e.g. var c *mockVpcClient; cfg.vClient = c)
+		v := reflect.ValueOf(iz.vClient)
+		if v.Kind() == reflect.Ptr && v.IsNil() {
+			return nil, fmt.Errorf("vClient is a typed-nil %T; assign a real value or leave nil", iz.vClient)
+		}
 		return iz.vClient, nil
 	}
 	vpcService, err := iz.createAuthenticatedVpcService(ctx, kubeClient)
