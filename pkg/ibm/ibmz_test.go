@@ -429,8 +429,8 @@ var _ = Describe("IBM System Z Unit Tests", func() {
 		When("the instance has an existing network interface floating IP", func() {
 			It("should return the associated floating IP", func() {
 				instance := &vpcv1.Instance{
-					ID:                     ptr("inst-1"),
-					Status:                 ptr(vpcv1.InstanceStatusRunningConst),
+					ID:                      ptr("inst-1"),
+					Status:                  ptr(vpcv1.InstanceStatusRunningConst),
 					PrimaryNetworkInterface: &vpcv1.NetworkInterfaceInstanceContextReference{ID: ptr("nic-1")},
 				}
 				mock.ListNetIfaceFloatingIpsOutput = &vpcv1.FloatingIPUnpaginatedCollection{
@@ -447,8 +447,8 @@ var _ = Describe("IBM System Z Unit Tests", func() {
 		When("the instance is in a deleting state", func() {
 			It("should return an error", func() {
 				instance := &vpcv1.Instance{
-					ID:                     ptr("inst-1"),
-					Status:                 ptr(vpcv1.InstanceStatusDeletingConst),
+					ID:                      ptr("inst-1"),
+					Status:                  ptr(vpcv1.InstanceStatusDeletingConst),
 					PrimaryNetworkInterface: &vpcv1.NetworkInterfaceInstanceContextReference{ID: ptr("nic-1")},
 				}
 				mock.ListNetIfaceFloatingIpsOutput = &vpcv1.FloatingIPUnpaginatedCollection{}
@@ -462,8 +462,8 @@ var _ = Describe("IBM System Z Unit Tests", func() {
 		When("the instance is in a failed state", func() {
 			It("should return an error", func() {
 				instance := &vpcv1.Instance{
-					ID:                     ptr("inst-1"),
-					Status:                 ptr(vpcv1.InstanceStatusFailedConst),
+					ID:                      ptr("inst-1"),
+					Status:                  ptr(vpcv1.InstanceStatusFailedConst),
 					PrimaryNetworkInterface: &vpcv1.NetworkInterfaceInstanceContextReference{ID: ptr("nic-1")},
 				}
 				mock.ListNetIfaceFloatingIpsOutput = &vpcv1.FloatingIPUnpaginatedCollection{}
@@ -477,8 +477,8 @@ var _ = Describe("IBM System Z Unit Tests", func() {
 		When("the instance is pending", func() {
 			It("should return empty string without error", func() {
 				instance := &vpcv1.Instance{
-					ID:                     ptr("inst-1"),
-					Status:                 ptr(vpcv1.InstanceStatusPendingConst),
+					ID:                      ptr("inst-1"),
+					Status:                  ptr(vpcv1.InstanceStatusPendingConst),
 					PrimaryNetworkInterface: &vpcv1.NetworkInterfaceInstanceContextReference{ID: ptr("nic-1")},
 				}
 				mock.ListNetIfaceFloatingIpsOutput = &vpcv1.FloatingIPUnpaginatedCollection{}
@@ -493,10 +493,10 @@ var _ = Describe("IBM System Z Unit Tests", func() {
 		When("an available floating IP exists in the region", func() {
 			It("should assign and return it", func() {
 				instance := &vpcv1.Instance{
-					ID:                     ptr("inst-1"),
-					Status:                 ptr(vpcv1.InstanceStatusRunningConst),
+					ID:                      ptr("inst-1"),
+					Status:                  ptr(vpcv1.InstanceStatusRunningConst),
 					PrimaryNetworkInterface: &vpcv1.NetworkInterfaceInstanceContextReference{ID: ptr("nic-1")},
-					ResourceGroup:          &vpcv1.ResourceGroupReference{ID: ptr("rg-1")},
+					ResourceGroup:           &vpcv1.ResourceGroupReference{ID: ptr("rg-1")},
 				}
 				mock.ListNetIfaceFloatingIpsOutput = &vpcv1.FloatingIPUnpaginatedCollection{}
 				mock.ListFloatingIpsOutput = &vpcv1.FloatingIPCollection{
@@ -515,10 +515,10 @@ var _ = Describe("IBM System Z Unit Tests", func() {
 		When("no floating IPs are available and a new one is allocated", func() {
 			It("should create, assign, and return the new IP", func() {
 				instance := &vpcv1.Instance{
-					ID:                     ptr("inst-1"),
-					Status:                 ptr(vpcv1.InstanceStatusRunningConst),
+					ID:                      ptr("inst-1"),
+					Status:                  ptr(vpcv1.InstanceStatusRunningConst),
 					PrimaryNetworkInterface: &vpcv1.NetworkInterfaceInstanceContextReference{ID: ptr("nic-1")},
-					ResourceGroup:          &vpcv1.ResourceGroupReference{ID: ptr("rg-1")},
+					ResourceGroup:           &vpcv1.ResourceGroupReference{ID: ptr("rg-1")},
 				}
 				mock.ListNetIfaceFloatingIpsOutput = &vpcv1.FloatingIPUnpaginatedCollection{}
 				mock.ListFloatingIpsOutput = &vpcv1.FloatingIPCollection{}
