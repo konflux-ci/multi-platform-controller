@@ -199,12 +199,18 @@ func (iz IBMZDynamicConfig) createAuthenticatedVpcService(ctx context.Context, k
 // assignNetworkInterfaceFloatingIP returns an IP address that is already associated with the instance
 // network interface. If no IP addresses are found, an empty string is returned.
 func assignNetworkInterfaceFloatingIP(instance *vpcv1.Instance, vpcService vpcAPI) string {
+	if instance.PrimaryNetworkInterface == nil || instance.PrimaryNetworkInterface.ID == nil {
+		return ""
+	}
 	instanceNetworkInterfaceOpts := &vpcv1.ListInstanceNetworkInterfaceFloatingIpsOptions{
 		InstanceID:         instance.ID,
 		NetworkInterfaceID: instance.PrimaryNetworkInterface.ID,
 	}
 
-	networkInterfaceIps, _, _ := vpcService.ListInstanceNetworkInterfaceFloatingIps(instanceNetworkInterfaceOpts)
+	networkInterfaceIps, _, err := vpcService.ListInstanceNetworkInterfaceFloatingIps(instanceNetworkInterfaceOpts)
+	if err != nil || networkInterfaceIps == nil {
+		return ""
+	}
 	if len(networkInterfaceIps.FloatingIps) > 0 {
 		return *networkInterfaceIps.FloatingIps[0].Address
 	}
