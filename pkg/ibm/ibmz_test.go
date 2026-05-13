@@ -545,5 +545,148 @@ var _ = Describe("IBM System Z Unit Tests", func() {
 				Expect(ip).Should(Equal("52.99.88.77"))
 			})
 		})
+		})
+		
+		
+		When("ListInstanceNetworkInterfaceFloatingIps returns an error", func() {
+			It("should fall through to assignFloatingIP and return an available IP", func() {
+				instance := &vpcv1.Instance{
+					ID:                      ptr("inst-1"),
+					Status:                  ptr(vpcv1.InstanceStatusRunningConst),
+					PrimaryNetworkInterface: &vpcv1.NetworkInterfaceInstanceContextReference{ID: ptr("nic-1")},
+					ResourceGroup:           &vpcv1.ResourceGroupReference{ID: ptr("rg-1")},
+				}
+				mock.ListNetIfaceFloatingIpsErr = errors.New("network interface lookup failed")
+				mock.ListFloatingIpsOutput = &vpcv1.FloatingIPCollection{
+					FloatingIps: []vpcv1.FloatingIP{
+						{ID: ptr("fip-1"), Address: ptr("52.10.20.30"), Status: ptr(vpcv1.FloatingIPStatusAvailableConst)},
+					},
+				}
+
+				ip, err := cfg.assignIPToInstance(instance, mock)
+
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(ip).Should(Equal("52.10.20.30"))
+			})
+		})
+
+		When("the instance has nil PrimaryNetworkInterface", func() {
+			It("should gracefully fall through assignNetworkInterfaceFloatingIP without panicking", func() {
+				instance := &vpcv1.Instance{
+					ID:                      ptr("inst-1"),
+					Status:                  ptr(vpcv1.InstanceStatusRunningConst),
+					PrimaryNetworkInterface: nil,
+					ResourceGroup:           &vpcv1.ResourceGroupReference{ID: ptr("rg-1")},
+				}
+				// No available floating IPs so assignFloatingIP returns ("", nil)
+				// without accessing PrimaryNetworkInterface.
+				mock.ListFloatingIpsOutput = &vpcv1.FloatingIPCollection{}
+				// CreateFloatingIP fails so assignNewlyAllocatedIP returns early
+				// without accessing PrimaryNetworkInterface.
+				mock.CreateFloatingIPErr = errors.New("quota exceeded")
+
+				_, err := cfg.assignIPToInstance(instance, mock)
+
+				// The nil guard in assignNetworkInterfaceFloatingIP prevents a panic.
+				// The function continues through the status switch and eventually
+				// returns the CreateFloatingIP error.
+				Expect(err).Should(MatchError(ContainSubstring("failed to create a floating IP address")))
+			})
+		})
+
+		DescribeTable("status-based behavior in assignIPToInstance",
+			func(status string, expectedIP string, expectErr bool, errSubstring string) {
+				instance := &vpcv1.Instance{
+					ID:                      ptr("inst-1"),
+					Status:                  ptr(status),
+					PrimaryNetworkInterface: &vpcv1.NetworkInterfaceInstanceContextReference{ID: ptr("nic-1")},
+					ResourceGroup:           &vpcv1.ResourceGroupReference{ID: ptr("rg-1")},
+				}
+				mock.ListNetIfaceFloatingIpsOutput = &vpcv1.FloatingIPUnpaginatedCollection{}
+
+				ip, err := cfg.assignIPToInstance(instance, mock)
+
+				if expectErr {
+					Expect(err).Should(MatchError(ContainSubstring(errSubstring)))
+				} else {
+					Expect(err).ShouldNot(HaveOccurred())
+				}
+				Expect(ip).Should(Equal(expectedIP))
+			},
+			Entry("stopped returns error",
+				vpcv1.InstanceStatusStoppedConst, "", true, "instance was stopped"),
+			Entry("stopping returns error",
+				vpcv1.InstanceStatusStoppingConst, "", true, "instance was stopping"),
+			Entry("restarting returns empty string without error",
+				vpcv1.InstanceStatusRestartingConst, "", false, ""),
+			Entry("starting returns empty string without error",
+				vpcv1.InstanceStatusStartingConst, "", false, ""),
+		)
+
+		When("no floating IPs are available and CreateFloatingIP fails", func() {
+			It("should return an error about failing to create a floating IP", func() {
+				instance := &vpcv1.Instance{
+					ID:                      ptr("inst-1"),
+					Status:                  ptr(vpcv1.InstanceStatusRunningConst),
+					PrimaryNetworkInterface: &vpcv1.NetworkInterfaceInstanceContextReference{ID: ptr("nic-1")},
+					ResourceGroup:           &vpcv1.ResourceGroupReference{ID: ptr("rg-1")},
+				}
+				mock.ListNetIfaceFloatingIpsOutput = &vpcv1.FloatingIPUnpaginatedCollection{}
+				mock.ListFloatingIpsOutput = &vpcv1.FloatingIPCollection{}
+				mock.CreateFloatingIPErr = errors.New("quota exceeded")
+
+				_, err := cfg.assignIPToInstance(instance, mock)
+
+				Expect(err).Should(MatchError(ContainSubstring("failed to create a floating IP address")))
+			})
+		})
+
+		When("an available floating IP exists but AddInstanceNetworkInterfaceFloatingIP fails", func() {
+			It("should return an error about failing to assign the floating IP", func() {
+				instance := &vpcv1.Instance{
+					ID:                      ptr("inst-1"),
+					Status:                  ptr(vpcv1.InstanceStatusRunningConst),
+					PrimaryNetworkInterface: &vpcv1.NetworkInterfaceInstanceContextReference{ID: ptr("nic-1")},
+					ResourceGroup:           &vpcv1.ResourceGroupReference{ID: ptr("rg-1")},
+				}
+				mock.ListNetIfaceFloatingIpsOutput = &vpcv1.FloatingIPUnpaginatedCollection{}
+				mock.ListFloatingIpsOutput = &vpcv1.FloatingIPCollection{
+					FloatingIps: []vpcv1.FloatingIP{
+						{ID: ptr("fip-1"), Address: ptr("52.10.20.30"), Status: ptr(vpcv1.FloatingIPStatusAvailableConst)},
+					},
+				}
+				mock.AddNetIfaceFloatingIPErr = errors.New("permission denied")
+
+				_, err := cfg.assignIPToInstance(instance, mock)
+
+				Expect(err).Should(MatchError(ContainSubstring("failed to assign the floating IP")))
+			})
+		})
+
+		When("a new floating IP is created but assigning it to the network interface fails", func() {
+			It("should return an error about failing to assign the floating IP address", func() {
+				instance := &vpcv1.Instance{
+					ID:                      ptr("inst-1"),
+					Status:                  ptr(vpcv1.InstanceStatusRunningConst),
+					PrimaryNetworkInterface: &vpcv1.NetworkInterfaceInstanceContextReference{ID: ptr("nic-1")},
+					ResourceGroup:           &vpcv1.ResourceGroupReference{ID: ptr("rg-1")},
+				}
+				mock.ListNetIfaceFloatingIpsOutput = &vpcv1.FloatingIPUnpaginatedCollection{}
+				mock.ListFloatingIpsOutput = &vpcv1.FloatingIPCollection{
+					FloatingIps: []vpcv1.FloatingIP{
+						{ID: ptr("fip-old"), Address: ptr("52.0.0.1"), Status: ptr("deleting")},
+					},
+				}
+				mock.CreateFloatingIPOutput = &vpcv1.FloatingIP{
+					ID:      ptr("new-fip-1"),
+					Address: ptr("52.99.88.77"),
+				}
+				mock.AddNetIfaceFloatingIPErr = errors.New("attach failed")
+
+				_, err := cfg.assignIPToInstance(instance, mock)
+
+				Expect(err).Should(MatchError(ContainSubstring("failed to assign the floating IP address")))
+			})
+		})
 	})
 })
