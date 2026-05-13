@@ -26,8 +26,8 @@ type mockVpcClient struct {
 	DeleteInstanceErr    error
 
 	ListNetIfaceFloatingIpsOutput *vpcv1.FloatingIPUnpaginatedCollection
-	ListNetIfaceFloatingIpsErr   error
-	ListFloatingIpsOutput        *vpcv1.FloatingIPCollection
+	ListNetIfaceFloatingIpsErr    error
+	ListFloatingIpsOutput         *vpcv1.FloatingIPCollection
 	ListFloatingIpsErr            error
 	AddNetIfaceFloatingIPOutput   *vpcv1.FloatingIP
 	AddNetIfaceFloatingIPErr      error
