@@ -26,7 +26,8 @@ type mockVpcClient struct {
 	DeleteInstanceErr    error
 
 	ListNetIfaceFloatingIpsOutput *vpcv1.FloatingIPUnpaginatedCollection
-	ListFloatingIpsOutput         *vpcv1.FloatingIPCollection
+	ListNetIfaceFloatingIpsErr   error
+	ListFloatingIpsOutput        *vpcv1.FloatingIPCollection
 	ListFloatingIpsErr            error
 	AddNetIfaceFloatingIPOutput   *vpcv1.FloatingIP
 	AddNetIfaceFloatingIPErr      error
@@ -67,7 +68,7 @@ func (m *mockVpcClient) DeleteInstanceWithContext(_ context.Context, _ *vpcv1.De
 }
 
 func (m *mockVpcClient) ListInstanceNetworkInterfaceFloatingIps(_ *vpcv1.ListInstanceNetworkInterfaceFloatingIpsOptions) (*vpcv1.FloatingIPUnpaginatedCollection, *core.DetailedResponse, error) {
-	return m.ListNetIfaceFloatingIpsOutput, nil, nil
+	return m.ListNetIfaceFloatingIpsOutput, nil, m.ListNetIfaceFloatingIpsErr
 }
 
 func (m *mockVpcClient) ListFloatingIps(_ *vpcv1.ListFloatingIpsOptions) (*vpcv1.FloatingIPCollection, *core.DetailedResponse, error) {
