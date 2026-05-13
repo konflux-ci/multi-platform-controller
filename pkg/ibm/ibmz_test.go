@@ -545,7 +545,7 @@ var _ = Describe("IBM System Z Unit Tests", func() {
 				Expect(ip).Should(Equal("52.99.88.77"))
 			})
 		})
-		})
+		
 		
 		
 		When("ListInstanceNetworkInterfaceFloatingIps returns an error", func() {
