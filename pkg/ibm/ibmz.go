@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -37,10 +38,28 @@ func CreateIbmZCloudConfig(arch string, config map[string]string, systemNamespac
 	}
 }
 
+// getVpcClient returns the injected vpcAPI (for tests) or creates a real
+// one backed by an authenticated IBM VPC service.
+func (iz IBMZDynamicConfig) getVpcClient(ctx context.Context, kubeClient client.Client) (vpcAPI, error) {
+	if iz.vClient != nil {
+		// Guard against typed-nil interface values (e.g. var c *mockVpcClient; cfg.vClient = c)
+		v := reflect.ValueOf(iz.vClient)
+		if v.Kind() == reflect.Ptr && v.IsNil() {
+			return nil, fmt.Errorf("vClient is a typed-nil %T; assign a real value or leave nil", iz.vClient)
+		}
+		return iz.vClient, nil
+	}
+	vpcService, err := iz.createAuthenticatedVpcService(ctx, kubeClient)
+	if err != nil {
+		return nil, err
+	}
+	return vpcService, nil
+}
+
 // LaunchInstance creates a System Z Virtual Server instance and returns its identifier. This function is implemented as
 // part of the CloudProvider interface, which is why some of the arguments are unused for this particular implementation.
 func (iz IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context.Context, taskRunID string, instanceTag string, _ map[string]string) (cloud.InstanceIdentifier, error) {
-	vpcService, err := iz.createAuthenticatedVpcService(ctx, kubeClient)
+	vpcService, err := iz.getVpcClient(ctx, kubeClient)
 	if err != nil {
 		return "", fmt.Errorf("failed to create an authenticated VPC service: %w", err)
 	}
@@ -122,7 +141,7 @@ func (iz IBMZDynamicConfig) LaunchInstance(kubeClient client.Client, ctx context
 
 // CountInstances returns the number of System Z virtual server instances whose names start with instanceTag.
 func (iz IBMZDynamicConfig) CountInstances(kubeClient client.Client, ctx context.Context, instanceTag string) (int, error) {
-	vpcService, err := iz.createAuthenticatedVpcService(ctx, kubeClient)
+	vpcService, err := iz.getVpcClient(ctx, kubeClient)
 	if err != nil {
 		return -1, fmt.Errorf("failed to create an authenticated VPC service: %w", err)
 	}
@@ -146,7 +165,7 @@ func (iz IBMZDynamicConfig) CountInstances(kubeClient client.Client, ctx context
 
 // ListInstances returns a collection of accessible System Z virtual server instances whose names start with instanceTag.
 func (iz IBMZDynamicConfig) ListInstances(kubeClient client.Client, ctx context.Context, instanceTag string) ([]cloud.CloudVMInstance, error) {
-	vpcService, err := iz.createAuthenticatedVpcService(ctx, kubeClient)
+	vpcService, err := iz.getVpcClient(ctx, kubeClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create an authenticated VPC service: %w", err)
 	}
@@ -161,10 +180,14 @@ func (iz IBMZDynamicConfig) ListInstances(kubeClient client.Client, ctx context.
 		return nil, fmt.Errorf("failed to list VPC instances in the VPC network %s: %w", *vpc.ID, err)
 	}
 
+	pingFn := iz.pingFunc
+	if pingFn == nil {
+		pingFn = checkIfIpIsLive
+	}
+
 	vmInstances := []cloud.CloudVMInstance{}
 	log := logr.FromContextOrDiscard(ctx)
 
-	// Ensure all listed instances have a reachable IP address
 	for _, instance := range vpcInstances.Instances {
 		if strings.HasPrefix(*instance.Name, instanceTag) {
 			addr, err := iz.assignIPToInstance(&instance, vpcService)
@@ -173,7 +196,7 @@ func (iz IBMZDynamicConfig) ListInstances(kubeClient client.Client, ctx context.
 				log.Info(msg, "instanceID", *instance.ID)
 				continue
 			}
-			if err = checkIfIpIsLive(ctx, addr); err != nil {
+			if err = pingFn(ctx, addr); err != nil {
 				msg := fmt.Sprintf("WARN: failed to check if IP address is live - %s; not listing instance", err.Error())
 				log.Info(msg, "instanceID", *instance.ID)
 				continue
@@ -193,7 +216,7 @@ func (iz IBMZDynamicConfig) ListInstances(kubeClient client.Client, ctx context.
 // GetInstanceAddress returns the IP Address associated with the instanceID System Z virtual server instance.
 func (iz IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) (string, error) {
 	log := logr.FromContextOrDiscard(ctx)
-	vpcService, err := iz.createAuthenticatedVpcService(ctx, kubeClient)
+	vpcService, err := iz.getVpcClient(ctx, kubeClient)
 	if err != nil {
 		return "", fmt.Errorf("failed to create an authenticated VPC service: %w", err)
 	}
@@ -209,7 +232,11 @@ func (iz IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx con
 		return "", fmt.Errorf("failed to look up/assign an IP address for instance %s: %w", instanceId, err)
 	}
 	if ip != "" {
-		if err = checkIfIpIsLive(ctx, ip); err != nil {
+		pingFn := iz.pingFunc
+		if pingFn == nil {
+			pingFn = checkIfIpIsLive
+		}
+		if err = pingFn(ctx, ip); err != nil {
 			return "", nil
 		}
 	}
@@ -219,7 +246,7 @@ func (iz IBMZDynamicConfig) GetInstanceAddress(kubeClient client.Client, ctx con
 // TerminateInstance tries to delete a specific System Z virtual server instance for 10 minutes or until the instance is deleted.
 func (iz IBMZDynamicConfig) TerminateInstance(kubeClient client.Client, ctx context.Context, instanceId cloud.InstanceIdentifier) error {
 	log := logr.FromContextOrDiscard(ctx)
-	vpcService, err := iz.createAuthenticatedVpcService(ctx, kubeClient)
+	vpcService, err := iz.getVpcClient(ctx, kubeClient)
 	if err != nil {
 		return fmt.Errorf("failed to create an authenticated VPC service: %w", err)
 	}
@@ -277,7 +304,7 @@ func (iz IBMZDynamicConfig) GetState(kubeClient client.Client, ctx context.Conte
 		"updating",
 		"waiting",
 	}
-	vpcService, err := iz.createAuthenticatedVpcService(ctx, kubeClient)
+	vpcService, err := iz.getVpcClient(ctx, kubeClient)
 	if err != nil {
 		return "", fmt.Errorf("failed to create an authenticated VPC service: %w", err)
 	}
@@ -342,4 +369,12 @@ type IBMZDynamicConfig struct {
 	// PrivateIP is whether the cloud instance will use an IP address provided by the
 	// associated Virtual Private Cloud service.
 	PrivateIP bool
+
+	// vClient allows tests to inject a mock VPC API client.
+	// When nil, getVpcClient builds a real client from IBM credentials.
+	vClient vpcAPI
+
+	// pingFunc allows tests to inject a mock for SSH connectivity checks.
+	// When nil, the real checkIfIpIsLive (TCP dial to port 22) is used.
+	pingFunc func(ctx context.Context, ip string) error
 }
