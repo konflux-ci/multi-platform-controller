@@ -1,10 +1,11 @@
 name: Validate PR - agent files protection
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, reopened, labeled, unlabeled]
     branches: [main]
 permissions:
   contents: read
+  members: read
 jobs:
   check-agent-files:
     name: Check agent file changes
@@ -60,8 +61,11 @@ jobs:
                 });
                 return data.state === 'active';
               } catch (error) {
-                // 404 means user is not a member
-                return false;
+                if (error.status === 404) {
+                  return false;
+                }
+                console.log(`Warning: team membership check for @${username} failed with status ${error.status}: ${error.message}`);
+                throw error;
               }
             }
 
