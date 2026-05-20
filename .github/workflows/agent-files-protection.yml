@@ -5,7 +5,7 @@ on:
     branches: [main]
 permissions:
   contents: read
-  members: read
+  pull-requests: read
 jobs:
   check-agent-files:
     name: Check agent file changes
@@ -27,8 +27,8 @@ jobs:
               '.claude/',
             ];
 
-            // Step 1: Get changed files
-            const { data: files } = await github.rest.pulls.listFiles({
+            // Step 1: Get all changed files (paginated)
+            const files = await github.paginate(github.rest.pulls.listFiles, {
               owner: context.repo.owner,
               repo: context.repo.repo,
               pull_number: context.payload.pull_request.number,
@@ -53,20 +53,22 @@ jobs:
 
             // Helper: check team membership
             async function isTeamMember(username) {
-              try {
-                const { data } = await github.rest.teams.getMembershipForUserInOrg({
-                  org: 'konflux-ci',
-                  team_slug: 'infrastructure',
-                  username: username,
-                });
-                return data.state === 'active';
-              } catch (error) {
-                if (error.status === 404) {
-                  return false;
-                }
-                console.log(`Warning: team membership check for @${username} failed with status ${error.status}: ${error.message}`);
-                throw error;
+              const response = await github.request('GET /orgs/{org}/teams/{team_slug}/memberships/{username}', {
+                org: 'konflux-ci',
+                team_slug: 'infrastructure',
+                username: username,
+              }).catch(e => e);
+
+              if (response.status === 200) {
+                return response.data.state === 'active';
               }
+              if (response.status === 404) {
+                return false;
+              }
+              core.setFailed(
+                `Team membership check for @${username} failed with HTTP ${response.status}: ${response.message}`
+              );
+              return false;
             }
 
             // Step 4-5: Check PR author membership
@@ -93,8 +95,8 @@ jobs:
               return;
             }
 
-            // Step 8-9: Label exists, verify who applied it
-            const { data: events } = await github.rest.issues.listEvents({
+            // Step 8-9: Label exists, verify who applied it (paginated)
+            const events = await github.paginate(github.rest.issues.listEvents, {
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.pull_request.number,
