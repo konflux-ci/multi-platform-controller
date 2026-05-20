@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -66,6 +67,10 @@ func CreateIBMPowerCloudConfig(platform string, config map[string]string, system
 // one backed by an authenticated IBM BaseService.
 func (pw IBMPowerDynamicConfig) getPowerClient(ctx context.Context, kubeClient client.Client) (powerAPI, error) {
 	if pw.pClient != nil {
+		v := reflect.ValueOf(pw.pClient)
+		if v.Kind() == reflect.Ptr && v.IsNil() {
+			return nil, fmt.Errorf("pClient is a typed-nil %T; assign a real value or leave nil", pw.pClient)
+		}
 		return pw.pClient, nil
 	}
 	service, err := pw.createAuthenticatedBaseService(ctx, kubeClient)
