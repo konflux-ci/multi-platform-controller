@@ -29,6 +29,8 @@ Watches TaskRuns, provisions hosts via AWS/IBM Cloud, and manages SSH credential
 
 ## Key Conventions
 
+- **Go standards:** before writing or reviewing Go code, read `skills/go-coding-standards.md`
+- **Test standards:** before writing or reviewing tests, read `skills/testing-standards.md`
 - **Pre-push:** run `make fmt`, `make lint`, `make test` — iterate until all pass before pushing
 - **Coverage:** tracked by codecov. Aim for 100% patch coverage; never drop repository below 76%
 - **Large PRs (>8 files):** split into smaller chunks with tests, or pair a code PR with a test PR
