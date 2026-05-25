@@ -29,8 +29,6 @@ Watches TaskRuns, provisions hosts via AWS/IBM Cloud, and manages SSH credential
 
 ## Key Conventions
 
-- **Go standards:** before writing or reviewing Go code, read `skills/go-coding-standards.md`
-- **Test standards:** before writing or reviewing tests, read `skills/testing-standards.md`
 - **Pre-push:** run `make fmt`, `make lint`, `make test` — iterate until all pass before pushing
 - **Coverage:** tracked by codecov. Aim for 100% patch coverage; never drop repository below 76%
 - **Large PRs (>8 files):** split into smaller chunks with tests, or pair a code PR with a test PR
@@ -56,13 +54,11 @@ Watches TaskRuns, provisions hosts via AWS/IBM Cloud, and manages SSH credential
   `ConfigMapLabel`, `MultiPlatformSecretLabel`, `FailedHosts`, `CloudInstanceId`;
   `pkg/constant/constant.go` has `AssignedHost`, `TargetPlatformLabel`, `WaitingForPlatformLabel`.
 
-## Skills Reference
+## Skills
 
-For deeper guidance on specific topics, see:
-
-- Architecture, allocation strategies, reconciliation flow: `skills/developer-guide.md`
-- Go coding standards: `skills/go-coding-standards.md`
-- Ginkgo/Gomega test conventions: `skills/testing-standards.md`
-- CI workflows, PR lifecycle, agentic workflow details: `skills/pr-workflow.md`
-- Receiving and responding to code review: `skills/receiving-code-review.md`
-- Interactive design workflow (human-paired sessions): `skills/brainstorming-workflow.md`
+- Before writing or reviewing Go code, read `skills/go-coding-standards.md`
+- Before writing or reviewing tests, read `skills/testing-standards.md`
+- Before opening a PR or running CI workflows, read `skills/pr-workflow.md`
+- When receiving code review feedback, read `skills/receiving-code-review.md` before implementing suggestions
+- When working interactively on new features or significant changes, read `skills/brainstorming-workflow.md` before writing code
+- When understanding the codebase architecture, allocation strategies, or reconciliation flow, read `skills/developer-guide.md`
