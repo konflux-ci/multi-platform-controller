@@ -47,7 +47,7 @@ Ask one question at a time. Prefer multiple choice over open-ended questions.
 
 Everything in Path B, plus:
 
-1. **Write a design spec** and save it to `plans_n_docs/`.
+1. **Write a design spec**. Ask the human where they want to save it to.
 2. **Break into an ordered implementation plan** with file paths and dependencies.
 3. **Optionally dispatch sub-agents** for independent tasks if the plan supports parallelism.
 
