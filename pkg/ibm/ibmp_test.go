@@ -110,6 +110,19 @@ var _ = Describe("IBM Power Unit Tests", func() {
 		})
 	})
 
+	Describe("getPowerClient", func() {
+		When("pClient is a typed-nil pointer", func() {
+			It("should return an error instead of panicking", func(ctx SpecContext) {
+				var nilClient *mockPowerClient
+				cfg := IBMPowerDynamicConfig{pClient: nilClient}
+
+				_, err := cfg.getPowerClient(ctx, nil)
+
+				Expect(err).Should(MatchError(ContainSubstring("typed-nil")))
+			})
+		})
+	})
+
 	Describe("CloudProvider methods", func() {
 		var (
 			mock *mockPowerClient
