@@ -74,7 +74,7 @@ stringData:
         log_statements:
           - context: resource
             statements:
-              - set(attributes["s3.prefix"], Concat(["GITHUB_RUN_ID", attributes["host.id"]], "/"))
+              - set(attributes["s3.prefix"], Concat(["${env:GITHUB_RUN_ID}", attributes["host.id"]], "/"))
     receivers:
       filelog/e2e_audit:
         include:
