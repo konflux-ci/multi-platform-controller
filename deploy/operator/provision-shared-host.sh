@@ -40,8 +40,8 @@ if command -v otelcol-contrib >/dev/null 2>&1; then
   sudo systemctl restart otelcol-contrib
 else
   if [[ -f /etc/otelcol-contrib/config_mpc.yaml ]]; then
-    PKG="otelcol-contrib_0.154.0_${PLATFORM}.rpm"
-    URL="https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.154.0/\$PKG"
+    PKG="otelcol-contrib_0.150.0_${PLATFORM}.rpm"
+    URL="https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.150.0/\$PKG"
     echo "Downloading: \$URL"
     if ! curl -LO --fail "\$URL"; then
       echo "Warning: failed to download otelcol-contrib (GitHub may be unavailable). Skipping installation."
