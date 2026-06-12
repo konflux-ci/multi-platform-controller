@@ -43,7 +43,7 @@ else
     PKG="otelcol-contrib_0.150.0_${PLATFORM}.rpm"
     URL="https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.150.0/\$PKG"
     echo "Downloading: \$URL"
-    if ! curl -LO --fail "\$URL"; then
+    if ! curl -LO --fail --connect-timeout 10 --max-time 120 --retry 3 --retry-all-errors "\$URL"; then
       echo "Warning: failed to download otelcol-contrib (GitHub may be unavailable). Skipping installation."
     elif ! sudo rpm -ivh "\$PKG"; then
       echo "Warning: failed to install otelcol-contrib RPM. Skipping installation."
