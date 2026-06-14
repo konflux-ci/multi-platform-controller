@@ -40,27 +40,31 @@ if command -v otelcol-contrib >/dev/null 2>&1; then
   sudo systemctl restart otelcol-contrib
 else
   if [[ -f /etc/otelcol-contrib/config_mpc.yaml ]]; then
-    PKG="otelcol-contrib_0.140.0_${PLATFORM}.rpm"
-    URL="https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.140.0/\$PKG"
+    PKG="otelcol-contrib_0.151.0_${PLATFORM}.rpm"
+    URL="https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.151.0/\$PKG"
     echo "Downloading: \$URL"
-    curl -LO "\$URL" || exit 1
-    sudo rpm -ivh "\$PKG" || exit 1
-    # Ensure config dir exists
-    sudo install -d /etc/otelcol-contrib
+    if ! curl -LO --fail --connect-timeout 10 --max-time 120 --retry 3 --retry-all-errors "\$URL"; then
+      echo "Warning: failed to download otelcol-contrib (GitHub may be unavailable). Skipping installation."
+    elif ! sudo rpm -ivh "\$PKG"; then
+      echo "Warning: failed to install otelcol-contrib RPM. Skipping installation."
+    else
+      # Ensure config dir exists
+      sudo install -d /etc/otelcol-contrib
 
-    # Patch config file name (overwrite)
-    echo 'OTELCOL_OPTIONS="--config=/etc/otelcol-contrib/config_mpc.yaml"' \
-      | sudo tee /etc/otelcol-contrib/otelcol-contrib.conf >/dev/null
+      # Patch config file name (overwrite)
+      echo 'OTELCOL_OPTIONS="--config=/etc/otelcol-contrib/config_mpc.yaml"' \
+        | sudo tee /etc/otelcol-contrib/otelcol-contrib.conf >/dev/null
 
-    # Add user to groups BEFORE restart
-    sudo usermod -aG adm,systemd-journal otelcol-contrib
+      # Add user to groups BEFORE restart
+      sudo usermod -aG adm,systemd-journal otelcol-contrib
 
-    # Set ACLs to read the audit log
-    sudo setfacl -m u:otelcol-contrib:r /var/log/audit/audit.log
-    sudo setfacl -m u:otelcol-contrib:rx /var/log/audit
+      # Set ACLs to read the audit log
+      sudo setfacl -m u:otelcol-contrib:r /var/log/audit/audit.log
+      sudo setfacl -m u:otelcol-contrib:rx /var/log/audit
 
-    sudo systemctl daemon-reload
-    sudo systemctl restart otelcol-contrib
+      sudo systemctl daemon-reload
+      sudo systemctl restart otelcol-contrib
+    fi
   else
     echo "Opentelemetry config not found, skipping installation."
   fi
