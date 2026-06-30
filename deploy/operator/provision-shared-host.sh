@@ -209,7 +209,7 @@ DIR=$(echo /home/"$USERNAME" | base64 -w 0)
 if [ -e "/tls/tls.crt" ]; then
   echo "{message: \"Creating secret file using TLS certificate...\", level: \"INFO\"}"
   KEY=$(cat id_rsa)
-  if ! otp_raw=$(curl --fail --cacert /tls/tls.crt -XPOST -d "$KEY" https://multi-platform-otp-server.multi-platform-controller.svc.cluster.local/store-key); then
+  if ! otp_raw=$(curl --fail --connect-timeout 5 --max-time 30 --retry 3 --retry-all-errors --retry-delay 1 --cacert /tls/tls.crt -XPOST -d "$KEY" https://multi-platform-otp-server.multi-platform-controller.svc.cluster.local/store-key); then
     echo "{message: \"Failed to store SSH key in OTP server. Please, retry build in a few minutes, and if problem persists, please report it as an MPC bug.\", level: \"ERROR\"}" >&2
     exit 1
   fi
