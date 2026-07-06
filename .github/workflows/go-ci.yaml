@@ -30,7 +30,7 @@ jobs:
           version: ${{ steps.golangci_version.outputs.version }}
           args: "--timeout=10m --build-tags='normal periodic' --output.sarif.path=out/go-lint.sarif"
       - name: Upload sarif report
-        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        uses: github/codeql-action/upload-sarif@54f647b7e1bb85c95cddabcd46b0c578ec92bc1a # v4.36.3
         if: ${{ always() && github.event_name != 'merge_group' }}
         with:
           sarif_file: out/go-lint.sarif
