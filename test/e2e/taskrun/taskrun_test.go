@@ -183,7 +183,7 @@ var _ = Describe("TaskRun execution", func() {
 					Steps: []tekv1.Step{
 						{
 							Name:   "verify-platform",
-							Image:  "quay.io/konflux-ci/buildah-task:latest",
+							Image:  "quay.io/konflux-ci/task-runner:latest",
 							Script: script,
 							VolumeMounts: []corev1.VolumeMount{
 								{
