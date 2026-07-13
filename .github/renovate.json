@@ -83,7 +83,7 @@
         "test/e2e/taskrun/taskrun_test.go"
       ],
       "matchStrings": [
-        "(?s)// renovate: datasource=(?<datasource>[a-z-]+?)(?: depName=(?<depName>.+?))? packageName=(?<packageName>.+?).*?Image:\\s+\"[^\"]+:(?<currentValue>[^\"]+)\""
+        "(?s)// renovate: datasource=(?<datasource>[a-z-]+?)(?: depName=(?<depName>\\S+))? packageName=(?<packageName>\\S+).*?Image:\\s+\"[^\"]+:(?<currentValue>[^\"]+)\""
       ]
     }
   ]
