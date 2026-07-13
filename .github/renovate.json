@@ -75,6 +75,16 @@
       "matchStrings": [
         "#\\s+?renovate:\\s+?datasource=(?<datasource>[a-z-]+?)(?: depName=(?<depName>.+?))? packageName=(?<packageName>.+?)(?: versioning=(?<versioning>[a-z-]+?))?\\s+?.+?_VERSION\\s+?\\?=\\s+?(?<currentValue>.+?)\\s"
       ]
+    },
+    {
+      "customType": "regex",
+      "description": "Update container images in e2e tests",
+      "managerFilePatterns": [
+        "test/e2e/taskrun/taskrun_test.go"
+      ],
+      "matchStrings": [
+        "(?s)// renovate: datasource=(?<datasource>[a-z-]+?)(?: depName=(?<depName>\\S+))? packageName=(?<packageName>\\S+).*?Image:\\s+\"[^\"]+:(?<currentValue>[^\"]+)\""
+      ]
     }
   ]
 }
