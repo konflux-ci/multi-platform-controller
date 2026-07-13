@@ -182,9 +182,9 @@ var _ = Describe("TaskRun execution", func() {
 					},
 					Steps: []tekv1.Step{
 						{
-							Name:  "verify-platform",
+							Name: "verify-platform",
 							// renovate: datasource=docker depName=task-runner packageName=quay.io/konflux-ci/task-runner
-							Image: "quay.io/konflux-ci/task-runner:2.1.0",
+							Image:  "quay.io/konflux-ci/task-runner:2.1.0",
 							Script: script,
 							VolumeMounts: []corev1.VolumeMount{
 								{
