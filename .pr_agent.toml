@@ -11,7 +11,8 @@ ignore_bot_pr = false
 [github_app]
 # Re-run review tools when new commits are pushed to an open PR.
 handle_push_trigger = true
+push_trigger_ignore_bot_commits = false
 push_commands = [
     "/describe --pr_description.final_update_message=false",
-    "/review",
+    "/agentic_review",
 ]
