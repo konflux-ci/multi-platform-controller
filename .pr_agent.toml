@@ -1,0 +1,17 @@
+[config]
+# Exclude CI/merge bots from review (supplements ignore_bot_pr).
+ignore_pr_authors = ["red-hat-konflux", "openshift-ci", "codecov", "github-merge-queue", "konflux-ci-qe-bot"]
+# Debug: dump active config on each run. Remove after validation.
+output_relevant_configurations = true
+
+[github]
+# Override default bot-PR skip so fullsend-ai-coder[bot] PRs get reviewed.
+ignore_bot_pr = false
+
+[github_app]
+# Re-run review tools when new commits are pushed to an open PR.
+handle_push_trigger = true
+push_commands = [
+    "/describe --pr_description.final_update_message=false",
+    "/review",
+]
