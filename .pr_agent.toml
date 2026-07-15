@@ -1,6 +1,6 @@
 [config]
 # Exclude CI/merge bots from review (supplements ignore_bot_pr).
-ignore_pr_authors = ["red-hat-konflux", "openshift-ci", "codecov", "github-merge-queue", "konflux-ci-qe-bot", "dependabot[bot]", "renovate[bot]"]
+ignore_pr_authors = ["red-hat-konflux", "openshift-ci", "codecov", "github-merge-queue", "konflux-ci-qe-bot", "dependabot", "renovate"]
 # Debug: dump active config on each run. Remove after validation.
 output_relevant_configurations = true
 
