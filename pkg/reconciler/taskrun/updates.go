@@ -15,10 +15,10 @@ import (
 )
 
 // UpdateHostPools Run the host update task periodically
-func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.Logger) {
+func UpdateHostPools(ctx context.Context, operatorNamespace string, client client.Client, log *logr.Logger) {
 	log.Info("running pooled host update")
 	cm := v12.ConfigMap{}
-	err := client.Get(context.Background(), types.NamespacedName{Namespace: operatorNamespace, Name: HostConfig}, &cm)
+	err := client.Get(ctx, types.NamespacedName{Namespace: operatorNamespace, Name: HostConfig}, &cm)
 	if err != nil {
 		log.Error(err, "Failed to read config to update hosts", "audit", "true")
 		return
@@ -105,7 +105,7 @@ func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.L
 					Value: *v1.NewStructuredValues(hostsConcurrency[host.Name]),
 				},
 			}
-			err = client.Create(context.Background(), &provision)
+			err = client.Create(ctx, &provision)
 		}()
 	}
 }
