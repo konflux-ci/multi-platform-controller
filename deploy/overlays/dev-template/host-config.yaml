@@ -95,11 +95,29 @@ data:
       Start-Service sshd
       Set-Service -Name sshd -StartupType 'Automatic'
 
-      # Grab the Public Key from AWS Metadata and configure authorized_keys
-      # This allows you to log in with your .pem/.ppk file instead of a password
+      # Grab the Public Key from AWS IMDS and configure authorized_keys.
+      # IMDS may not be reachable immediately during early boot, so retry.
       $MAGIC_IP = "169.254.169.254"
-      $IMDS_TOKEN = Invoke-RestMethod -Uri "http://${MAGIC_IP}/latest/api/token" -Method 'PUT' -Headers @{'X-aws-ec2-metadata-token-ttl-seconds' = '21600'}
-      $PUBKEY = Invoke-RestMethod -Uri "http://${MAGIC_IP}/latest/meta-data/public-keys/0/openssh-key" -Headers @{'X-aws-ec2-metadata-token' = $IMDS_TOKEN}
+      $maxRetries = 30
+      $PUBKEY = $null
+      for ($i = 1; $i -le $maxRetries; $i++) {
+        try {
+          $token = Invoke-RestMethod -Uri "http://${MAGIC_IP}/latest/api/token" `
+            -Method 'PUT' -Headers @{'X-aws-ec2-metadata-token-ttl-seconds' = '21600'} `
+            -TimeoutSec 5 -ErrorAction Stop
+          $PUBKEY = Invoke-RestMethod -Uri "http://${MAGIC_IP}/latest/meta-data/public-keys/0/openssh-key" `
+            -Headers @{'X-aws-ec2-metadata-token' = $token} `
+            -TimeoutSec 5 -ErrorAction Stop
+          break
+        } catch {
+          Write-Host "IMDS request failed (attempt $i/$maxRetries): $_"
+          if ($i -eq $maxRetries) {
+            Write-Error "Failed to retrieve SSH public key from IMDS after $maxRetries attempts. Exiting."
+            exit 1
+          }
+          Start-Sleep -Seconds 2
+        }
+      }
 
       # Ensure SSH_PATH folder was created
       $SSH_PATH = "C:\ProgramData\ssh"
