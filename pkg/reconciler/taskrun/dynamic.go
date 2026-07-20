@@ -2,7 +2,6 @@ package taskrun
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -48,7 +47,11 @@ func (r DynamicResolver) Deallocate(taskRun *ReconcileTaskRun, ctx context.Conte
 func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string) (reconcile.Result, error) {
 	log := logr.FromContextOrDiscard(ctx)
 	if tr.Annotations[FailedHosts] != "" {
-		return reconcile.Result{}, errors.New("failed to provision host")
+		log.Error(nil, "all provisioning attempts exhausted",
+			"failedHosts", tr.Annotations[FailedHosts],
+			"instanceTag", r.instanceTag,
+		)
+		return reconcile.Result{}, fmt.Errorf("failed to provision host, all attempts exhausted for instance tag %s (previously failed hosts: %s)", r.instanceTag, tr.Annotations[FailedHosts])
 	}
 
 	if tr.Annotations == nil {
@@ -59,8 +62,12 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 		startTime, err := strconv.ParseInt(allocStart, 10, 64)
 		if err == nil {
 			if startTime+r.timeout < time.Now().Unix() {
-				err = errors.New("timed out waiting for instance address")
-				log.Error(err, "timed out waiting for instance address")
+				err = fmt.Errorf("timed out waiting for instance address (instance: %s, instanceTag: %s, timeout: %ds)", tr.Annotations[CloudInstanceId], r.instanceTag, r.timeout)
+				log.Error(err, "timed out waiting for instance address",
+					"instanceId", tr.Annotations[CloudInstanceId],
+					"instanceTag", r.instanceTag,
+					"timeoutSeconds", r.timeout,
+				)
 				//ugh, try and unassign
 				terr := r.TerminateInstance(taskRun.client, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
 				if terr != nil {
@@ -85,7 +92,10 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 		//An instance already exists, so get its IP address
 		address, err := r.GetInstanceAddress(taskRun.client, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
 		if err != nil { // A permanent error occurred when fetching the IP address for the VM
-			log.Error(err, "failed to get instance address for cloud host")
+			log.Error(err, "failed to get instance address for cloud host",
+				"instanceId", tr.Annotations[CloudInstanceId],
+				"instanceTag", r.instanceTag,
+			)
 			//Try to delete the instance and unassign it from the TaskRun
 			terr := r.TerminateInstance(taskRun.client, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))
 			if terr != nil {
@@ -124,9 +134,13 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 				if unassignErr != nil {
 					log.Error(unassignErr, "failed to unassign instance from task after provisioning failure")
 				} else {
-					log.Error(err, "failed to provision cloud host")
+					log.Error(err, "failed to provision cloud host",
+						"instanceId", tr.Annotations[CloudInstanceId],
+						"instanceTag", r.instanceTag,
+						"address", address,
+					)
 				}
-				return reconcile.Result{}, err
+				return reconcile.Result{}, fmt.Errorf("failed to provision cloud host (instance: %s, address: %s): %w", tr.Annotations[CloudInstanceId], address, err)
 			}
 			return reconcile.Result{}, nil
 		} else { // A transient error (that wasn't returned) occurred when fetching the IP address for the VM
@@ -194,7 +208,10 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 	if err != nil {
 		launchErr := err
 		//launch failed
-		log.Error(err, "Failed to create cloud host")
+		log.Error(err, "Failed to create cloud host",
+			"instanceTag", r.instanceTag,
+			"platform", r.platform,
+		)
 		failureCount := 0
 		existingFailureString := tr.Annotations[CloudFailures]
 		if existingFailureString != "" {
