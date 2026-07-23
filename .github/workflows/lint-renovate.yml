@@ -1,0 +1,24 @@
+name: Lint renovate
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/renovate.json
+
+jobs:
+  lint-renovate:
+    name: Verify renovate manifests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
+
+      - name: Install check-jsonschema
+        run: pipx install check-jsonschema==0.37.4
+
+      - name: Lint manifests
+        run: |
+          check-jsonschema --builtin-schema vendor.renovate .github/renovate.json
