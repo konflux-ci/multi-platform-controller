@@ -1,6 +1,7 @@
 package ibm
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 
@@ -17,6 +18,15 @@ const maxAllowedErrors = 2
 var expectedInstanceNameFormat = regexp.MustCompile(`^[a-z0-9-]+-[0-9a-f]{16}x$`)
 
 var _ = Describe("IBM s390x Helper Functions", func() {
+
+	Describe("The checkIfIpIsLive function", func() {
+		When("provided with an unresolvable address", func() {
+			It("should return an error instead of panicking", func() {
+				err := checkIfIpIsLive(context.TODO(), "invalid-host-that-does-not-resolve.example.invalid")
+				Expect(err).Should(HaveOccurred())
+			})
+		})
+	})
 
 	// A unit test for createInstanceName which serves both ibmz.go and ibmp.go use to create virtual machines.
 	// Includes:
