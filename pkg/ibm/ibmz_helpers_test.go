@@ -1,6 +1,7 @@
 package ibm
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 
@@ -100,5 +101,18 @@ var _ = Describe("IBM s390x Helper Functions", func() {
 				"prod-s390x-enterprise-tag-at-validation-max45", // 45 chars - at 45 char validation limit
 				"System Z Max Tag Length"),
 		)
+	})
+
+	Describe("The checkIfIpIsLive function", func() {
+		When("the DNS resolution of the host fails", func() {
+			It("should return an error instead of panicking", func() {
+				ctx := context.Background()
+				// "a b c" contains spaces, which are invalid in DNS names
+				// — this causes net.ResolveTCPAddr to fail immediately
+				// (0ms, pure local resolution) without any network call.
+				err := checkIfIpIsLive(ctx, "a b c")
+				Expect(err).Should(HaveOccurred())
+			})
+		})
 	})
 })
