@@ -21,8 +21,8 @@ var _ = Describe("IBM s390x Helper Functions", func() {
 	Describe("The checkIfIpIsLive function", func() {
 		When("provided with an unresolvable address", func() {
 			It("should return an error instead of panicking", func(ctx SpecContext) {
-				err := checkIfIpIsLive(ctx, "invalid-host-that-does-not-resolve.example.invalid")
-				Expect(err).Should(HaveOccurred())
+				addr := "invalid-host-that-does-not-resolve.example.invalid"
+				Expect(checkIfIpIsLive(ctx, addr)).ShouldNot(Succeed())
 			})
 		})
 	})
