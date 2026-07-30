@@ -17,8 +17,8 @@ import (
 const systemNamespace = "multi-platform-controller"
 
 func stringEncode(s *string) *string {
-	base54val := base64.StdEncoding.EncodeToString([]byte(*s))
-	return &base54val
+	base64val := base64.StdEncoding.EncodeToString([]byte(*s))
+	return &base64val
 }
 
 var _ = Describe("Ec2 Unit Test Suit", func() {
