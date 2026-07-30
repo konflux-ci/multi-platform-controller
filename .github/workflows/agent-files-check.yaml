@@ -1,0 +1,223 @@
+name: Validate PR - Agent Configuration
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  REVIEW_LABEL: agent-config-review-required
+
+jobs:
+  block-vendor-dirs:
+    name: Block vendor-specific agent directories
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Check for vendor-specific directories
+        run: |
+          MATCHES=$(find . -path ./.git -prune -o \( -name '.claude' -o -name '.cursor' \) -print)
+          if [ -n "${MATCHES}" ]; then
+            echo "::error::Vendor-specific paths found in this repository. These are not allowed — use AGENTS.md and skills/ instead."
+            while IFS= read -r match; do
+              sanitized="${match//'%'/'%25'}"
+              sanitized="${sanitized//'::'/'%3A%3A'}"
+              sanitized="${sanitized//$'\n'/'%0A'}"
+              sanitized="${sanitized//$'\r'/'%0D'}"
+              echo "::error::Found: ${sanitized}"
+              if [ -d "${match}" ]; then
+                ls -la "${match}/"
+              fi
+            done <<< "${MATCHES}"
+            exit 1
+          fi
+          echo "No vendor-specific directories found."
+
+  detect-protected-changes:
+    name: Detect changes to protected agent files
+    runs-on: ubuntu-latest
+    outputs:
+      protected_changed: ${{ steps.check.outputs.protected_changed }}
+    env:
+      BASE_REF: ${{ github.event.action == 'synchronize' && github.event.before || github.event.pull_request.base.sha }}
+      HEAD_REF: ${{ github.event.action == 'synchronize' && github.event.after || github.event.pull_request.head.sha }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Fetch comparison refs
+        run: git fetch --depth=1 origin "${BASE_REF}" "${HEAD_REF}"
+
+      - name: Check for protected file changes
+        id: check
+        run: |
+          PROTECTED_PATHS="AGENTS.md CLAUDE.md GEMINI.md skills/"
+          PROTECTED_CHANGED=""
+
+          # Direct changes to protected paths
+          for pattern in ${PROTECTED_PATHS}; do
+            DIRECT=$(git diff --name-only "${BASE_REF}..${HEAD_REF}" -- "${pattern}")
+            if [ -n "${DIRECT}" ]; then
+              PROTECTED_CHANGED="${PROTECTED_CHANGED}\n${DIRECT}"
+            fi
+          done
+
+          # Indirect changes — scripts that write to protected files
+          for path in ${PROTECTED_PATHS}; do
+            CLEAN_PATH="${path%/}"
+            ESCAPED_PATH=$(printf '%s' "${CLEAN_PATH}" | sed 's/[.[\^$*+?()|{}]/\\&/g')
+            if git diff "${BASE_REF}..${HEAD_REF}" | grep -qE "(>>?[[:space:]]*['\"]?${ESCAPED_PATH}|cp[[:space:]]+.*${ESCAPED_PATH}|mv[[:space:]]+.*${ESCAPED_PATH}|tee[[:space:]]+.*${ESCAPED_PATH}|sed[[:space:]]+.*-i.*${ESCAPED_PATH})"; then
+              PROTECTED_CHANGED="${PROTECTED_CHANGED}\nIndirect write to ${CLEAN_PATH} detected in diff"
+            fi
+          done
+
+          if [ -n "${PROTECTED_CHANGED}" ]; then
+            echo "protected_changed=true" >> "${GITHUB_OUTPUT}"
+            echo "Protected agent files affected:"
+            echo -e "${PROTECTED_CHANGED}" | sed '/^$/d' | while IFS= read -r line; do
+              sanitized="${line//'%'/'%25'}"
+              sanitized="${sanitized//'::'/'%3A%3A'}"
+              sanitized="${sanitized//$'\n'/'%0A'}"
+              sanitized="${sanitized//$'\r'/'%0D'}"
+              echo "::warning::${sanitized}"
+            done
+          else
+            echo "protected_changed=false" >> "${GITHUB_OUTPUT}"
+            echo "No protected agent files affected."
+          fi
+
+  label-protected-changes:
+    name: Label PR when protected agent files change
+    needs: detect-protected-changes
+    if: needs.detect-protected-changes.outputs.protected_changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add review label
+        if: github.event.action != 'unlabeled' && !(github.event.action == 'labeled' && github.event.label.name == env.REVIEW_LABEL)
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const label = process.env.REVIEW_LABEL;
+            const labels = await github.rest.issues.listLabelsOnIssue({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            if (!labels.data.some(l => l.name === label)) {
+              try {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  labels: [label],
+                });
+              } catch (e) {
+                if (e.status === 404) {
+                  try {
+                    await github.rest.issues.createLabel({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      name: label,
+                      color: 'e11d48',
+                      description: 'PR modifies protected agent config files — requires CODEOWNERS review',
+                    });
+                  } catch (createErr) {
+                    if (createErr.status !== 422) {
+                      core.setFailed(`Failed to create label '${label}': ${createErr.message}`);
+                      return;
+                    }
+                  }
+                  await github.rest.issues.addLabels({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: context.issue.number,
+                    labels: [label],
+                  });
+                } else {
+                  core.setFailed(`Failed to add label '${label}': ${e.message}`);
+                  return;
+                }
+              }
+            }
+
+  enforce-and-block:
+    name: Enforce label policy and block if review required
+    needs: [detect-protected-changes, label-protected-changes]
+    if: always() && (needs.detect-protected-changes.outputs.protected_changed == 'true' || needs.detect-protected-changes.result == 'failure')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce CODEOWNERS-only label removal
+        if: github.event.action == 'unlabeled' && github.event.label.name == env.REVIEW_LABEL
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const label = process.env.REVIEW_LABEL;
+            const sender = context.payload.sender.login;
+            let isMember = false;
+            try {
+              const membership = await github.rest.teams.getMembershipForUserInOrg({
+                org: context.repo.owner,
+                team_slug: 'konflux-infra-team',
+                username: sender,
+              });
+              isMember = membership.data.state === 'active';
+            } catch (e) {
+              if (e.status === 404) {
+                isMember = false;
+              } else {
+                core.setFailed(
+                  `Failed to verify team membership for '${sender}': ${e.message}. Resolve the permission issue and re-run.`
+                );
+                return;
+              }
+            }
+            if (!isMember) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels: [label],
+              });
+              core.warning(
+                `User '${sender}' is not a member of konflux-infra-team. Label '${label}' has been re-added. Only infra-team reviewers can remove this label.`
+              );
+            }
+
+      - name: Fail if detection job failed
+        if: needs.detect-protected-changes.result == 'failure'
+        run: |
+          echo "::error::The detect-protected-changes job failed — check its logs for details. Blocking the PR until it passes."
+          exit 1
+
+      - name: Block PR if review label is present
+        env:
+          PROTECTED_CHANGED: ${{ needs.detect-protected-changes.outputs.protected_changed }}
+          PR_ACTION: ${{ github.event.action }}
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const label = process.env.REVIEW_LABEL;
+            const protectedChanged = process.env.PROTECTED_CHANGED === 'true';
+            const action = process.env.PR_ACTION;
+            const labels = await github.rest.issues.listLabelsOnIssue({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const hasLabel = labels.data.some(l => l.name === label);
+            if (hasLabel) {
+              core.setFailed(
+                `PR has '${label}' label. An infra-team reviewer must review the agent config changes and remove this label before merging.`
+              );
+            } else if (protectedChanged && !hasLabel && action !== 'unlabeled') {
+              core.setFailed(
+                `Protected agent files were changed but the '${label}' label is missing. The labeling job may have failed. Manual review is required before merging.`
+              );
+            }
