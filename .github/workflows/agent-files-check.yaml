@@ -65,7 +65,7 @@ jobs:
 
           # Direct changes to protected paths
           for pattern in ${PROTECTED_PATHS}; do
-            DIRECT=$(git diff --name-only "${BASE_REF}..${HEAD_REF}" -- "${pattern}")
+            DIRECT=$(git diff --no-ext-diff --name-only "${BASE_REF}..${HEAD_REF}" -- "${pattern}")
             if [ -n "${DIRECT}" ]; then
               PROTECTED_CHANGED="${PROTECTED_CHANGED}\n${DIRECT}"
             fi
@@ -75,7 +75,7 @@ jobs:
           for path in ${PROTECTED_PATHS}; do
             CLEAN_PATH="${path%/}"
             ESCAPED_PATH=$(printf '%s' "${CLEAN_PATH}" | sed 's/[.[\^$*+?()|{}]/\\&/g')
-            if git diff "${BASE_REF}..${HEAD_REF}" | grep -qE "(>>?[[:space:]]*['\"]?${ESCAPED_PATH}|cp[[:space:]]+.*${ESCAPED_PATH}|mv[[:space:]]+.*${ESCAPED_PATH}|tee[[:space:]]+.*${ESCAPED_PATH}|sed[[:space:]]+.*-i.*${ESCAPED_PATH})"; then
+            if git diff --no-ext-diff "${BASE_REF}..${HEAD_REF}" | grep -qE "(>>?[[:space:]]*['\"]?${ESCAPED_PATH}|cp[[:space:]]+.*${ESCAPED_PATH}|mv[[:space:]]+.*${ESCAPED_PATH}|tee[[:space:]]+.*${ESCAPED_PATH}|sed[[:space:]]+.*-i.*${ESCAPED_PATH})"; then
               PROTECTED_CHANGED="${PROTECTED_CHANGED}\nIndirect write to ${CLEAN_PATH} detected in diff"
             fi
           done
