@@ -1,7 +1,9 @@
 package ibm
 
 import (
+	"errors"
 	"fmt"
+	"net"
 	"regexp"
 
 	"github.com/konflux-ci/multi-platform-controller/test/utils"
@@ -20,9 +22,12 @@ var _ = Describe("IBM s390x Helper Functions", func() {
 
 	Describe("The checkIfIpIsLive function", func() {
 		When("provided with an unresolvable address", func() {
-			It("should return an error instead of panicking", func(ctx SpecContext) {
+			It("should return a DNS resolution error instead of panicking", func(ctx SpecContext) {
 				addr := "invalid-host-that-does-not-resolve.example.invalid"
-				Expect(checkIfIpIsLive(ctx, addr)).ShouldNot(Succeed())
+				err := checkIfIpIsLive(ctx, addr)
+				Expect(err).To(HaveOccurred())
+				var dnsErr *net.DNSError
+				Expect(errors.As(err, &dnsErr)).To(BeTrue(), "expected a *net.DNSError from ResolveTCPAddr, got: %v", err)
 			})
 		})
 	})
