@@ -1,12 +1,11 @@
 name: Validate PR - Agent Configuration
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
   contents: read
-  issues: write
 
 env:
   REVIEW_LABEL: agent-config-review-required
@@ -18,6 +17,8 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/head
 
       - name: Check for vendor-specific directories
         run: |
@@ -50,6 +51,7 @@ jobs:
       - name: Check out code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/head
           fetch-depth: 0
 
       - name: Fetch comparison refs
@@ -98,6 +100,9 @@ jobs:
     needs: detect-protected-changes
     if: needs.detect-protected-changes.outputs.protected_changed == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
     steps:
       - name: Add review label
         if: github.event.action != 'unlabeled' && !(github.event.action == 'labeled' && github.event.label.name == env.REVIEW_LABEL)
@@ -152,6 +157,9 @@ jobs:
     needs: [detect-protected-changes, label-protected-changes]
     if: always() && (needs.detect-protected-changes.outputs.protected_changed == 'true' || needs.detect-protected-changes.result == 'failure')
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
     steps:
       - name: Enforce CODEOWNERS-only label removal
         if: github.event.action == 'unlabeled' && github.event.label.name == env.REVIEW_LABEL
