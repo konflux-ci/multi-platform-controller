@@ -85,6 +85,27 @@
       "matchStrings": [
         "(?s)// renovate: datasource=(?<datasource>[a-z-]+?)(?: depName=(?<depName>\\S+))? packageName=(?<packageName>\\S+).*?Image:\\s+\"[^\"]+:(?<currentValue>[^\"]+)\""
       ]
+    },
+    {
+      "customType": "regex",
+      "description": "Update kind binary version in CI workflows",
+      "managerFilePatterns": [
+        ".github/workflows/**"
+      ],
+      "matchStrings": [
+        "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+)\\s+depName=(?<depName>[^\\s]+)\\n\\s*KIND_VERSION=(?<currentValue>v[^\\s]+)"
+      ],
+      "extractVersionTemplate": "^v(?<version>.+)$"
+    },
+    {
+      "customType": "regex",
+      "description": "Update kind node image in CI workflows",
+      "managerFilePatterns": [
+        ".github/workflows/**"
+      ],
+      "matchStrings": [
+        "kindest/node:(?<currentValue>v[^\\s#]+)\\s*#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+)\\s+depName=(?<depName>[^\\s]+)\\s+versioning=(?<versioning>[^\\s]+)"
+      ]
     }
   ]
 }
