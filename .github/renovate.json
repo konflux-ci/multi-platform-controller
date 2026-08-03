@@ -63,6 +63,14 @@
       "matchDepTypes": [
         "golang"
       ]
+    },
+    {
+      "groupName": "kind cluster tooling",
+      "description": "keep kind binary and node image in sync",
+      "matchDepNames": [
+        "kubernetes-sigs/kind",
+        "kindest/node"
+      ]
     }
   ],
   "customManagers": [
