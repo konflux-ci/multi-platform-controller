@@ -66,34 +66,19 @@ jobs:
           BASE_SHA: ${{ github.event.action == 'synchronize' && github.event.before || github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.action == 'synchronize' && github.event.after || github.event.pull_request.head.sha }}
         run: |
-          PROTECTED_PATHS="AGENTS.md CLAUDE.md GEMINI.md skills/ .github/workflows/agent-files-detect.yaml .github/workflows/agent-files-enforce.yaml"
-          PROTECTED_CHANGED=""
+          ALL_CHANGED=$(git diff --no-ext-diff --name-only "${BASE_SHA}..${HEAD_SHA}")
 
-          for pattern in ${PROTECTED_PATHS}; do
-            DIRECT=$(git diff --no-ext-diff --name-only "${BASE_SHA}..${HEAD_SHA}" -- "${pattern}")
-            if [ -n "${DIRECT}" ]; then
-              PROTECTED_CHANGED="${PROTECTED_CHANGED}\n${DIRECT}"
-            fi
-          done
-
-          for path in ${PROTECTED_PATHS}; do
-            CLEAN_PATH="${path%/}"
-            ESCAPED_PATH=$(printf '%s' "${CLEAN_PATH}" | sed 's/[.[\^$*+?()|{}]/\\&/g')
-            if git diff --no-ext-diff "${BASE_SHA}..${HEAD_SHA}" | grep -qE "(>>?[[:space:]]*['\"]?${ESCAPED_PATH}|cp[[:space:]]+.*${ESCAPED_PATH}|mv[[:space:]]+.*${ESCAPED_PATH}|tee[[:space:]]+.*${ESCAPED_PATH}|sed[[:space:]]+.*-i.*${ESCAPED_PATH})"; then
-              PROTECTED_CHANGED="${PROTECTED_CHANGED}\nIndirect write to ${CLEAN_PATH} detected in diff"
-            fi
-          done
-
-          if [ -n "${PROTECTED_CHANGED}" ]; then
+          DIRECT=$(echo "${ALL_CHANGED}" | grep -E '(^|/)(AGENTS\.md|CLAUDE\.md|GEMINI\.md)$|(^|/)skills/|^\.github/workflows/agent-files-(detect|enforce)\.yaml$' || true)
+          if [ -n "${DIRECT}" ]; then
             echo "protected_changed=true" >> "${GITHUB_OUTPUT}"
-            echo "Protected agent files affected:"
-            echo -e "${PROTECTED_CHANGED}" | sed '/^$/d' | while IFS= read -r line; do
-              sanitized="${line//'%'/'%25'}"
-              sanitized="${sanitized//'::'/'%3A%3A'}"
-              sanitized="${sanitized//$'\n'/'%0A'}"
-              sanitized="${sanitized//$'\r'/'%0D'}"
-              echo "::warning::${sanitized}"
-            done
+            sanitized="${DIRECT//'%'/'%25'}"
+            sanitized="${sanitized//'::'/'%3A%3A'}"
+            sanitized="${sanitized//$'\n'/'%0A'}"
+            sanitized="${sanitized//$'\r'/'%0D'}"
+            echo "::warning::Protected agent files changed: ${sanitized}"
+          elif git diff --no-ext-diff "${BASE_SHA}..${HEAD_SHA}" | grep -qiE 'AGENTS\.md|CLAUDE\.md|GEMINI\.md|\.claude|\.cursor|\.agents|skills/'; then
+            echo "protected_changed=true" >> "${GITHUB_OUTPUT}"
+            echo "::warning::Reference to protected path found in diff"
           else
             echo "protected_changed=false" >> "${GITHUB_OUTPUT}"
             echo "No protected agent files affected."
