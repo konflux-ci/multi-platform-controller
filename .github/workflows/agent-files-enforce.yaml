@@ -198,7 +198,7 @@ jobs:
             try {
               const membership = await github.rest.teams.getMembershipForUserInOrg({
                 org: context.repo.owner,
-                team_slug: 'konflux-infra-team',
+                team_slug: 'infrastructure',
                 username: sender,
               });
               isMember = membership.data.state === 'active';
@@ -227,7 +227,7 @@ jobs:
                 labels: [label],
               });
               core.warning(
-                `User '${sender}' is not a member of konflux-infra-team. Label '${label}' has been re-added. Only infra-team reviewers can remove this label.`
+                `User '${sender}' is not a member of infrastructure. Label '${label}' has been re-added. Only infra-team reviewers can remove this label.`
               );
             }
 
