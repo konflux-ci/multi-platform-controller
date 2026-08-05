@@ -35,7 +35,7 @@ jobs:
             if [ -d "${match}" ]; then
               ls -la "${match}/"
             fi
-          done < <(find . -path ./.git -prune -o \( -name '.claude' -o -name '.cursor' \) -print0)
+          done < <(find . -path ./.git -prune -o \( -name '.claude' -o -name '.cursor' -o -name '.vscode' -o -name '.agents' \) -print0)
           if [ "${FOUND}" -eq 1 ]; then
             exit 1
           fi
@@ -76,7 +76,7 @@ jobs:
             sanitized="${sanitized//$'\n'/'%0A'}"
             sanitized="${sanitized//$'\r'/'%0D'}"
             echo "::warning::Protected agent files changed: ${sanitized}"
-          elif git diff --no-ext-diff "${BASE_SHA}..${HEAD_SHA}" | grep -qiE 'AGENTS\.md|CLAUDE\.md|GEMINI\.md|\.claude|\.cursor|\.agents|skills/'; then
+          elif git diff --no-ext-diff "${BASE_SHA}..${HEAD_SHA}" | grep -qiE 'AGENTS\.md|CLAUDE\.md|GEMINI\.md|\.claude|\.cursor|\.vscode|\.agents|skills/'; then
             echo "protected_changed=true" >> "${GITHUB_OUTPUT}"
             echo "::warning::Reference to protected path found in diff"
           else
