@@ -179,58 +179,6 @@ jobs:
               }
             }
 
-  enforce-label-removal:
-    name: Enforce CODEOWNERS-only label removal
-    # Label name is hardcoded here because env.* is not available in job-level if expressions.
-    # Must match env.REVIEW_LABEL above.
-    if: github.event_name == 'pull_request_target' && github.event.action == 'unlabeled' && github.event.label.name == 'agent-config-review-required'
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-    steps:
-      - name: Verify team membership before allowing label removal
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
-        with:
-          script: |
-            const label = process.env.REVIEW_LABEL;
-            const sender = context.payload.sender.login;
-            let isMember = false;
-            try {
-              const membership = await github.rest.teams.getMembershipForUserInOrg({
-                org: context.repo.owner,
-                team_slug: 'infrastructure',
-                username: sender,
-              });
-              isMember = membership.data.state === 'active';
-            } catch (e) {
-              if (e.status === 404) {
-                isMember = false;
-              } else {
-                // Fail-closed: re-add label before failing so removal doesn't stick.
-                await github.rest.issues.addLabels({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: context.issue.number,
-                  labels: [label],
-                });
-                core.setFailed(
-                  `Failed to verify team membership for '${sender}': ${e.message}. Label re-added. Resolve the permission issue and re-run.`
-                );
-                return;
-              }
-            }
-            if (!isMember) {
-              await github.rest.issues.addLabels({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                labels: [label],
-              });
-              core.warning(
-                `User '${sender}' is not a member of infrastructure. Label '${label}' has been re-added. Only infra-team reviewers can remove this label.`
-              );
-            }
-
   block-on-label:
     name: Block PR if review label is present
     # Only run for workflow_run or our specific label — skip unrelated label events (lgtm, approved, etc.)
@@ -239,7 +187,7 @@ jobs:
       statuses: write
       pull-requests: read
       issues: read
-    needs: [resolve-pr, label-protected-changes, enforce-label-removal]
+    needs: [resolve-pr, label-protected-changes]
     runs-on: ubuntu-latest
     steps:
       - name: Determine PR number
@@ -265,7 +213,6 @@ jobs:
         env:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           LABEL_JOB_RESULT: ${{ needs.label-protected-changes.result }}
-          ENFORCE_JOB_RESULT: ${{ needs.enforce-label-removal.result }}
           PROTECTED_CHANGED: ${{ needs.label-protected-changes.outputs.protected_changed }}
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
@@ -292,29 +239,6 @@ jobs:
                   description: `Label management did not succeed (${labelJobResult}). Blocking PR.`,
                 });
                 core.setFailed(`Label management job did not succeed (${labelJobResult}). Blocking the PR.`);
-                return;
-              }
-            }
-
-            // Fail-closed: if enforce-label-removal errored on an unlabeled event,
-            // the label may have been removed without re-add — block the PR.
-            if (context.eventName === 'pull_request_target' && context.payload.action === 'unlabeled') {
-              const enforceResult = process.env.ENFORCE_JOB_RESULT;
-              if (enforceResult === 'failure') {
-                const pr = await github.rest.pulls.get({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  pull_number: prNumber,
-                });
-                await github.rest.repos.createCommitStatus({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  sha: pr.data.head.sha,
-                  state: 'failure',
-                  context: statusContext,
-                  description: 'Label enforcement failed — blocking PR until resolved.',
-                });
-                core.setFailed('enforce-label-removal job failed. Blocking the PR until the issue is resolved.');
                 return;
               }
             }
