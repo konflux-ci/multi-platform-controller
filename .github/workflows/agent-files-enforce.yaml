@@ -262,10 +262,10 @@ jobs:
                 sha: pr.data.head.sha,
                 state: 'failure',
                 context: statusContext,
-                description: `PR has '${label}' label — infra-team review required.`,
+                description: `PR has '${label}' label — write-access review required.`,
               });
               core.setFailed(
-                `PR has '${label}' label. An infra-team reviewer must review the agent config changes and remove this label before merging.`
+                `PR has '${label}' label. A reviewer with write access must review the agent config changes and remove this label before merging.`
               );
             } else if (context.eventName === 'workflow_run' && process.env.PROTECTED_CHANGED === 'true') {
               await github.rest.repos.createCommitStatus({
