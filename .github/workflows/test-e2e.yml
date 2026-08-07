@@ -83,7 +83,7 @@ jobs:
         run: kind version
 
       - name: Create kind cluster
-        run: kind create cluster --image kindest/node:v1.35.5 # renovate: datasource=docker depName=kindest/node versioning=docker
+        run: kind create cluster --image kindest/node:v1.36.1 # renovate: datasource=docker depName=kindest/node versioning=docker
 
       - name: Build and load images
         env:
