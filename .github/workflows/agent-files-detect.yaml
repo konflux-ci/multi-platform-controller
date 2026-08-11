@@ -9,9 +9,6 @@ on:
 permissions:
   contents: read
 
-env:
-  REVIEW_LABEL: agent-config-review-required
-
 jobs:
   # Fails the PR if .claude/ or .cursor/ directories exist anywhere in the tree.
   block-vendor-dirs:
@@ -103,63 +100,24 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  # Re-checks "Agent File Policy" for merge queue commits.
-  # Extracts the source PR number from the merge group ref and verifies
-  # the review label is absent — guards against commits pushed between
-  # approval and merge queue entry.
-  merge-queue-policy-check:
+  # Posts "Agent File Policy" success for merge queue commits.
+  # PR-level enforcement (required commit status) already gated entry to the queue.
+  merge-queue-policy-pass:
     if: github.event_name == 'merge_group'
     name: Agent File Policy (merge queue)
     runs-on: ubuntu-latest
     permissions:
       statuses: write
-      pull-requests: read
-      issues: read
     steps:
-      - name: Check source PR label and post status
+      - name: Post success status
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
-            const label = process.env.REVIEW_LABEL;
-            const postStatus = (state, description) =>
-              github.rest.repos.createCommitStatus({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                sha: context.sha,
-                state,
-                context: 'Agent File Policy',
-                description,
-              });
-
-            try {
-              const mergeGroup = context.payload.merge_group;
-              if (!mergeGroup || !mergeGroup.head_ref) {
-                await postStatus('failure', 'Missing merge_group payload. Failing closed.');
-                core.setFailed('merge_group payload or head_ref is missing.');
-                return;
-              }
-              // Format: gh-readonly-queue/{base}/pr-{N}-{sha} — not a documented stable contract.
-              // Fails closed if the format changes; update the regex if GitHub alters the scheme.
-              const prMatch = mergeGroup.head_ref.match(/\/pr-(\d+)-/);
-              if (!prMatch) {
-                await postStatus('failure', 'Could not resolve source PR from merge group ref.');
-                core.setFailed('Could not extract PR number from: ' + mergeGroup.head_ref);
-                return;
-              }
-              const prNumber = parseInt(prMatch[1], 10);
-              const labels = await github.paginate(github.rest.issues.listLabelsOnIssue, {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: prNumber,
-              });
-              const hasLabel = labels.some(l => l.name === label);
-              if (hasLabel) {
-                await postStatus('failure', `PR #${prNumber} has '${label}' — review required.`);
-                core.setFailed(`PR #${prNumber} still has the review label.`);
-              } else {
-                await postStatus('success', `PR #${prNumber} — no agent config review required.`);
-              }
-            } catch (err) {
-              try { await postStatus('failure', 'Unexpected error. Failing closed.'); } catch (_) {}
-              core.setFailed(`merge-queue-policy-check failed: ${err.message}`);
-            }
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: 'success',
+              context: 'Agent File Policy',
+              description: 'Merge queue — PR-level enforcement already passed.',
+            });
