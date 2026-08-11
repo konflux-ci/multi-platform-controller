@@ -120,19 +120,21 @@ jobs:
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
-            const statusContext = 'Agent File Policy';
             const label = process.env.REVIEW_LABEL;
+            const postStatus = (state, description) =>
+              github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: context.sha,
+                state,
+                context: 'Agent File Policy',
+                description,
+              });
+
             try {
               const mergeGroup = context.payload.merge_group;
               if (!mergeGroup || !mergeGroup.head_ref) {
-                await github.rest.repos.createCommitStatus({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  sha: context.sha,
-                  state: 'failure',
-                  context: statusContext,
-                  description: 'Missing merge_group payload. Failing closed.',
-                });
+                await postStatus('failure', 'Missing merge_group payload. Failing closed.');
                 core.setFailed('merge_group payload or head_ref is missing.');
                 return;
               }
@@ -140,15 +142,8 @@ jobs:
               // Fails closed if the format changes; update the regex if GitHub alters the scheme.
               const prMatch = mergeGroup.head_ref.match(/\/pr-(\d+)-/);
               if (!prMatch) {
-                await github.rest.repos.createCommitStatus({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  sha: context.sha,
-                  state: 'failure',
-                  context: statusContext,
-                  description: 'Could not resolve source PR from merge group ref.',
-                });
-                core.setFailed('Could not extract PR number from merge group ref: ' + mergeGroup.head_ref);
+                await postStatus('failure', 'Could not resolve source PR from merge group ref.');
+                core.setFailed('Could not extract PR number from: ' + mergeGroup.head_ref);
                 return;
               }
               const prNumber = parseInt(prMatch[1], 10);
@@ -159,35 +154,12 @@ jobs:
               });
               const hasLabel = labels.some(l => l.name === label);
               if (hasLabel) {
-                await github.rest.repos.createCommitStatus({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  sha: context.sha,
-                  state: 'failure',
-                  context: statusContext,
-                  description: `PR #${prNumber} has '${label}' — review required.`,
-                });
+                await postStatus('failure', `PR #${prNumber} has '${label}' — review required.`);
                 core.setFailed(`PR #${prNumber} still has the review label.`);
               } else {
-                await github.rest.repos.createCommitStatus({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  sha: context.sha,
-                  state: 'success',
-                  context: statusContext,
-                  description: `PR #${prNumber} — no agent config review required.`,
-                });
+                await postStatus('success', `PR #${prNumber} — no agent config review required.`);
               }
             } catch (err) {
-              try {
-                await github.rest.repos.createCommitStatus({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  sha: context.sha,
-                  state: 'failure',
-                  context: statusContext,
-                  description: `Unexpected error. Failing closed.`,
-                });
-              } catch (_) {}
+              try { await postStatus('failure', 'Unexpected error. Failing closed.'); } catch (_) {}
               core.setFailed(`merge-queue-policy-check failed: ${err.message}`);
             }
