@@ -3,8 +3,9 @@ name: Detect Agent File Changes
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  merge_group:
+    types: [checks_requested]
 
-# Read-only — safe to run on fork PRs.
 permissions:
   contents: read
 
@@ -44,7 +45,9 @@ jobs:
   # Diffs the PR for changes to protected agent files (direct and indirect).
   # On synchronize, only diffs the new push so approved changes don't re-trigger.
   # Uploads result as artifact for the enforce workflow.
+  # Skipped for merge_group — PR-level enforcement already ran.
   detect-protected-changes:
+    if: github.event_name != 'merge_group'
     name: Detect changes to protected agent files
     runs-on: ubuntu-latest
     steps:
@@ -96,3 +99,65 @@ jobs:
           path: /tmp/agent-check-result.txt
           retention-days: 1
           if-no-files-found: error
+
+  # Re-checks "Agent File Policy" for merge queue commits.
+  # Extracts the source PR number from the merge group ref and verifies
+  # the review label is absent — guards against commits pushed between
+  # approval and merge queue entry.
+  merge-queue-policy-check:
+    if: github.event_name == 'merge_group'
+    name: Agent File Policy (merge queue)
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+      pull-requests: read
+      issues: read
+    steps:
+      - name: Check source PR label and post status
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          REVIEW_LABEL: ${{ env.REVIEW_LABEL || 'agent-config-review-required' }}
+        with:
+          script: |
+            const statusContext = 'Agent File Policy';
+            const headRef = context.payload.merge_group.head_ref;
+            const prMatch = headRef.match(/\/pr-(\d+)-/);
+            if (!prMatch) {
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: context.sha,
+                state: 'failure',
+                context: statusContext,
+                description: 'Could not resolve source PR from merge group ref.',
+              });
+              core.setFailed('Could not extract PR number from merge group ref: ' + headRef);
+              return;
+            }
+            const prNumber = parseInt(prMatch[1], 10);
+            const labels = await github.rest.issues.listLabelsOnIssue({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+            const hasLabel = labels.data.some(l => l.name === process.env.REVIEW_LABEL);
+            if (hasLabel) {
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: context.sha,
+                state: 'failure',
+                context: statusContext,
+                description: `PR #${prNumber} has '${process.env.REVIEW_LABEL}' — review required.`,
+              });
+              core.setFailed(`PR #${prNumber} still has the review label. Remove it after reviewing agent config changes.`);
+            } else {
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: context.sha,
+                state: 'success',
+                context: statusContext,
+                description: `PR #${prNumber} — no agent config review required.`,
+              });
+            }
