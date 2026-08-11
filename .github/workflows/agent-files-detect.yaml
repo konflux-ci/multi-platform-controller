@@ -136,6 +136,8 @@ jobs:
                 core.setFailed('merge_group payload or head_ref is missing.');
                 return;
               }
+              // Format: gh-readonly-queue/{base}/pr-{N}-{sha} — not a documented stable contract.
+              // Fails closed if the format changes; update the regex if GitHub alters the scheme.
               const prMatch = mergeGroup.head_ref.match(/\/pr-(\d+)-/);
               if (!prMatch) {
                 await github.rest.repos.createCommitStatus({
