@@ -5,7 +5,6 @@ target
 .settings
 .project
 .classpath
-.vscode/
 .tmp
 *~
 local-test
@@ -45,3 +44,9 @@ deploy/**/development/**
 
 # testing outputs
 test-report.json
+
+# Agent security
+.claude/
+.cursor/
+.agents/
+.vscode/

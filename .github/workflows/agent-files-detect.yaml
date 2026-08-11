@@ -1,0 +1,98 @@
+name: Detect Agent File Changes
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Read-only — safe to run on fork PRs.
+permissions:
+  contents: read
+
+jobs:
+  # Fails the PR if .claude/ or .cursor/ directories exist anywhere in the tree.
+  block-vendor-dirs:
+    name: Block vendor-specific agent directories
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Check for vendor-specific directories
+        run: |
+          FOUND=0
+          while IFS= read -r -d '' match; do
+            if [ "${FOUND}" -eq 0 ]; then
+              echo "::error::Vendor-specific paths found in this repository. These are not allowed — use AGENTS.md and skills/ instead."
+              FOUND=1
+            fi
+            sanitized="${match//'%'/'%25'}"
+            sanitized="${sanitized//'::'/'%3A%3A'}"
+            sanitized="${sanitized//$'\n'/'%0A'}"
+            sanitized="${sanitized//$'\r'/'%0D'}"
+            echo "::error::Found: ${sanitized}"
+            if [ -d "${match}" ]; then
+              ls -la "${match}/"
+            fi
+          done < <(find . -path ./.git -prune -o \( -name '.claude' -o -name '.cursor' -o -name '.vscode' -o -name '.agents' \) -print0)
+          if [ "${FOUND}" -eq 1 ]; then
+            exit 1
+          fi
+          echo "No vendor-specific directories found."
+
+  # Diffs the PR for changes to protected agent files (direct and indirect).
+  # On synchronize, only diffs the new push so approved changes don't re-trigger.
+  # Uploads result as artifact for the enforce workflow.
+  detect-protected-changes:
+    name: Detect changes to protected agent files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch comparison refs
+        env:
+          BASE_REF: ${{ github.event.action == 'synchronize' && github.event.before || github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.event.action == 'synchronize' && github.event.after || github.event.pull_request.head.sha }}
+        run: git fetch --depth=1 origin "${BASE_REF}" "${HEAD_REF}"
+
+      - name: Check for protected file changes
+        id: check
+        env:
+          BASE_SHA: ${{ github.event.action == 'synchronize' && github.event.before || github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.action == 'synchronize' && github.event.after || github.event.pull_request.head.sha }}
+        run: |
+          ALL_CHANGED=$(git diff --no-ext-diff --name-only "${BASE_SHA}..${HEAD_SHA}")
+
+          DIRECT=$(echo "${ALL_CHANGED}" | grep -E '(^|/)(AGENTS\.md|CLAUDE\.md|GEMINI\.md)$|(^|/)skills/|^\.github/workflows/agent-files-(detect|enforce)\.yaml$' || true)
+          if [ -n "${DIRECT}" ]; then
+            echo "protected_changed=true" >> "${GITHUB_OUTPUT}"
+            sanitized="${DIRECT//'%'/'%25'}"
+            sanitized="${sanitized//'::'/'%3A%3A'}"
+            sanitized="${sanitized//$'\n'/'%0A'}"
+            sanitized="${sanitized//$'\r'/'%0D'}"
+            echo "::warning::Protected agent files changed: ${sanitized}"
+          elif git diff --no-ext-diff "${BASE_SHA}..${HEAD_SHA}" | grep -qiE 'AGENTS\.md|CLAUDE\.md|GEMINI\.md|\.claude|\.cursor|\.vscode|\.agents|skills/'; then
+            echo "protected_changed=true" >> "${GITHUB_OUTPUT}"
+            echo "::warning::Reference to protected path found in diff"
+          else
+            echo "protected_changed=false" >> "${GITHUB_OUTPUT}"
+            echo "No protected agent files affected."
+          fi
+
+      - name: Write detection result
+        env:
+          PROTECTED_CHANGED: ${{ steps.check.outputs.protected_changed }}
+        run: echo "${PROTECTED_CHANGED}" > /tmp/agent-check-result.txt
+
+      - name: Upload detection result
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: agent-check-result
+          path: /tmp/agent-check-result.txt
+          retention-days: 1
+          if-no-files-found: error
