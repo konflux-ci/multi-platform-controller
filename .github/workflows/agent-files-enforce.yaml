@@ -15,7 +15,7 @@ env:
 jobs:
   resolve-pr:
     name: Resolve PR number
-    if: github.event_name == 'workflow_run'
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.event != 'merge_group'
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
