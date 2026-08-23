@@ -62,3 +62,4 @@ Watches TaskRuns, provisions hosts via AWS/IBM Cloud, and manages SSH credential
 - When receiving code review feedback, read `skills/receiving-code-review.md` before implementing suggestions
 - When working interactively on new features or significant changes, read `skills/brainstorming-workflow.md` before writing code
 - When understanding the codebase architecture, allocation strategies, or reconciliation flow, read `skills/developer-guide.md`
+
