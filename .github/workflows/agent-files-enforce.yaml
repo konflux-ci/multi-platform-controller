@@ -24,7 +24,7 @@ jobs:
     steps:
       - name: Resolve PR number from workflow run
         id: resolve
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
             const run = context.payload.workflow_run;
@@ -59,7 +59,7 @@ jobs:
       # the workflow files, the artifact cannot be trusted. Check independently via API.
       - name: Check for workflow file changes
         id: workflow-check
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           PR_NUMBER: ${{ needs.resolve-pr.outputs.pr_number }}
         with:
@@ -135,7 +135,7 @@ jobs:
 
       - name: Delete detection artifact
         if: steps.download.outcome == 'success'
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
             const runId = ${{ github.event.workflow_run.id }};
@@ -155,7 +155,7 @@ jobs:
 
       - name: Add review label
         if: steps.decide.outputs.label_action == 'add'
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           PR_NUMBER: ${{ needs.resolve-pr.outputs.pr_number }}
         with:
@@ -208,7 +208,7 @@ jobs:
       # agent files — e.g. the PR reverted its earlier agent-file changes.
       - name: Remove review label
         if: steps.decide.outputs.label_action == 'remove'
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           PR_NUMBER: ${{ needs.resolve-pr.outputs.pr_number }}
         with:
@@ -245,7 +245,7 @@ jobs:
         id: pr
         env:
           RESOLVE_PR_NUMBER: ${{ needs.resolve-pr.outputs.pr_number }}
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
             if (context.eventName === 'workflow_run') {
@@ -265,7 +265,7 @@ jobs:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           LABEL_JOB_RESULT: ${{ needs.label-protected-changes.result }}
           LABEL_ACTION: ${{ needs.label-protected-changes.outputs.label_action }}
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
             const label = process.env.REVIEW_LABEL;
