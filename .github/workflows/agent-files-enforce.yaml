@@ -15,7 +15,7 @@ env:
 jobs:
   resolve-pr:
     name: Resolve PR number
-    if: github.event_name == 'workflow_run'
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.event != 'merge_group'
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
@@ -53,7 +53,7 @@ jobs:
       actions: write
       pull-requests: write
     outputs:
-      protected_changed: ${{ steps.decide.outputs.protected_changed }}
+      label_action: ${{ steps.decide.outputs.label_action }}
     steps:
       # The detect workflow runs PR code (pull_request trigger), so if the PR modifies
       # the workflow files, the artifact cannot be trusted. Check independently via API.
@@ -88,24 +88,49 @@ jobs:
       - name: Decide detection result
         id: decide
         run: |
+          # Reads a validated boolean from an artifact file. Prints "true"/"false" on
+          # success; on missing/invalid content prints "invalid" (caller fails closed).
+          read_bool() {
+            local file="$1" value
+            if [ ! -f "${file}" ]; then
+              echo "invalid"
+              return
+            fi
+            value=$(tr -d '[:space:]' < "${file}")
+            if [ "${value}" != "true" ] && [ "${value}" != "false" ]; then
+              echo "invalid"
+              return
+            fi
+            echo "${value}"
+          }
+
           # If workflow files were changed, always flag — regardless of artifact content.
+          # (The detect workflow runs PR code, so a tampered artifact cannot be trusted.)
           if [ "${{ steps.workflow-check.outputs.changed }}" = "true" ]; then
             echo "Workflow files modified — flagging for review."
-            echo "protected_changed=true" >> "${GITHUB_OUTPUT}"
+            echo "label_action=add" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
-          # Otherwise trust the artifact (preserves incremental diff behavior).
-          if [ -f /tmp/detect-result/agent-check-result.txt ]; then
-            RESULT=$(tr -d '[:space:]' < /tmp/detect-result/agent-check-result.txt)
-            if [ "${RESULT}" != "true" ] && [ "${RESULT}" != "false" ]; then
-              echo "::error::Invalid artifact value: '${RESULT}'. Failing closed."
-              echo "protected_changed=true" >> "${GITHUB_OUTPUT}"
-              exit 0
-            fi
-            echo "protected_changed=${RESULT}" >> "${GITHUB_OUTPUT}"
+
+          INCREMENTAL=$(read_bool /tmp/detect-result/agent-check-result.txt)
+          NET=$(read_bool /tmp/detect-result/agent-net-result.txt)
+
+          # Fail closed on any missing/invalid artifact value.
+          if [ "${INCREMENTAL}" = "invalid" ] || [ "${NET}" = "invalid" ]; then
+            echo "::error::Detection artifact missing or invalid. Failing closed."
+            echo "label_action=add" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          # ADD on new agent changes in the latest push (incremental); REMOVE when the
+          # PR's current state is clean (net=false); otherwise leave the label as-is so a
+          # reviewer's approval-removal survives unrelated pushes.
+          if [ "${NET}" = "false" ]; then
+            echo "label_action=remove" >> "${GITHUB_OUTPUT}"
+          elif [ "${INCREMENTAL}" = "true" ]; then
+            echo "label_action=add" >> "${GITHUB_OUTPUT}"
           else
-            echo "::error::Detection artifact missing. Failing closed."
-            echo "protected_changed=true" >> "${GITHUB_OUTPUT}"
+            echo "label_action=neutral" >> "${GITHUB_OUTPUT}"
           fi
 
       - name: Delete detection artifact
@@ -129,7 +154,7 @@ jobs:
             }
 
       - name: Add review label
-        if: steps.decide.outputs.protected_changed == 'true'
+        if: steps.decide.outputs.label_action == 'add'
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           PR_NUMBER: ${{ needs.resolve-pr.outputs.pr_number }}
@@ -179,6 +204,32 @@ jobs:
               }
             }
 
+      # Remove the label when the PR's current (net) state no longer touches protected
+      # agent files — e.g. the PR reverted its earlier agent-file changes.
+      - name: Remove review label
+        if: steps.decide.outputs.label_action == 'remove'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          PR_NUMBER: ${{ needs.resolve-pr.outputs.pr_number }}
+        with:
+          script: |
+            const label = process.env.REVIEW_LABEL;
+            const prNumber = parseInt(process.env.PR_NUMBER, 10);
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                name: label,
+              });
+              core.info(`Removed '${label}' label — PR no longer changes protected agent files.`);
+            } catch (e) {
+              // 404 = label not present on the PR (nothing to remove).
+              if (e.status !== 404) {
+                core.setFailed(`Failed to remove label '${label}': ${e.message}`);
+              }
+            }
+
   block-on-label:
     name: Block PR if review label is present
     # Only run for workflow_run or our specific label — skip unrelated label events (lgtm, approved, etc.)
@@ -213,7 +264,7 @@ jobs:
         env:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           LABEL_JOB_RESULT: ${{ needs.label-protected-changes.result }}
-          PROTECTED_CHANGED: ${{ needs.label-protected-changes.outputs.protected_changed }}
+          LABEL_ACTION: ${{ needs.label-protected-changes.outputs.label_action }}
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
@@ -267,7 +318,10 @@ jobs:
               core.setFailed(
                 `PR has '${label}' label. A reviewer with write access must review the agent config changes and remove this label before merging.`
               );
-            } else if (context.eventName === 'workflow_run' && process.env.PROTECTED_CHANGED === 'true') {
+            } else if (context.eventName === 'workflow_run' && process.env.LABEL_ACTION === 'add') {
+              // We intended to add the label but it isn't present — the add step failed.
+              // (A legitimate approved PR reads as 'neutral'/'remove', not 'add', so it is
+              // not blocked here.)
               await github.rest.repos.createCommitStatus({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
