@@ -32,13 +32,13 @@ var (
 
 const TaskRunLabel = "tekton.dev/taskRun"
 
-func NewManager(cfg *rest.Config, managerOptions ctrl.Options, controllerOptions controller.Options) (ctrl.Manager, error) {
+func NewManager(ctx context.Context, cfg *rest.Config, managerOptions ctrl.Options, controllerOptions controller.Options) (ctrl.Manager, error) {
 	// do not check tekton in kcp
 	// we have seen in e2e testing that this path can get invoked prior to the TaskRun CRD getting generated,
 	// and controller-runtime does not retry on missing CRDs.
 	// so we are going to wait on the CRDs existing before moving forward.
 	apiextensionsClient := apiextensionsclient.NewForConfigOrDie(cfg)
-	if err := wait.PollUntilContextTimeout(context.Background(), time.Second*5, time.Minute*5, true, func(ctx context.Context) (done bool, err error) {
+	if err := wait.PollUntilContextTimeout(ctx, time.Second*5, time.Minute*5, true, func(ctx context.Context) (done bool, err error) {
 		_, err = apiextensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, "taskruns.tekton.dev", metav1.GetOptions{})
 		if err != nil {
 			controllerLog.Info("get of taskrun CRD failed with: " + err.Error())
@@ -104,15 +104,20 @@ func NewManager(cfg *rest.Config, managerOptions ctrl.Options, controllerOptions
 
 	ticker := time.NewTicker(time.Hour * 24)
 	go func() {
-		for range ticker.C {
-			taskrun.UpdateHostPools(operatorNamespace, mgr.GetClient(), &controllerLog)
+		for {
+			select {
+			case <-ticker.C:
+				taskrun.UpdateHostPools(ctx, operatorNamespace, mgr.GetClient(), &controllerLog)
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 	timer := time.NewTimer(time.Minute)
 	go func() {
 		<-timer.C
 		//update the nodes on startup
-		taskrun.UpdateHostPools(operatorNamespace, mgr.GetClient(), &controllerLog)
+		taskrun.UpdateHostPools(ctx, operatorNamespace, mgr.GetClient(), &controllerLog)
 	}()
 
 	if err := mpcmetrics.AddTaskRunMetricsExporter(mgr); err != nil {
