@@ -15,6 +15,7 @@ import (
 	. "github.com/onsi/gomega"
 	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	corev1 "k8s.io/api/core/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"knative.dev/pkg/apis"
@@ -106,6 +107,63 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 			pool2 := config2.(HostPool)
 			Expect(pool2.hosts).Should(HaveLen(3))
 			Expect(pool2.hosts).Should(HaveKey("host3"))
+		})
+	})
+
+	// This section tests the TaskRun label selector: when a label selector is
+	// configured in the host ConfigMap, only TaskRuns whose labels match are reconciled.
+	Describe("Test TaskRun label selector", func() {
+		DescribeTable("should reconcile user task when label selector matches TaskRun labels", func(ctx SpecContext, ls string) {
+			// createUserTaskRun sets Labels: map[string]string{"tekton.dev/memberOf": "tasks"}
+			client, reconciler := setupClientAndReconciler(createHostConfigWithTaskRunLabelSelector("tekton.dev/memberOf == tasks"))
+			createUserTaskRun(ctx, client, "test-label-match", "linux/arm64")
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-label-match"}})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			tr := getUserTaskRun(ctx, client, "test-label-match")
+			Expect(tr.Labels[AssignedHost]).ShouldNot(BeEmpty())
+		},
+			Entry("key presence", "tekton.dev/memberOf"),
+			Entry("key-value match", "tekton.dev/memberOf == tasks"),
+			Entry("match from list of values", "tekton.dev/memberOf in (tasks)"),
+		)
+
+		It("should reconcile user task when no label selector is configured", func(ctx SpecContext) {
+			// createHostConfig() does not set taskrun-labelselector, so ls is nil and we don't filter
+			client, reconciler := setupClientAndReconciler(createHostConfig())
+			createUserTaskRun(ctx, client, "test-no-selector", "linux/arm64")
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-no-selector"}})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			tr := getUserTaskRun(ctx, client, "test-no-selector")
+			Expect(tr.Labels[AssignedHost]).ShouldNot(BeEmpty())
+		})
+
+		It("should skip reconciling user task when label selector does not match TaskRun labels", func(ctx SpecContext) {
+			client, reconciler := setupClientAndReconciler(createHostConfigWithTaskRunLabelSelector("my-label == my-value"))
+			createUserTaskRun(ctx, client, "test-label-no-match", "linux/arm64")
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-label-no-match"}})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			tr := getUserTaskRun(ctx, client, "test-label-no-match")
+			Expect(tr.Labels[AssignedHost]).Should(BeEmpty())
+			// No error secret should be created when we skip due to label selector
+			secret := &corev1.Secret{}
+			err = client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: SecretPrefix + "test-label-no-match"}, secret)
+			Expect(kerrors.IsNotFound(err)).Should(BeTrue())
+		})
+
+		It("should return error when label selector configuration is invalid", func(ctx SpecContext) {
+			client, reconciler := setupClientAndReconciler(createHostConfigWithTaskRunLabelSelector("invalid selector syntax"))
+			createUserTaskRun(ctx, client, "test-invalid-selector", "linux/arm64")
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-invalid-selector"}})
+			Expect(err).Should(HaveOccurred())
+			Expect(err.Error()).Should(
+				ContainSubstring("can't read or parse TaskRun's LabelSelector from configuration"))
 		})
 	})
 
