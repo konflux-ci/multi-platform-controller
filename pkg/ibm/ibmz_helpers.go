@@ -82,6 +82,7 @@ func checkIfIpIsLive(ctx context.Context, ip string) error {
 	server, err := net.ResolveTCPAddr("tcp", ip+":22")
 	if err != nil {
 		log.Error(err, "failed to resolve ip address")
+		return err
 	}
 	conn, err := net.DialTimeout(server.Network(), server.String(), 5*time.Second)
 	if err != nil {

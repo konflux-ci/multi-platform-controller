@@ -1,7 +1,9 @@
 package ibm
 
 import (
+	"errors"
 	"fmt"
+	"net"
 	"regexp"
 
 	"github.com/konflux-ci/multi-platform-controller/test/utils"
@@ -17,6 +19,18 @@ const maxAllowedErrors = 2
 var expectedInstanceNameFormat = regexp.MustCompile(`^[a-z0-9-]+-[0-9a-f]{16}x$`)
 
 var _ = Describe("IBM s390x Helper Functions", func() {
+
+	Describe("The checkIfIpIsLive function", func() {
+		When("provided with an unresolvable address", func() {
+			It("should return a DNS resolution error instead of panicking", func(ctx SpecContext) {
+				addr := "invalid-host-that-does-not-resolve.example.invalid"
+				err := checkIfIpIsLive(ctx, addr)
+				Expect(err).To(HaveOccurred())
+				var dnsErr *net.DNSError
+				Expect(errors.As(err, &dnsErr)).To(BeTrue(), "expected a *net.DNSError from ResolveTCPAddr, got: %v", err)
+			})
+		})
+	})
 
 	// A unit test for createInstanceName which serves both ibmz.go and ibmp.go use to create virtual machines.
 	// Includes:
