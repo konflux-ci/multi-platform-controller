@@ -69,9 +69,13 @@ jobs:
               repo: context.repo.repo,
               pull_number: parseInt(process.env.PR_NUMBER, 10),
             });
+            const workflowPaths = [
+              '.github/workflows/agent-files-detect.yaml',
+              '.github/workflows/agent-files-enforce.yaml'
+            ];
             const changed = files.some(f =>
-              f.filename === '.github/workflows/agent-files-detect.yaml' ||
-              f.filename === '.github/workflows/agent-files-enforce.yaml'
+              workflowPaths.includes(f.filename) ||
+              (f.previous_filename && workflowPaths.includes(f.previous_filename))
             );
             core.setOutput('changed', changed.toString());
 
@@ -120,6 +124,32 @@ jobs:
             console.log(`PR opener: ${u.login} (id ${u.id}, type ${u.type}); trusted_bot=${trusted}`);
             core.setOutput('trusted_bot', trusted.toString());
 
+      # Verify workflow run head matches current PR head. If the PR was force-pushed or
+      # received new commits after the detect workflow started, the artifact is stale and
+      # must not be used to mutate labels or post status (would incorrectly approve/block
+      # a different commit than what the artifact describes).
+      - name: Verify artifact freshness
+        id: freshness-check
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          PR_NUMBER: ${{ needs.resolve-pr.outputs.pr_number }}
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        with:
+          script: |
+            const prNumber = parseInt(process.env.PR_NUMBER, 10);
+            const workflowRunHeadSha = process.env.WORKFLOW_RUN_HEAD_SHA;
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+            const currentHeadSha = pr.head.sha;
+            const fresh = workflowRunHeadSha === currentHeadSha;
+            if (!fresh) {
+              console.log(`Stale artifact detected: workflow run analyzed ${workflowRunHeadSha.substring(0,7)} but PR head is now ${currentHeadSha.substring(0,7)}. Skipping label mutation.`);
+            }
+            core.setOutput('fresh', fresh.toString());
+
       - name: Download detection artifact
         id: download
         continue-on-error: true
@@ -148,6 +178,14 @@ jobs:
             fi
             echo "${value}"
           }
+
+          # Stale artifact: the workflow run analyzed a different commit than the PR's
+          # current head. Do not mutate labels (a newer detect run may already be queued).
+          if [ "${{ steps.freshness-check.outputs.fresh }}" != "true" ]; then
+            echo "Artifact is stale — skipping label mutation."
+            echo "label_action=neutral" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
 
           # Trusted bot (verified identity + all commits verified-signed): never label.
           if [ "${{ steps.bot-check.outputs.trusted_bot }}" = "true" ]; then

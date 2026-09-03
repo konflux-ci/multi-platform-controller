@@ -86,9 +86,22 @@ jobs:
           # $1 = diff range expression (e.g. "A..B" incremental or "A...B" net)
           check_range() {
             local range="$1"
-            local changed
-            changed=$(git diff --no-ext-diff --name-only "${range}")
-            DIRECT_MATCH=$(echo "${changed}" | grep -E '(^|/)(AGENTS\.md|CLAUDE\.md|GEMINI\.md)$|(^|/)skills/|^\.github/workflows/agent-files-(detect|enforce)\.yaml$' || true)
+            local changed all_paths
+            # Use --name-status to catch renames/deletes (exposes old path via R/D status lines).
+            # Format: "A\tpath", "M\tpath", "R100\told\tnew", "D\tpath"
+            changed=$(git diff --no-ext-diff --name-status "${range}")
+            # Extract all paths (both old and new for renames) to check against protected patterns.
+            all_paths=$(echo "${changed}" | awk '{
+              if ($1 ~ /^R/) {
+                # Rename: $2 = old path, $3 = new path
+                print $2
+                print $3
+              } else {
+                # Add/Modify/Delete: $2 = path
+                print $2
+              }
+            }')
+            DIRECT_MATCH=$(echo "${all_paths}" | grep -E '(^|/)(AGENTS\.md|CLAUDE\.md|GEMINI\.md)$|(^|/)skills/|^\.github/workflows/agent-files-(detect|enforce)\.yaml$' || true)
             if [ -n "${DIRECT_MATCH}" ]; then
               RANGE_RESULT="true"
             elif git diff --no-ext-diff "${range}" | grep -qiE 'AGENTS\.md|CLAUDE\.md|GEMINI\.md|\.claude|\.cursor|\.vscode|\.agents|skills/'; then
