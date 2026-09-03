@@ -52,8 +52,8 @@ func CreateEc2CloudConfig(platformName string, config map[string]string, systemN
 	userDataString := config["dynamic."+platformName+".user-data"]
 	var userDataPtr *string
 	if userDataString != "" {
-		base54val := base64.StdEncoding.EncodeToString([]byte(userDataString))
-		userDataPtr = &base54val
+		base64val := base64.StdEncoding.EncodeToString([]byte(userDataString))
+		userDataPtr = &base64val
 	}
 
 	return AWSEc2DynamicConfig{Region: config["dynamic."+platformName+".region"],
