@@ -46,7 +46,7 @@ deploy/**/development/**
 test-report.json
 
 # Agent security
-.claude/
-.cursor/
-.agents/
-.vscode/
+.claude
+.cursor
+.agents
+.vscode

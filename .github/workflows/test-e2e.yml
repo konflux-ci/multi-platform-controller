@@ -64,7 +64,7 @@ jobs:
           aws sts get-caller-identity
 
       - name: Setup Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
 
@@ -83,7 +83,7 @@ jobs:
         run: kind version
 
       - name: Create kind cluster
-        run: kind create cluster --image kindest/node:v1.35.5@sha256:ce977ae6d65918d0b58a5f8b5e940429c2ce42fa3a5619ec2bbc60b949c0ac95 # renovate: datasource=docker depName=kindest/node versioning=docker
+        run: kind create cluster --image kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5 # renovate: datasource=docker depName=kindest/node versioning=docker
 
       - name: Build and load images
         env:
@@ -125,7 +125,7 @@ jobs:
 
       - name: Upload e2e coverage to Codecov
         if: always()
-        uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
         with:
           use_oidc: true
           flags: e2e-tests
