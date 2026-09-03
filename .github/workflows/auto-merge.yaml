@@ -14,13 +14,13 @@ jobs:
       checks: read
       statuses: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         id: app-token
         with:
           client-id: ${{ secrets.KONFLUX_INFRA_AUTO_MERGER_APP_ID }}
           private-key: ${{ secrets.KONFLUX_INFRA_AUTO_MERGER_APP_PRIVATE_KEY }}
-      - uses: konflux-ci/deptriage@993b534180800943a8c05601151fb34ecb376445 # main
+      - uses: konflux-ci/deptriage@2dd6abf230fc792c4fa7dd9aac58b20731b90acd # main
         with:
           command: merge
           head-sha: ${{ github.event.check_suite.head_sha }}
