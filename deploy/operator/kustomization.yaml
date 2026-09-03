@@ -19,14 +19,17 @@ configMapGenerator:
     namespace: multi-platform-controller
     files:
       - provision-shared-host.sh
+      - otp-utils.sh
   - name: provision-macos-host-script
     namespace: multi-platform-controller
     files:
       - provision-host-macos.sh
+      - otp-utils.sh
   - name: provision-windows-host-script
     namespace: multi-platform-controller
     files:
       - provision-host-windows.sh
+      - otp-utils.sh
   - name: clean-shared-host-script
     namespace: multi-platform-controller
     files:

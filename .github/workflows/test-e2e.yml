@@ -41,7 +41,7 @@ jobs:
       E2E_DEBUG_LOG_DIR: ${{ github.workspace }}/e2e-debug-logs
     steps:
       - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@main
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # main
         with:
           # this might remove tools that are actually needed,
           # if set to "true" but frees about 6 GB
@@ -50,10 +50,10 @@ jobs:
           docker-images: false
 
       - name: Clone the code
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@acca2b1b2070338fb9fd1ca27ecee81d687e58e5 # v6.1.2
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -68,9 +68,14 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Install the latest version of kind
+      - name: Install pinned kind version
+        # Renovate updates KIND_VERSION automatically; only stable releases are proposed.
+        # If kind and node image are updated independently a version mismatch may cause
+        # cluster creation to fail, which CI will catch before merge.
         run: |
-          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-amd64
+          # renovate: datasource=github-releases depName=kubernetes-sigs/kind
+          KIND_VERSION=v0.32.0
+          curl -Lo ./kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64"
           chmod +x ./kind
           sudo mv ./kind /usr/local/bin/kind
 
@@ -78,7 +83,7 @@ jobs:
         run: kind version
 
       - name: Create kind cluster
-        run: kind create cluster
+        run: kind create cluster --image kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5 # renovate: datasource=docker depName=kindest/node versioning=docker
 
       - name: Build and load images
         env:
@@ -141,7 +146,7 @@ jobs:
 
       - name: Configure AWS Credentials for Cleanup
         if: always()
-        uses: aws-actions/configure-aws-credentials@acca2b1b2070338fb9fd1ca27ecee81d687e58e5 # v6.1.2
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}

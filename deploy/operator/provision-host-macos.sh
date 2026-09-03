@@ -3,6 +3,8 @@ set -o verbose
 set -eu
 set -o pipefail
 
+. /scripts/otp-utils.sh
+
 # --- Error Handling Function ---
 handle_error() {
     local EXIT_CODE=$?
@@ -46,15 +48,8 @@ DIR=$(echo "/Users/${USERNAME}" | base64 -w 0)
 if [ -e "/tls/tls.crt" ]; then
     echo "{message: \"Creating secret file using TLS certificate...\", level: \"INFO\"}"
     KEY=$(cat id_rsa)
-    if ! otp_raw=$(curl --fail --cacert /tls/tls.crt -XPOST -d "$KEY" https://multi-platform-otp-server.multi-platform-controller.svc.cluster.local/store-key); then
-      echo "{message: \"Failed to store SSH key in OTP server. Please, retry build in a few minutes, and if problem persists, please report it as an MPC bug.\", level: \"ERROR\"}" >&2
-      exit 1
-    fi
+    otp_raw=$(curl_otp_store_key --fail --connect-timeout 5 --max-time 30 --cacert /tls/tls.crt -XPOST -d "$KEY" https://multi-platform-otp-server.multi-platform-controller.svc.cluster.local/store-key)
     OTP=$(printf '%s' "$otp_raw" | base64 -w 0)
-    if [ -z "$OTP" ]; then
-      echo "{message: \"OTP server returned an empty token. Please, retry build in a few minutes, and if problem persists, please report it as an MPC bug.\", level: \"ERROR\"}" >&2
-      exit 1
-    fi
     OTP_SERVER="$(echo https://multi-platform-otp-server.multi-platform-controller.svc.cluster.local/otp | base64 -w 0)"
     echo "$OTP" | base64 -d
 

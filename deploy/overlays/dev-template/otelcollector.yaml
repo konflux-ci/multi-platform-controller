@@ -56,9 +56,6 @@ stringData:
           - ec2
         override: true
       resourcedetection/system:
-        attributes:
-          - host.name
-          - os.type
         detectors:
           - system
         override: true
