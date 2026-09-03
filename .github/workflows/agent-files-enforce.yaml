@@ -375,7 +375,8 @@ jobs:
               // Skip stale runs: artifact analyzed a different commit than PR's current head.
               // A newer detect run will handle the current head; this stale run must not
               // publish a status for a commit it didn't analyze.
-              if (process.env.FRESH !== 'true') {
+              // Only skip on explicit fresh==='false'; if missing/undefined, fail closed below.
+              if (process.env.FRESH === 'false') {
                 console.log(`Skipping status for stale run (analyzed ${targetSha.substring(0,7)} but PR head has moved). A newer detect run will evaluate current head.`);
                 return;
               }
