@@ -54,6 +54,7 @@ jobs:
       pull-requests: write
     outputs:
       label_action: ${{ steps.decide.outputs.label_action }}
+      fresh: ${{ steps.freshness-check.outputs.fresh }}
     steps:
       # The detect workflow runs PR code (pull_request trigger), so if the PR modifies
       # the workflow files, the artifact cannot be trusted. Check independently via API.
@@ -355,6 +356,8 @@ jobs:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           LABEL_JOB_RESULT: ${{ needs.label-protected-changes.result }}
           LABEL_ACTION: ${{ needs.label-protected-changes.outputs.label_action }}
+          FRESH: ${{ needs.label-protected-changes.outputs.fresh }}
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
@@ -362,19 +365,28 @@ jobs:
             const prNumber = parseInt(process.env.PR_NUMBER, 10);
             const statusContext = 'Agent File Policy';
 
-            // Fail-closed: if label management job didn't succeed, block the PR
+            // For workflow_run events, bind status to the analyzed SHA (workflow_run.head_sha),
+            // not a re-fetched pr.head.sha which may have changed since detection ran.
+            // For pull_request_target events (label changes), fetch current head.
+            let targetSha;
             if (context.eventName === 'workflow_run') {
+              targetSha = process.env.WORKFLOW_RUN_HEAD_SHA;
+
+              // Skip stale runs: artifact analyzed a different commit than PR's current head.
+              // A newer detect run will handle the current head; this stale run must not
+              // publish a status for a commit it didn't analyze.
+              if (process.env.FRESH !== 'true') {
+                console.log(`Skipping status for stale run (analyzed ${targetSha.substring(0,7)} but PR head has moved). A newer detect run will evaluate current head.`);
+                return;
+              }
+
+              // Fail-closed: if label management job didn't succeed, block the PR
               const labelJobResult = process.env.LABEL_JOB_RESULT;
               if (labelJobResult !== 'success') {
-                const pr = await github.rest.pulls.get({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  pull_number: prNumber,
-                });
                 await github.rest.repos.createCommitStatus({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
-                  sha: pr.data.head.sha,
+                  sha: targetSha,
                   state: 'failure',
                   context: statusContext,
                   description: `Label management did not succeed (${labelJobResult}). Blocking PR.`,
@@ -382,13 +394,16 @@ jobs:
                 core.setFailed(`Label management job did not succeed (${labelJobResult}). Blocking the PR.`);
                 return;
               }
+            } else {
+              // pull_request_target event: fetch current head for label-triggered re-evaluation
+              const pr = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber,
+              });
+              targetSha = pr.data.head.sha;
             }
 
-            const pr = await github.rest.pulls.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: prNumber,
-            });
             const labels = await github.rest.issues.listLabelsOnIssue({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -400,7 +415,7 @@ jobs:
               await github.rest.repos.createCommitStatus({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                sha: pr.data.head.sha,
+                sha: targetSha,
                 state: 'failure',
                 context: statusContext,
                 description: `PR has '${label}' label — write-access review required.`,
@@ -415,7 +430,7 @@ jobs:
               await github.rest.repos.createCommitStatus({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                sha: pr.data.head.sha,
+                sha: targetSha,
                 state: 'failure',
                 context: statusContext,
                 description: 'Protected changes detected but label was not applied. Blocking PR.',
@@ -425,7 +440,7 @@ jobs:
               await github.rest.repos.createCommitStatus({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                sha: pr.data.head.sha,
+                sha: targetSha,
                 state: 'success',
                 context: statusContext,
                 description: 'No agent config review required.',
