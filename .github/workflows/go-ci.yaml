@@ -25,7 +25,7 @@ jobs:
           echo "version=$(grep 'GOLANGCI_LINT_VERSION ?=' Makefile | sed -e 's:GOLANGCI_LINT_VERSION ?= \(.*\):\1:' -)" \
             >> $GITHUB_OUTPUT
       - name: Lint with golang-ci
-        uses: golangci/golangci-lint-action@82606bf257cbaff209d206a39f5134f0cfbfd2ee # v9
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
         with:
           version: ${{ steps.golangci_version.outputs.version }}
           args: "--timeout=10m --build-tags='normal periodic' --output.sarif.path=out/go-lint.sarif"
