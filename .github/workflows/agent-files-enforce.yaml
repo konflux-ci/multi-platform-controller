@@ -54,6 +54,7 @@ jobs:
       pull-requests: write
     outputs:
       label_action: ${{ steps.decide.outputs.label_action }}
+      fresh: ${{ steps.freshness-check.outputs.fresh }}
     steps:
       # The detect workflow runs PR code (pull_request trigger), so if the PR modifies
       # the workflow files, the artifact cannot be trusted. Check independently via API.
@@ -69,9 +70,13 @@ jobs:
               repo: context.repo.repo,
               pull_number: parseInt(process.env.PR_NUMBER, 10),
             });
+            const workflowPaths = [
+              '.github/workflows/agent-files-detect.yaml',
+              '.github/workflows/agent-files-enforce.yaml'
+            ];
             const changed = files.some(f =>
-              f.filename === '.github/workflows/agent-files-detect.yaml' ||
-              f.filename === '.github/workflows/agent-files-enforce.yaml'
+              workflowPaths.includes(f.filename) ||
+              (f.previous_filename && workflowPaths.includes(f.previous_filename))
             );
             core.setOutput('changed', changed.toString());
 
@@ -120,6 +125,32 @@ jobs:
             console.log(`PR opener: ${u.login} (id ${u.id}, type ${u.type}); trusted_bot=${trusted}`);
             core.setOutput('trusted_bot', trusted.toString());
 
+      # Verify workflow run head matches current PR head. If the PR was force-pushed or
+      # received new commits after the detect workflow started, the artifact is stale and
+      # must not be used to mutate labels or post status (would incorrectly approve/block
+      # a different commit than what the artifact describes).
+      - name: Verify artifact freshness
+        id: freshness-check
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          PR_NUMBER: ${{ needs.resolve-pr.outputs.pr_number }}
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        with:
+          script: |
+            const prNumber = parseInt(process.env.PR_NUMBER, 10);
+            const workflowRunHeadSha = process.env.WORKFLOW_RUN_HEAD_SHA;
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+            const currentHeadSha = pr.head.sha;
+            const fresh = workflowRunHeadSha === currentHeadSha;
+            if (!fresh) {
+              console.log(`Stale artifact detected: workflow run analyzed ${workflowRunHeadSha.substring(0,7)} but PR head is now ${currentHeadSha.substring(0,7)}. Skipping label mutation.`);
+            }
+            core.setOutput('fresh', fresh.toString());
+
       - name: Download detection artifact
         id: download
         continue-on-error: true
@@ -148,6 +179,14 @@ jobs:
             fi
             echo "${value}"
           }
+
+          # Stale artifact: the workflow run analyzed a different commit than the PR's
+          # current head. Do not mutate labels (a newer detect run may already be queued).
+          if [ "${{ steps.freshness-check.outputs.fresh }}" != "true" ]; then
+            echo "Artifact is stale — skipping label mutation."
+            echo "label_action=neutral" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
 
           # Trusted bot (verified identity + all commits verified-signed): never label.
           if [ "${{ steps.bot-check.outputs.trusted_bot }}" = "true" ]; then
@@ -317,6 +356,8 @@ jobs:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           LABEL_JOB_RESULT: ${{ needs.label-protected-changes.result }}
           LABEL_ACTION: ${{ needs.label-protected-changes.outputs.label_action }}
+          FRESH: ${{ needs.label-protected-changes.outputs.fresh }}
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
@@ -324,19 +365,29 @@ jobs:
             const prNumber = parseInt(process.env.PR_NUMBER, 10);
             const statusContext = 'Agent File Policy';
 
-            // Fail-closed: if label management job didn't succeed, block the PR
+            // For workflow_run events, bind status to the analyzed SHA (workflow_run.head_sha),
+            // not a re-fetched pr.head.sha which may have changed since detection ran.
+            // For pull_request_target events (label changes), fetch current head.
+            let targetSha;
             if (context.eventName === 'workflow_run') {
+              targetSha = process.env.WORKFLOW_RUN_HEAD_SHA;
+
+              // Skip stale runs: artifact analyzed a different commit than PR's current head.
+              // A newer detect run will handle the current head; this stale run must not
+              // publish a status for a commit it didn't analyze.
+              // Only skip on explicit fresh==='false'; if missing/undefined, fail closed below.
+              if (process.env.FRESH === 'false') {
+                console.log(`Skipping status for stale run (analyzed ${targetSha.substring(0,7)} but PR head has moved). A newer detect run will evaluate current head.`);
+                return;
+              }
+
+              // Fail-closed: if label management job didn't succeed, block the PR
               const labelJobResult = process.env.LABEL_JOB_RESULT;
               if (labelJobResult !== 'success') {
-                const pr = await github.rest.pulls.get({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  pull_number: prNumber,
-                });
                 await github.rest.repos.createCommitStatus({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
-                  sha: pr.data.head.sha,
+                  sha: targetSha,
                   state: 'failure',
                   context: statusContext,
                   description: `Label management did not succeed (${labelJobResult}). Blocking PR.`,
@@ -344,13 +395,16 @@ jobs:
                 core.setFailed(`Label management job did not succeed (${labelJobResult}). Blocking the PR.`);
                 return;
               }
+            } else {
+              // pull_request_target event: fetch current head for label-triggered re-evaluation
+              const pr = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber,
+              });
+              targetSha = pr.data.head.sha;
             }
 
-            const pr = await github.rest.pulls.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: prNumber,
-            });
             const labels = await github.rest.issues.listLabelsOnIssue({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -362,7 +416,7 @@ jobs:
               await github.rest.repos.createCommitStatus({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                sha: pr.data.head.sha,
+                sha: targetSha,
                 state: 'failure',
                 context: statusContext,
                 description: `PR has '${label}' label — write-access review required.`,
@@ -377,7 +431,7 @@ jobs:
               await github.rest.repos.createCommitStatus({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                sha: pr.data.head.sha,
+                sha: targetSha,
                 state: 'failure',
                 context: statusContext,
                 description: 'Protected changes detected but label was not applied. Blocking PR.',
@@ -387,7 +441,7 @@ jobs:
               await github.rest.repos.createCommitStatus({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                sha: pr.data.head.sha,
+                sha: targetSha,
                 state: 'success',
                 context: statusContext,
                 description: 'No agent config review required.',
