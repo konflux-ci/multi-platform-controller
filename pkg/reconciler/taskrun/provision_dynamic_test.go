@@ -283,6 +283,46 @@ var _ = Describe("Test Dynamic Host Provisioning", func() {
 		})
 	})
 
+	When("error messages contain diagnostic context", func() {
+
+		It("should include failed hosts and instance tag in error when all provisioning attempts are exhausted", func(ctx SpecContext) {
+			createUserTaskRun(ctx, client, "test-err-ctx", "linux/arm64")
+			tr := getUserTaskRun(ctx, client, "test-err-ctx")
+			// Simulate that a previous host already failed
+			tr.Annotations = map[string]string{FailedHosts: "host-abc"}
+			Expect(client.Update(ctx, tr)).ShouldNot(HaveOccurred())
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-err-ctx"}})
+			Expect(err).Should(HaveOccurred())
+			Expect(err.Error()).Should(ContainSubstring("host-abc"))
+			Expect(err.Error()).Should(ContainSubstring("all attempts exhausted"))
+		})
+
+		It("should include instance ID and timeout in error when instance address times out", func(ctx SpecContext) {
+			cloudImpl.TimeoutGetAddress = true
+			defer func() { cloudImpl.TimeoutGetAddress = false }()
+
+			createUserTaskRun(ctx, client, "test-timeout-ctx", "linux/arm64")
+			// 1st reconcile: launches instance
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-timeout-ctx"}})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			// Verify instance was created and has an ID
+			tr := getUserTaskRun(ctx, client, "test-timeout-ctx")
+			Expect(tr.Annotations[CloudInstanceId]).ShouldNot(BeEmpty())
+			instanceID := tr.Annotations[CloudInstanceId]
+
+			// Wait for timeout (allocation-timeout is 2 seconds in test config)
+			time.Sleep(time.Second * 3)
+
+			// Reconcile after timeout
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-timeout-ctx"}})
+			Expect(err).Should(HaveOccurred())
+			Expect(err.Error()).Should(ContainSubstring("timed out"))
+			Expect(err.Error()).Should(ContainSubstring(instanceID))
+		})
+	})
+
 	// Tests for buildDynamicResolver function - only the sad paths since happy paths are thoroughly tested elsewhere
 	When("testing buildDynamicResolver error paths", func() {
 		It("should use default instance tag when platform config doesn't specify one", func(ctx SpecContext) {

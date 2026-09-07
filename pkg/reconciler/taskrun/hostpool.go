@@ -135,7 +135,11 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 
 	if err != nil {
 		//ugh, try and unassign
-		log.Error(err, "failed to launch provisioning task, unassigning host")
+		log.Error(err, "failed to launch provisioning task, unassigning host",
+			"host", selected.Name,
+			"address", selected.Address,
+			"platform", hp.targetPlatform,
+		)
 		delete(tr.Labels, constant.AssignedHost)
 		controllerutil.RemoveFinalizer(tr, PipelineFinalizer)
 		updateErr := UpdateTaskRunWithRetry(ctx, r.client, r.apiReader, tr)
@@ -143,7 +147,7 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 			log.Error(updateErr, "Could not unassign task after provisioning failure")
 			return reconcile.Result{}, err
 		}
-		return reconcile.Result{}, fmt.Errorf("failed to provision host: %v", err)
+		return reconcile.Result{}, fmt.Errorf("failed to provision host %s (%s): %w", selected.Name, selected.Address, err)
 	}
 	return reconcile.Result{}, nil
 }

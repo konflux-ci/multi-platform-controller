@@ -192,6 +192,53 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		})
 	})
 
+	When("error messages contain diagnostic context", func() {
+
+		It("should include host details in error when all hosts have been tried", func(ctx SpecContext) {
+			tr := runUserPipeline(ctx, client, reconciler, "test-err-hosts")
+			provision1 := getProvisionTaskRun(ctx, client, tr)
+			host1 := provision1.Labels[AssignedHost]
+
+			// Fail the first host
+			provision1.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			provision1.Status.SetCondition(&apis.Condition{
+				Type:   apis.ConditionSucceeded,
+				Status: v1.ConditionFalse,
+			})
+			Expect(client.Status().Update(ctx, provision1)).ShouldNot(HaveOccurred())
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: provision1.Namespace, Name: provision1.Name}})
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(client.Delete(ctx, provision1)).Should(Succeed())
+
+			// Reconcile the user task to try the next host
+			tr = getUserTaskRun(ctx, client, "test-err-hosts")
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			// Fail the second host
+			provision2 := getProvisionTaskRun(ctx, client, tr)
+			provision2.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			provision2.Status.SetCondition(&apis.Condition{
+				Type:   apis.ConditionSucceeded,
+				Status: v1.ConditionFalse,
+			})
+			Expect(client.Status().Update(ctx, provision2)).ShouldNot(HaveOccurred())
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: provision2.Namespace, Name: provision2.Name}})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			// Final reconcile should fail and include failed host names
+			tr = getUserTaskRun(ctx, client, "test-err-hosts")
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}})
+			Expect(err).Should(HaveOccurred())
+			Expect(err.Error()).Should(ContainSubstring(host1))
+			Expect(err.Error()).Should(ContainSubstring("all available hosts"))
+
+			secret := getSecret(ctx, client, tr)
+			Expect(secret.Data["error"]).ShouldNot(BeEmpty())
+			Expect(string(secret.Data["error"])).Should(ContainSubstring(host1))
+		})
+	})
+
 	When("when provisioning succeeds", func() {
 
 		// It tests a specific failure case where the provisioner TaskRun reports
