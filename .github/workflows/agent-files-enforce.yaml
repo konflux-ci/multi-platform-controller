@@ -87,7 +87,7 @@ jobs:
       # unsigned/human commit onto a bot PR to ride the skip.
       - name: Check for trusted bot author
         id: bot-check
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           PR_NUMBER: ${{ needs.resolve-pr.outputs.pr_number }}
         with:
@@ -131,7 +131,7 @@ jobs:
       # a different commit than what the artifact describes).
       - name: Verify artifact freshness
         id: freshness-check
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           PR_NUMBER: ${{ needs.resolve-pr.outputs.pr_number }}
           WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
