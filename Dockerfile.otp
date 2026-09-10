@@ -20,7 +20,7 @@ RUN if [ "$ENABLE_COVERAGE" = "true" ]; then \
 
 # Use ubi-minimal as minimal base image to package the manager binary
 # Refer to https://catalog.redhat.com/software/containers/ubi8/ubi-minimal/5c359a62bed8bd75a2c3fba8 for more details
-FROM registry.access.redhat.com/ubi9/ubi-minimal:9.8-1788166357@sha256:7fbeae18dc9476399f565e68255f602a3374ea8614ba3d14843565131a13ff93
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.8-1788939036@sha256:d235f607e1d6d833f031db107dc42206e4dd4d5aa9142c43d3771fb7f9bea76a
 COPY --from=builder /opt/app-root/src/otp-server /
 USER 65532:65532
 EXPOSE 8443
