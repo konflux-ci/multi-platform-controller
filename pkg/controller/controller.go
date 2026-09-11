@@ -2,11 +2,13 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"time"
 
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
+	"github.com/konflux-ci/multi-platform-controller/pkg/config"
 	mpcmetrics "github.com/konflux-ci/multi-platform-controller/pkg/metrics"
 	"github.com/konflux-ci/multi-platform-controller/pkg/reconciler/taskrun"
 	v1 "k8s.io/api/core/v1"
@@ -33,12 +35,13 @@ var (
 const TaskRunLabel = "tekton.dev/taskRun"
 
 func NewManager(cfg *rest.Config, managerOptions ctrl.Options, controllerOptions controller.Options) (ctrl.Manager, error) {
+	ctx := context.Background()
 	// do not check tekton in kcp
 	// we have seen in e2e testing that this path can get invoked prior to the TaskRun CRD getting generated,
 	// and controller-runtime does not retry on missing CRDs.
 	// so we are going to wait on the CRDs existing before moving forward.
 	apiextensionsClient := apiextensionsclient.NewForConfigOrDie(cfg)
-	if err := wait.PollUntilContextTimeout(context.Background(), time.Second*5, time.Minute*5, true, func(ctx context.Context) (done bool, err error) {
+	if err := wait.PollUntilContextTimeout(ctx, time.Second*5, time.Minute*5, true, func(ctx context.Context) (done bool, err error) {
 		_, err = apiextensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, "taskruns.tekton.dev", metav1.GetOptions{})
 		if err != nil {
 			controllerLog.Info("get of taskrun CRD failed with: " + err.Error())
@@ -100,6 +103,11 @@ func NewManager(cfg *rest.Config, managerOptions ctrl.Options, controllerOptions
 	controllerLog.Info("controller concurrency", "maxConcurrentReconciles", controllerOptions.MaxConcurrentReconciles)
 	if err := taskrun.SetupNewReconcilerWithManager(mgr, operatorNamespace, controllerOptions); err != nil {
 		return nil, err
+	}
+
+	// ensure configuration is valid before starting
+	if _, err := config.ReadConfigurationTaskRunLabelSelector(ctx, mgr.GetClient(), operatorNamespace); err != nil {
+		return nil, fmt.Errorf("no or invalid configuration provided: %w", err)
 	}
 
 	ticker := time.NewTicker(time.Hour * 24)
