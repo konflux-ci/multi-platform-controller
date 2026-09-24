@@ -67,9 +67,18 @@ jobs:
           INC_HEAD_REF: ${{ github.event.action == 'synchronize' && github.event.after || github.event.pull_request.head.sha }}
           NET_BASE_REF: ${{ github.event.pull_request.base.sha }}
           NET_HEAD_REF: ${{ github.event.pull_request.head.sha }}
-        # No --depth: the three-dot net diff needs the merge-base, which a shallow
-        # fetch may not include. The checkout above is already full (fetch-depth: 0).
-        run: git fetch origin "${INC_BASE_REF}" "${INC_HEAD_REF}" "${NET_BASE_REF}" "${NET_HEAD_REF}"
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Temporarily configure git to use token for HTTPS
+          git config --global credential.helper store
+          echo "https://x-access-token:${GH_TOKEN}@github.com" > ~/.git-credentials
+
+          # Fetch required SHAs (suppress output to avoid any potential leaks in logs)
+          git fetch origin "${INC_BASE_REF}" "${INC_HEAD_REF}" "${NET_BASE_REF}" "${NET_HEAD_REF}" 2>/dev/null
+
+          # Clean up credentials
+          rm -f ~/.git-credentials
+          git config --global --unset credential.helper
 
       - name: Check for protected file changes
         id: check

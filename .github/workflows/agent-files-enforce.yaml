@@ -38,11 +38,13 @@ jobs:
               state: 'open',
               head: `${run.head_repository.owner.login}:${run.head_branch}`,
             });
-            if (prs.length === 0) {
-              core.setFailed('Could not resolve PR number from workflow run.');
+            // Filter by head SHA to avoid mislabeling when multiple PRs exist from same branch
+            const matching = prs.filter(pr => pr.head.sha === run.head_sha);
+            if (matching.length !== 1) {
+              core.setFailed(`Found ${matching.length} PRs matching workflow run head SHA - cannot determine correct PR.`);
               return;
             }
-            core.setOutput('pr_number', prs[0].number.toString());
+            core.setOutput('pr_number', matching[0].number.toString());
 
   label-protected-changes:
     name: Label PR when protected agent files change
@@ -268,30 +270,11 @@ jobs:
                 });
               } catch (e) {
                 if (e.status === 404) {
-                  try {
-                    await github.rest.issues.createLabel({
-                      owner: context.repo.owner,
-                      repo: context.repo.repo,
-                      name: label,
-                      color: 'e11d48',
-                      description: 'PR modifies protected agent config files — requires CODEOWNERS review',
-                    });
-                  } catch (createErr) {
-                    if (createErr.status !== 422) {
-                      core.setFailed(`Failed to create label '${label}': ${createErr.message}`);
-                      return;
-                    }
-                  }
-                  await github.rest.issues.addLabels({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    issue_number: prNumber,
-                    labels: [label],
-                  });
+                  core.setFailed(`Label '${label}' does not exist in this repository. Please create it manually with color e11d48 and description: "PR modifies protected agent config files — requires CODEOWNERS review"`);
                 } else {
                   core.setFailed(`Failed to add label '${label}': ${e.message}`);
-                  return;
                 }
+                return;
               }
             }
 
