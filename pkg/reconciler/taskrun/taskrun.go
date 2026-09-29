@@ -27,6 +27,7 @@ import (
 	kubecore "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/labels"
 	k8sRuntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -207,6 +208,17 @@ func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, tr *tekton
 	}
 	if !hasPlatformParam {
 		log.V(1).Info("Skipping TaskRun - no platform parameter found")
+		return reconcile.Result{}, nil
+	}
+
+	// check TaskRun's Labels
+	ls, err := config.ReadConfigurationTaskRunLabelSelector(ctx, r.client, r.operatorNamespace)
+	if client.IgnoreNotFound(err) != nil {
+		err = fmt.Errorf("can't read or parse TaskRun's LabelSelector from configuration: %w", err)
+		log.Error(err, "this is likely a misconfiguration, please check the host-config ConfigMap")
+		return reconcile.Result{}, err
+	}
+	if ls != nil && !ls.Matches(labels.Set(tr.Labels)) {
 		return reconcile.Result{}, nil
 	}
 
