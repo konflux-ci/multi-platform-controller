@@ -34,9 +34,9 @@ KEY_PATH="/Users/${USER}/${USERNAME}"
 
 echo "{message: \"Waiting for SSH key file to appear on remote host (up to $((MAX_RETRIES * RETRY_INTERVAL))s)...\", level: \"INFO\"}"
 for i in $(seq 1 "$MAX_RETRIES"); do
-    ssh_exit=0
-    ssh "${SSH_OPTS[@]}" -o ConnectTimeout=10 "${SSH_HOST}" "test -f '${KEY_PATH}'" || ssh_exit=$?
-    if [ "$ssh_exit" -eq 0 ]; then
+    SSH_EXIT=0
+    ssh "${SSH_OPTS[@]}" -o ConnectTimeout=10 "${SSH_HOST}" "test -f '${KEY_PATH}'" || SSH_EXIT=$?
+    if [ "$SSH_EXIT" -eq 0 ]; then
         echo "{message: \"SSH key file found on attempt ${i}/${MAX_RETRIES}.\", level: \"INFO\"}"
         break
     fi
@@ -44,7 +44,7 @@ for i in $(seq 1 "$MAX_RETRIES"); do
         echo "{message: \"SSH key file not found after ${MAX_RETRIES} attempts (${KEY_PATH}). VM bootstrap may have failed.\", level: \"ERROR\"}" >&2
         exit 1
     fi
-    if [ "$ssh_exit" -eq 255 ]; then
+    if [ "$SSH_EXIT" -eq 255 ]; then
         echo "{message: \"SSH connection failed (attempt ${i}/${MAX_RETRIES}), retrying in ${RETRY_INTERVAL}s...\", level: \"INFO\"}"
     else
         echo "{message: \"SSH key file not found (attempt ${i}/${MAX_RETRIES}), retrying in ${RETRY_INTERVAL}s...\", level: \"INFO\"}"
