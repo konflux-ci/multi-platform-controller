@@ -37,7 +37,9 @@ KEY_PATH="C:\\Users\\Administrator\\${USERNAME}"
 
 echo "{message: \"Waiting for SSH key file to appear on remote host (up to $((MAX_RETRIES * RETRY_INTERVAL))s)...\", level: \"INFO\"}"
 for i in $(seq 1 "$MAX_RETRIES"); do
-    if ssh "${SSH_OPTS[@]}" "$SSH_HOST" "powershell -Command \"if (Test-Path '${KEY_PATH}') { exit 0 } else { exit 1 }\""; then
+    ssh_exit=0
+    ssh "${SSH_OPTS[@]}" -o ConnectTimeout=10 "$SSH_HOST" "powershell -Command \"if (Test-Path '${KEY_PATH}') { exit 0 } else { exit 1 }\"" || ssh_exit=$?
+    if [ "$ssh_exit" -eq 0 ]; then
         echo "{message: \"SSH key file found on attempt ${i}/${MAX_RETRIES}.\", level: \"INFO\"}"
         break
     fi
@@ -45,7 +47,11 @@ for i in $(seq 1 "$MAX_RETRIES"); do
         echo "{message: \"SSH key file not found after ${MAX_RETRIES} attempts (${KEY_PATH}). user-data script may have failed.\", level: \"ERROR\"}" >&2
         exit 1
     fi
-    echo "{message: \"SSH key file not found (attempt ${i}/${MAX_RETRIES}), retrying in ${RETRY_INTERVAL}s...\", level: \"INFO\"}"
+    if [ "$ssh_exit" -eq 255 ]; then
+        echo "{message: \"SSH connection failed (attempt ${i}/${MAX_RETRIES}), retrying in ${RETRY_INTERVAL}s...\", level: \"INFO\"}"
+    else
+        echo "{message: \"SSH key file not found (attempt ${i}/${MAX_RETRIES}), retrying in ${RETRY_INTERVAL}s...\", level: \"INFO\"}"
+    fi
     sleep "$RETRY_INTERVAL"
 done
 
