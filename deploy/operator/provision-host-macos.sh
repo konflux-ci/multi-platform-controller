@@ -23,12 +23,31 @@ chmod 0400 /tmp/master_key
 export SSH_HOST="$USER@$HOST"
 SSH_OPTS=(-i /tmp/master_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null)
 
-# MacOS Instance sometimes takes a little longer to be ready, so we need to wait for it
-sleep 30
-
 export USERNAME=konflux-builder
+
+# Wait for the SSH key file to be created by the VM bootstrap process.
+# macOS instances may take time to complete setup, so we retry instead of
+# using a fixed sleep to handle variable startup times reliably.
+MAX_RETRIES=30
+RETRY_INTERVAL=10
+KEY_PATH="/Users/${USER}/${USERNAME}"
+
+echo "{message: \"Waiting for SSH key file to appear on remote host (up to $((MAX_RETRIES * RETRY_INTERVAL))s)...\", level: \"INFO\"}"
+for i in $(seq 1 "$MAX_RETRIES"); do
+    if ssh "${SSH_OPTS[@]}" "${SSH_HOST}" "test -f '${KEY_PATH}'"; then
+        echo "{message: \"SSH key file found on attempt ${i}/${MAX_RETRIES}.\", level: \"INFO\"}"
+        break
+    fi
+    if [ "$i" -eq "$MAX_RETRIES" ]; then
+        echo "{message: \"SSH key file not found after ${MAX_RETRIES} attempts (${KEY_PATH}). VM bootstrap may have failed.\", level: \"ERROR\"}" >&2
+        exit 1
+    fi
+    echo "{message: \"SSH key file not found (attempt ${i}/${MAX_RETRIES}), retrying in ${RETRY_INTERVAL}s...\", level: \"INFO\"}"
+    sleep "$RETRY_INTERVAL"
+done
+
 # Copy/configure remote SSH key and then delete on VM
-ssh "${SSH_OPTS[@]}" "${SSH_HOST}" "cat /Users/${USER}/${USERNAME}" > id_rsa
+ssh "${SSH_OPTS[@]}" "${SSH_HOST}" "cat ${KEY_PATH}" > id_rsa
 echo "{message: \"Successfully copied remote SSH key from VM.\", level: \"INFO\"}"
 SSH_KEY_RM_OUTPUT=$(
     ssh "${SSH_OPTS[@]}" "${SSH_HOST}" "sudo rm /Users/${USER}/${USERNAME}"
