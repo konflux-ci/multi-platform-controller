@@ -53,7 +53,7 @@ done
 ssh "${SSH_OPTS[@]}" "$SSH_HOST" "powershell -Command cat ${KEY_PATH}" | sed 's/\r$//' > id_rsa
 echo "{message: \"Successfully copied remote SSH key from VM.\", level: \"INFO\"}"
 SSH_KEY_RM_OUTPUT=$(
-    ssh "${SSH_OPTS[@]}" "$SSH_HOST" "powershell -Command rm C:\\Users\\Administrator\\${USERNAME}"
+    ssh "${SSH_OPTS[@]}" "$SSH_HOST" "powershell -Command rm ${KEY_PATH}"
 ) || {
     # If the command fails, the '||' block executes.
     # Note: Using '||' suppresses set -e for this line.

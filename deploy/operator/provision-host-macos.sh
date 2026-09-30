@@ -50,7 +50,7 @@ done
 ssh "${SSH_OPTS[@]}" "${SSH_HOST}" "cat ${KEY_PATH}" > id_rsa
 echo "{message: \"Successfully copied remote SSH key from VM.\", level: \"INFO\"}"
 SSH_KEY_RM_OUTPUT=$(
-    ssh "${SSH_OPTS[@]}" "${SSH_HOST}" "sudo rm /Users/${USER}/${USERNAME}"
+    ssh "${SSH_OPTS[@]}" "${SSH_HOST}" "sudo rm ${KEY_PATH}"
 ) || {
     # If the command fails, the '||' block executes.
     # Note: Using '||' suppresses set -e for this line.
