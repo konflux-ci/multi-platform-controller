@@ -563,6 +563,7 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 				Entry("when the field is empty", "", ""),
 				Entry("when the field is whitespace", "   ", ""),
 				Entry("when the field contains an SSH client config", "  Host *\n  ProxyJump bastion.example.com\n", "Host *\n  ProxyJump bastion.example.com"),
+				Entry("when a comment mentions a forbidden directive", "# ProxyCommand is documented only\nHost *\n  ProxyJump bastion\n", "# ProxyCommand is documented only\nHost *\n  ProxyJump bastion"),
 			)
 		})
 
@@ -608,6 +609,22 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 				Entry("for IBM platform with invalid secret",
 					map[string]string{"secret": "invalid-secret"},
 					"invalid secret 'invalid-secret'",
+				),
+				Entry("for ssh-config with ProxyCommand",
+					map[string]string{"ssh-config": "Host *\n  ProxyCommand ssh bastion -W %h:%p\n"},
+					`forbidden directive "proxycommand"`,
+				),
+				Entry("for ssh-config with ProxyCommand in keyword=value form",
+					map[string]string{"ssh-config": "ProxyCommand=ssh bastion -W %h:%p\n"},
+					`forbidden directive "proxycommand"`,
+				),
+				Entry("for ssh-config with LocalCommand",
+					map[string]string{"ssh-config": "Host *\n  LocalCommand echo hi\n"},
+					`forbidden directive "localcommand"`,
+				),
+				Entry("for ssh-config with PermitLocalCommand",
+					map[string]string{"ssh-config": "Host *\n  PermitLocalCommand yes\n"},
+					`forbidden directive "permitlocalcommand"`,
 				),
 			)
 		})

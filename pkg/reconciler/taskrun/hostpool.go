@@ -178,6 +178,9 @@ func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.T
 		compute := map[v12.ResourceName]resource.Quantity{v12.ResourceCPU: resource.MustParse("100m"), v12.ResourceMemory: resource.MustParse("128Mi")}
 		cleanup.Spec.ComputeResources = &v12.ResourceRequirements{Requests: compute}
 		cleanup.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: selected.Secret}}}
+		if selected.SSHConfig != "" {
+			cleanup.Spec.Workspaces = append(cleanup.Spec.Workspaces, sshConfigWorkspaceBinding(selected.Name))
+		}
 		cleanup.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
 		cleanup.Spec.Params = []v1.Param{
 			{

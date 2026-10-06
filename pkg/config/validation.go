@@ -18,6 +18,12 @@ var (
 	ErrInvalidIPFormat          = errors.New("value must be a valid IP address in dotted decimal notation")
 
 	errIBMHostSecretPlatformMismatch = errors.New("host secret key and value must contain matching platform substring")
+
+	forbiddenSSHConfigDirectives = map[string]struct{}{
+		"proxycommand":       {},
+		"localcommand":       {},
+		"permitlocalcommand": {},
+	}
 )
 
 const (
@@ -152,6 +158,24 @@ func validateNonZeroPositiveNumberWithMax(value string, maxValue int) (int, erro
 		return -1, fmt.Errorf("invalid value '%s': must be between 1 and %d", value, maxValue)
 	}
 	return num, nil
+}
+
+// ValidateSSHClientConfig rejects SSH client config directives that execute local commands.
+func ValidateSSHClientConfig(config string) error {
+	for _, line := range strings.Split(config, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		directive := strings.ToLower(strings.Fields(line)[0])
+		if i := strings.IndexByte(directive, '='); i >= 0 {
+			directive = directive[:i]
+		}
+		if _, forbidden := forbiddenSSHConfigDirectives[directive]; forbidden {
+			return fmt.Errorf("forbidden directive %q", directive)
+		}
+	}
+	return nil
 }
 
 // ValidateIPFormat validates that a string represents a valid IP address format.

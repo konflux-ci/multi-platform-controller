@@ -329,6 +329,28 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(binding.ConfigMap.Items[0].Key).Should(Equal("host." + tr.Labels[AssignedHost] + ".ssh-config"))
 			Expect(binding.ConfigMap.Items[0].Path).Should(Equal(sshConfigFileName))
 		})
+
+		It("should mount that text on the cleanup task", func(ctx SpecContext) {
+			tr := runUserPipeline(ctx, client, reconciler, "test-ssh-config-cleanup")
+			tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			tr.Status.SetCondition(&apis.Condition{
+				Type:   apis.ConditionSucceeded,
+				Status: v1.ConditionTrue,
+			})
+			Expect(client.Status().Update(ctx, tr)).Should(Succeed())
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: tr.Name}})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			cleanupTasks := &pipelinev1.TaskRunList{}
+			Expect(client.List(ctx, cleanupTasks, runtimeclient.MatchingLabels{
+				TaskTypeLabel:     TaskTypeClean,
+				UserTaskName:      tr.Name,
+				UserTaskNamespace: userNamespace,
+			})).Should(Succeed())
+			Expect(cleanupTasks.Items).Should(HaveLen(1))
+			binding := sshConfigBinding(&cleanupTasks.Items[0])
+			Expect(binding.ConfigMap.Items[0].Key).Should(Equal("host." + tr.Labels[AssignedHost] + ".ssh-config"))
+		})
 	})
 })
 

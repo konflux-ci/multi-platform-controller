@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/konflux-ci/multi-platform-controller/pkg/config"
 	"github.com/konflux-ci/multi-platform-controller/pkg/constant"
 	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v12 "k8s.io/api/core/v1"
@@ -61,7 +62,12 @@ func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.L
 				continue
 			}
 		case "ssh-config":
-			host.SSHConfig = strings.TrimSpace(v)
+			sshConfig := strings.TrimSpace(v)
+			if err := config.ValidateSSHClientConfig(sshConfig); err != nil {
+				log.Error(err, "ignoring ssh-config", "host", host.Name)
+				continue
+			}
+			host.SSHConfig = sshConfig
 
 		default:
 			log.Info("unknown key", "key", key)
@@ -86,6 +92,9 @@ func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.L
 			provision.Labels = map[string]string{TaskTypeLabel: TaskTypeUpdate, constant.AssignedHost: realHostName}
 			provision.Spec.TaskRef = &v1.TaskRef{Name: "update-host"}
 			provision.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: host.Secret}}}
+			if host.SSHConfig != "" {
+				provision.Spec.Workspaces = append(provision.Spec.Workspaces, sshConfigWorkspaceBinding(host.Name))
+			}
 			compute := map[v12.ResourceName]resource.Quantity{v12.ResourceCPU: resource.MustParse("100m"), v12.ResourceMemory: resource.MustParse("256Mi")}
 			provision.Spec.ComputeResources = &v12.ResourceRequirements{Requests: compute, Limits: compute}
 			provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this

@@ -4,7 +4,7 @@
 //	- That the TaskRun created was a host updating TaskRun was created
 //	- That the configuration data in the TaskRun spec Params and Workspace contain the test data
 //
-// There are 9 test cases:
+// There are 10 test cases:
 // 	1. A positive test to verify all is working correctly
 //	2. A negative test with no configuration data
 //	3. A negative test to verify UpdateHostPools only creates TaskRuns for static hosts
@@ -14,6 +14,7 @@
 //	7. Another negative test to data verify on the host concurrency field
 //	8. A negative test to verify data validation on the host username field
 //	9. A negative test to verify data validation on the host platform field
+//	10. A test that a forbidden ssh-config directive is not mounted on the update task
 
 package taskrun
 
@@ -169,9 +170,52 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 		// extract TaskRun data to begin testing individual fields were correctly filled
 		updatedHostData := hostDataFromTRSpec(createdList.Items[0])
 
-		// ssh-config is consumed by provisioning, not the update task.
 		delete(hostConfigData, "ssh-config")
 		Expect(hostConfigData).To(BeEquivalentTo(updatedHostData))
+		Expect(createdList.Items[0].Spec.Workspaces).Should(HaveLen(2))
+		Expect(createdList.Items[0].Spec.Workspaces[1].Name).Should(Equal(sshConfigWorkspaceName))
+		Expect(createdList.Items[0].Spec.Workspaces[1].ConfigMap.Items[0].Key).Should(Equal("host.koko-hazamar-prod-1.ssh-config"))
+	})
+
+	It("should omit ssh-config when it contains a forbidden directive", func(ctx SpecContext) {
+		waitGroup := &sync.WaitGroup{}
+		hostConfigData := map[string]string{
+			"address":     "10.130.75.23",
+			"secret":      "internal-koko-hazamar-ssh-key",
+			"concurrency": "1",
+			"user":        "koko_hazamar",
+			"platform":    "linux/ppc64le",
+			"ssh-config":  "Host *\n  ProxyCommand ssh bastion -W %h:%p\n",
+		}
+		hostConfig.Data = testConfigDataFromTestData(hostConfigData, "host.koko-hazamar-prod-1.")
+		waitGroup.Add(1)
+
+		k8sClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithRuntimeObjects(hostConfig).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Create: func(
+					ctx context.Context,
+					client client.WithWatch,
+					obj client.Object,
+					opts ...client.CreateOption,
+				) error {
+					err := client.Create(ctx, obj, opts...)
+					waitGroup.Done()
+					return err
+				},
+			}).
+			Build()
+
+		log := logr.FromContextOrDiscard(ctx)
+		UpdateHostPools(testNamespace, k8sClient, &log)
+		waitGroup.Wait()
+
+		createdList := v1.TaskRunList{}
+		Expect(k8sClient.List(ctx, &createdList, client.InNamespace(testNamespace))).Should(Succeed())
+		Expect(createdList.Items).Should(HaveLen(1))
+		Expect(createdList.Items[0].Spec.Workspaces).Should(HaveLen(1))
+		Expect(createdList.Items[0].Spec.Workspaces[0].Name).Should(Equal("ssh"))
 	})
 
 	When("Host config is invalid", func() {

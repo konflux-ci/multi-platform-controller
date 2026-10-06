@@ -351,7 +351,8 @@ func ParseDynamicPoolPlatformConfig(data map[string]string, platform string) (Dy
 //   - host.<hostname>.secret (required): non-empty SSH secret name (AWS platforms) or pass validateIBMHostSecret (IBM platforms)
 //   - host.<hostname>.concurrency (optional): Maximum concurrent jobs - must be between 1 and 8 if provided
 //   - host.<hostname>.ssh-config (optional): SSH client configuration.
-//     When set, that text is mounted at /root/.ssh/config in the provision task pod.
+//     When set, that text is mounted at /root/.ssh/config in the provision, cleanup, and update task pods.
+//     ProxyCommand, LocalCommand, and PermitLocalCommand are rejected.
 //
 // Parameters:
 // - data: The ConfigMap data map containing host configuration
@@ -404,6 +405,9 @@ func ParseStaticHostConfig(data map[string]string, hostName string) (StaticHostC
 	}
 
 	if sshConfig := strings.TrimSpace(data[prefix+"ssh-config"]); sshConfig != "" {
+		if err := ValidateSSHClientConfig(sshConfig); err != nil {
+			return StaticHostConfig{}, fmt.Errorf("static host '%s': invalid ssh-config: %w", hostName, err)
+		}
 		hostConfig.SSHConfig = sshConfig
 	}
 

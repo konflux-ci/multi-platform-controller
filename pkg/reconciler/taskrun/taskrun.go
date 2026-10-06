@@ -93,10 +93,12 @@ const (
 	ParamRawPlatform       = "RAW_PLATFORM"
 	ParamInstanceTag       = "INSTANCE_TAG"
 
-	// sshConfigWorkspaceName is the optional provision-task workspace for a custom SSH client config.
-	// sshConfigFileName is the file projected from host.<name>.ssh-config and mounted at /root/.ssh/config.
+	// provisionSharedHostTaskName is the Tekton Task that provisions Linux shared hosts.
+	provisionSharedHostTaskName = "provision-shared-host"
+	// sshConfigWorkspaceName is the optional workspace that carries a custom SSH client config.
 	sshConfigWorkspaceName = "ssh-config"
-	sshConfigFileName      = "config"
+	// sshConfigFileName is the file projected from host.<name>.ssh-config and mounted at /root/.ssh/config.
+	sshConfigFileName = "config"
 )
 
 type ReconcileTaskRun struct {
@@ -995,17 +997,17 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 	provision.Name = kmeta.ChildName(tr.Name, "-prov-"+short)
 	provision.Namespace = r.operatorNamespace
 	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, constant.TargetPlatformLabel: platformLabel(platform), UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name, constant.AssignedHost: tr.Labels[constant.AssignedHost]}
-	provision.Spec.TaskRef = &tektonapi.TaskRef{Name: "provision-shared-host"}
+	provision.Spec.TaskRef = &tektonapi.TaskRef{Name: provisionSharedHostTaskName}
 	switch {
 	case strings.HasPrefix(platform, "windows"):
 		provision.Spec.TaskRef.Name = "provision-host-windows"
 	case strings.HasPrefix(platform, "macos"):
 		provision.Spec.TaskRef.Name = "provision-host-macos"
 	default:
-		// Keep default "provision-shared-host"
+		// Keep default provisionSharedHostTaskName
 	}
 	workspaces := []tektonapi.WorkspaceBinding{{Name: "ssh", Secret: &kubecore.SecretVolumeSource{SecretName: sshSecret}}}
-	if sshConfig != "" && provision.Spec.TaskRef.Name == "provision-shared-host" {
+	if sshConfig != "" && provision.Spec.TaskRef.Name == provisionSharedHostTaskName {
 		workspaces = append(workspaces, sshConfigWorkspaceBinding(tr.Labels[constant.AssignedHost]))
 	}
 	provision.Spec.Workspaces = workspaces
