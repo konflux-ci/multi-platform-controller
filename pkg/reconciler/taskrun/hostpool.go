@@ -133,6 +133,11 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 	controllerutil.AddFinalizer(tr, PipelineFinalizer)
 	err = UpdateTaskRunWithRetry(ctx, r.client, r.apiReader, tr)
 	if err != nil {
+		if selected.SSHConfig != "" {
+			if delErr := r.deleteNamedSSHConfigSnapshot(ctx, sshConfigSnapshotName(tr.Namespace, tr.Name)); delErr != nil {
+				log.Error(delErr, "failed to delete ssh config snapshot")
+			}
+		}
 		return reconcile.Result{}, err
 	}
 
@@ -186,7 +191,7 @@ func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.T
 		compute := map[v12.ResourceName]resource.Quantity{v12.ResourceCPU: resource.MustParse("100m"), v12.ResourceMemory: resource.MustParse("128Mi")}
 		cleanup.Spec.ComputeResources = &v12.ResourceRequirements{Requests: compute}
 		cleanup.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: selected.Secret}}}
-		snapshotName := sshConfigSnapshotNameFrom(tr)
+		snapshotName := recordedSSHConfigSnapshotName(r.operatorNamespace, tr)
 		if snapshotName != "" {
 			if cleanup.Annotations == nil {
 				cleanup.Annotations = map[string]string{}
@@ -228,7 +233,7 @@ func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.T
 
 // ensureExistingSSHConfigOwner makes the cleanup TaskRun own the snapshot captured for the user TaskRun.
 func ensureExistingSSHConfigOwner(ctx context.Context, r *ReconcileTaskRun, userTask, cleanup *v1.TaskRun) error {
-	name := sshConfigSnapshotNameFrom(userTask)
+	name := recordedSSHConfigSnapshotName(r.operatorNamespace, userTask)
 	if name == "" {
 		return nil
 	}

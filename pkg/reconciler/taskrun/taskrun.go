@@ -315,6 +315,13 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 				failed = append(failed, assigned)
 				userTr.Annotations[FailedHosts] = strings.Join(failed, ",")
 				delete(userTr.Labels, constant.AssignedHost)
+				// Drop this attempt's snapshot so the next host can store different SSH config
+				// under the same deterministic name. Delete that generated name, never the raw
+				// annotation, which a user can change.
+				if err = r.deleteNamedSSHConfigSnapshot(ctx, sshConfigSnapshotName(userTr.Namespace, userTr.Name)); err != nil {
+					return reconcile.Result{}, err
+				}
+				delete(userTr.Annotations, sshConfigSnapshotAnnotation)
 				err = UpdateTaskRunWithRetry(ctx, r.client, r.apiReader, &userTr)
 				if err != nil {
 					return reconcile.Result{}, err
@@ -1012,7 +1019,7 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 		// Keep default provisionSharedHostTaskName
 	}
 	workspaces := []tektonapi.WorkspaceBinding{{Name: "ssh", Secret: &kubecore.SecretVolumeSource{SecretName: sshSecret}}}
-	if snapshotName := sshConfigSnapshotNameFrom(tr); snapshotName != "" && provision.Spec.TaskRef.Name == provisionSharedHostTaskName {
+	if snapshotName := recordedSSHConfigSnapshotName(r.operatorNamespace, tr); snapshotName != "" && provision.Spec.TaskRef.Name == provisionSharedHostTaskName {
 		workspaces = append(workspaces, sshConfigWorkspaceBinding(snapshotName))
 	}
 	provision.Spec.Workspaces = workspaces
@@ -1083,6 +1090,31 @@ func sshConfigSnapshotNameFrom(tr *tektonapi.TaskRun) string {
 	return tr.Annotations[sshConfigSnapshotAnnotation]
 }
 
+// expectedSSHConfigSnapshotName is the only ConfigMap name the controller will
+// mount or delete for tr. A task in the operator namespace names the user TaskRun
+// through its labels. A user TaskRun uses its own namespace and name, so labels
+// on that object cannot point the controller at a different ConfigMap.
+func expectedSSHConfigSnapshotName(operatorNamespace string, tr *tektonapi.TaskRun) string {
+	if tr.Namespace == operatorNamespace && tr.Labels != nil {
+		userNamespace := tr.Labels[UserTaskNamespace]
+		userName := tr.Labels[UserTaskName]
+		if userNamespace != "" && userName != "" {
+			return sshConfigSnapshotName(userNamespace, userName)
+		}
+	}
+	return sshConfigSnapshotName(tr.Namespace, tr.Name)
+}
+
+// recordedSSHConfigSnapshotName returns that generated name when the annotation
+// matches it. Any other annotation value is ignored.
+func recordedSSHConfigSnapshotName(operatorNamespace string, tr *tektonapi.TaskRun) string {
+	expected := expectedSSHConfigSnapshotName(operatorNamespace, tr)
+	if sshConfigSnapshotNameFrom(tr) != expected {
+		return ""
+	}
+	return expected
+}
+
 func (r *ReconcileTaskRun) ensureUserSSHConfigSnapshot(ctx context.Context, tr *tektonapi.TaskRun, sshConfig string) error {
 	name := sshConfigSnapshotName(tr.Namespace, tr.Name)
 	if _, err := createSSHConfigMap(ctx, r.client, r.apiReader, r.operatorNamespace, name, sshConfig); err != nil {
@@ -1096,7 +1128,15 @@ func (r *ReconcileTaskRun) ensureUserSSHConfigSnapshot(ctx context.Context, tr *
 }
 
 func (r *ReconcileTaskRun) deleteSSHConfigSnapshot(ctx context.Context, tr *tektonapi.TaskRun) error {
-	name := sshConfigSnapshotNameFrom(tr)
+	if sshConfigSnapshotNameFrom(tr) == "" {
+		return nil
+	}
+	// A non-empty annotation means a snapshot was recorded. Delete the generated
+	// name for that user TaskRun, not the annotation value itself.
+	return r.deleteNamedSSHConfigSnapshot(ctx, expectedSSHConfigSnapshotName(r.operatorNamespace, tr))
+}
+
+func (r *ReconcileTaskRun) deleteNamedSSHConfigSnapshot(ctx context.Context, name string) error {
 	if name == "" {
 		return nil
 	}

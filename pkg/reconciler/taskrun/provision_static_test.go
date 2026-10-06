@@ -4,6 +4,7 @@
 package taskrun
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -377,8 +378,100 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			err = client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: binding.ConfigMap.Name}, &v1.ConfigMap{})
 			Expect(k8serrors.IsNotFound(err)).Should(BeTrue())
 		})
+
+		It("should snapshot the next host when the first provision fails", func(ctx SpecContext) {
+			const otherSSHConfig = "Host *\n  ProxyJump other.example.com"
+			client, reconciler = setupClientAndReconciler(staticHostsWithDistinctSSHConfig(sshConfigText, otherSSHConfig))
+
+			userTask := runUserPipeline(ctx, client, reconciler, "test-ssh-config-retry")
+			initialHost := userTask.Labels[AssignedHost]
+			provisionTask := getProvisionTaskRun(ctx, client, userTask)
+			provisionTask.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			provisionTask.Status.SetCondition(&apis.Condition{
+				Type:   apis.ConditionSucceeded,
+				Status: v1.ConditionFalse,
+			})
+			Expect(client.Status().Update(ctx, provisionTask)).Should(Succeed())
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: provisionTask.Namespace, Name: provisionTask.Name}})
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(client.Delete(ctx, provisionTask)).Should(Succeed())
+
+			updatedUserTask := getUserTaskRun(ctx, client, userTask.Name)
+			Expect(updatedUserTask.Annotations[sshConfigSnapshotAnnotation]).Should(BeEmpty())
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: userTask.Name}})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			finalUserTask := getUserTaskRun(ctx, client, userTask.Name)
+			Expect(finalUserTask.Labels[AssignedHost]).ShouldNot(Equal(initialHost))
+			nextProvision := getProvisionTaskRun(ctx, client, finalUserTask)
+			hostConfig := &v1.ConfigMap{}
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: HostConfig}, hostConfig)).Should(Succeed())
+			expectSSHConfigSnapshot(ctx, client, finalUserTask, sshConfigBinding(nextProvision), hostConfig.Data["host."+finalUserTask.Labels[AssignedHost]+".ssh-config"])
+		})
+
+		It("should delete the snapshot when the user TaskRun update fails", func(ctx SpecContext) {
+			name := "test-ssh-config-update-failure"
+			createUserTaskRun(ctx, client, name, "linux/arm64")
+			reconciler.client = failTaskRunUpdate{Client: client}
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
+			Expect(err).Should(HaveOccurred())
+
+			snapshotErr := client.Get(ctx, types.NamespacedName{
+				Namespace: systemNamespace,
+				Name:      sshConfigSnapshotName(userNamespace, name),
+			}, &v1.ConfigMap{})
+			Expect(k8serrors.IsNotFound(snapshotErr)).Should(BeTrue())
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: HostConfig}, &v1.ConfigMap{})).Should(Succeed())
+		})
+	})
+
+	It("should ignore a snapshot annotation that names another ConfigMap", func(ctx SpecContext) {
+		client, reconciler = setupClientAndReconciler(createHostConfig())
+		name := "test-forged-snapshot"
+		createUserTaskRun(ctx, client, name, "linux/arm64")
+		userTask := getUserTaskRun(ctx, client, name)
+		userTask.Annotations = map[string]string{sshConfigSnapshotAnnotation: HostConfig}
+		Expect(client.Update(ctx, userTask)).Should(Succeed())
+
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
+		Expect(err).ShouldNot(HaveOccurred())
+		provision := getProvisionTaskRun(ctx, client, getUserTaskRun(ctx, client, name))
+		for _, binding := range provision.Spec.Workspaces {
+			if binding.ConfigMap != nil {
+				Expect(binding.ConfigMap.Name).ShouldNot(Equal(HostConfig))
+			}
+		}
+
+		provision.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+		provision.Status.SetCondition(&apis.Condition{
+			Type:   apis.ConditionSucceeded,
+			Status: v1.ConditionFalse,
+		})
+		Expect(client.Status().Update(ctx, provision)).Should(Succeed())
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: provision.Namespace, Name: provision.Name}})
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: HostConfig}, &v1.ConfigMap{})).Should(Succeed())
 	})
 })
+
+func staticHostsWithDistinctSSHConfig(host1Config, host2Config string) []runtimeclient.Object {
+	objs := createHostConfig()
+	hostConfig := objs[0].(*v1.ConfigMap)
+	hostConfig.Data["host.host1.ssh-config"] = host1Config
+	hostConfig.Data["host.host2.ssh-config"] = host2Config
+	return objs
+}
+
+type failTaskRunUpdate struct {
+	runtimeclient.Client
+}
+
+func (f failTaskRunUpdate) Update(ctx context.Context, obj runtimeclient.Object, opts ...runtimeclient.UpdateOption) error {
+	if _, ok := obj.(*pipelinev1.TaskRun); ok {
+		return fmt.Errorf("induced update failure")
+	}
+	return f.Client.Update(ctx, obj, opts...)
+}
 
 func staticHostsWithSSHConfig(sshConfig string) []runtimeclient.Object {
 	objs := createHostConfig()

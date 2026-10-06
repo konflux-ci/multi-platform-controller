@@ -10,6 +10,7 @@ import (
 	"github.com/konflux-ci/multi-platform-controller/pkg/constant"
 	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v12 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	k8sRuntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -140,10 +141,17 @@ func UpdateHostPools(operatorNamespace string, c client.Client, scheme *k8sRunti
 				return
 			}
 			if err := setSSHConfigMapOwner(context.Background(), c, scheme, &provision, sshConfigCM); err != nil {
-				if delErr := c.Delete(context.Background(), sshConfigCM); delErr != nil {
+				log.Error(err, "failed to set ssh-config owner", "host", realHostName)
+				// The TaskRun already references this snapshot. Remove the task before the
+				// snapshot so it cannot start against a ConfigMap that no longer exists.
+				// Keep the snapshot when the task cannot be removed.
+				if delErr := c.Delete(context.Background(), &provision); delErr != nil && !k8serrors.IsNotFound(delErr) {
+					log.Error(delErr, "failed to delete host update task", "host", realHostName)
+					return
+				}
+				if delErr := c.Delete(context.Background(), sshConfigCM); delErr != nil && !k8serrors.IsNotFound(delErr) {
 					log.Error(delErr, "failed to delete ssh-config snapshot", "host", realHostName)
 				}
-				log.Error(err, "failed to set ssh-config owner", "host", realHostName)
 				return
 			}
 		}()

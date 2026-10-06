@@ -15,7 +15,7 @@
 //	8. A negative test to verify data validation on the host username field
 //	9. A negative test to verify data validation on the host platform field
 //	10. A test that a blank or forbidden ssh-config is not mounted on the update task
-//	11. A test that a failed owner update deletes the generated ssh-config snapshot
+//	11. A test that a failed owner update deletes the update task and its ssh-config snapshot
 
 package taskrun
 
@@ -192,7 +192,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 		}).Should(Succeed())
 	})
 
-	It("should delete the ssh-config snapshot when setting its owner fails", func(ctx SpecContext) {
+	It("should delete the update task and ssh-config snapshot when setting its owner fails", func(ctx SpecContext) {
 		waitGroup := &sync.WaitGroup{}
 		hostConfig.Data = testConfigDataFromTestData(map[string]string{
 			"address":     "10.130.75.23",
@@ -240,6 +240,9 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 			list := &corev1.ConfigMapList{}
 			g.Expect(k8sClient.List(ctx, list, client.InNamespace(testNamespace))).Should(Succeed())
 			g.Expect(list.Items).Should(ConsistOf(HaveField("Name", HostConfig)))
+			tasks := &v1.TaskRunList{}
+			g.Expect(k8sClient.List(ctx, tasks, client.InNamespace(testNamespace))).Should(Succeed())
+			g.Expect(tasks.Items).Should(BeEmpty())
 		}).Should(Succeed())
 	})
 
