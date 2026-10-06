@@ -22,6 +22,7 @@ import (
 	"knative.dev/pkg/apis"
 	ctrl "sigs.k8s.io/controller-runtime"
 	runtimeclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -597,6 +598,11 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			stored.Status.CompletionTime = &metav1.Time{Time: completed}
 			stored.Status.SetCondition(&apis.Condition{Type: apis.ConditionSucceeded, Status: succeeded})
 			Expect(client.Status().Update(ctx, stored)).Should(Succeed())
+
+			snap := &v1.ConfigMap{}
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: snapshotName}, snap)).Should(Succeed())
+			Expect(controllerutil.SetOwnerReference(stored, snap, reconciler.scheme)).Should(Succeed())
+			Expect(client.Update(ctx, snap)).Should(Succeed())
 		}
 
 		It("should delete a succeeded update task and its ssh-config snapshot", func(ctx SpecContext) {
@@ -648,6 +654,98 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(k8serrors.IsNotFound(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: snapshotName}, &v1.ConfigMap{}))).Should(BeTrue())
 		})
 
+		It("should leave the snapshot when the update task is being deleted", func(ctx SpecContext) {
+			snapshot := &v1.ConfigMap{}
+			snapshot.Name = snapshotName
+			snapshot.Namespace = systemNamespace
+			snapshot.Data = map[string]string{sshConfigFileName: "Host *\n  ProxyJump bastion"}
+			Expect(client.Create(ctx, snapshot)).Should(Succeed())
+
+			tr := &pipelinev1.TaskRun{}
+			tr.Name = "update-deleting"
+			tr.Namespace = systemNamespace
+			tr.Finalizers = []string{"test.keep"}
+			tr.Labels = map[string]string{TaskTypeLabel: TaskTypeUpdate}
+			tr.Spec.Workspaces = []pipelinev1.WorkspaceBinding{sshConfigWorkspaceBinding(snapshotName)}
+			Expect(client.Create(ctx, tr)).Should(Succeed())
+
+			stored := &pipelinev1.TaskRun{}
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: tr.Name}, stored)).Should(Succeed())
+			stored.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			stored.Status.SetCondition(&apis.Condition{Type: apis.ConditionSucceeded, Status: v1.ConditionTrue})
+			Expect(client.Status().Update(ctx, stored)).Should(Succeed())
+			Expect(controllerutil.SetOwnerReference(stored, snapshot, reconciler.scheme)).Should(Succeed())
+			Expect(client.Update(ctx, snapshot)).Should(Succeed())
+			Expect(client.Delete(ctx, stored)).Should(Succeed())
+
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: systemNamespace, Name: tr.Name}})
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(result.RequeueAfter).Should(BeZero())
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: snapshotName}, &v1.ConfigMap{})).Should(Succeed())
+			deleting := &pipelinev1.TaskRun{}
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: tr.Name}, deleting)).Should(Succeed())
+			Expect(deleting.DeletionTimestamp.IsZero()).Should(BeFalse())
+		})
+
+		It("should not delete host-config for an update task outside the operator namespace", func(ctx SpecContext) {
+			tr := &pipelinev1.TaskRun{}
+			tr.Name = "user-update"
+			tr.Namespace = userNamespace
+			tr.Labels = map[string]string{TaskTypeLabel: TaskTypeUpdate}
+			tr.Spec.Workspaces = []pipelinev1.WorkspaceBinding{sshConfigWorkspaceBinding(HostConfig)}
+			Expect(client.Create(ctx, tr)).Should(Succeed())
+
+			stored := &pipelinev1.TaskRun{}
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: tr.Name}, stored)).Should(Succeed())
+			stored.Status.CompletionTime = &metav1.Time{Time: time.Now().Add(-2 * time.Hour)}
+			stored.Status.SetCondition(&apis.Condition{Type: apis.ConditionSucceeded, Status: v1.ConditionTrue})
+			Expect(client.Status().Update(ctx, stored)).Should(Succeed())
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: tr.Name}})
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: HostConfig}, &v1.ConfigMap{})).Should(Succeed())
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: userNamespace, Name: tr.Name}, &pipelinev1.TaskRun{})).Should(Succeed())
+		})
+
+		It("should not delete a ConfigMap the update task does not own", func(ctx SpecContext) {
+			tr := &pipelinev1.TaskRun{}
+			tr.Name = "update-unowned"
+			tr.Namespace = systemNamespace
+			tr.Labels = map[string]string{TaskTypeLabel: TaskTypeUpdate}
+			tr.Spec.Workspaces = []pipelinev1.WorkspaceBinding{sshConfigWorkspaceBinding(HostConfig)}
+			Expect(client.Create(ctx, tr)).Should(Succeed())
+
+			stored := &pipelinev1.TaskRun{}
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: tr.Name}, stored)).Should(Succeed())
+			stored.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			stored.Status.SetCondition(&apis.Condition{Type: apis.ConditionSucceeded, Status: v1.ConditionTrue})
+			Expect(client.Status().Update(ctx, stored)).Should(Succeed())
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: systemNamespace, Name: tr.Name}})
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: HostConfig}, &v1.ConfigMap{})).Should(Succeed())
+			Expect(k8serrors.IsNotFound(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: tr.Name}, &pipelinev1.TaskRun{}))).Should(BeTrue())
+		})
+
+		It("should delete a finished update task when its snapshot is already gone", func(ctx SpecContext) {
+			createFinishedUpdate(ctx, "update-snapshot-gone", time.Now(), v1.ConditionTrue)
+			Expect(client.Delete(ctx, &v1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Namespace: systemNamespace, Name: snapshotName}})).Should(Succeed())
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: systemNamespace, Name: "update-snapshot-gone"}})
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(k8serrors.IsNotFound(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: "update-snapshot-gone"}, &pipelinev1.TaskRun{}))).Should(BeTrue())
+		})
+
+		It("should keep the update task when its snapshot cannot be read", func(ctx SpecContext) {
+			createFinishedUpdate(ctx, "update-snapshot-unreadable", time.Now(), v1.ConditionTrue)
+			reconciler.client = failSnapshotGet{Client: client, name: snapshotName}
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: systemNamespace, Name: "update-snapshot-unreadable"}})
+			Expect(err).Should(MatchError(ContainSubstring("get snapshot failed")))
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: "update-snapshot-unreadable"}, &pipelinev1.TaskRun{})).Should(Succeed())
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: snapshotName}, &v1.ConfigMap{})).Should(Succeed())
+		})
+
 		It("should keep the update task when deleting its snapshot fails", func(ctx SpecContext) {
 			createFinishedUpdate(ctx, "update-snapshot-delete-fails", time.Now(), v1.ConditionTrue)
 			reconciler.client = failSnapshotDelete{failTaskRunUpdate: failTaskRunUpdate{Client: client}, snapshotName: snapshotName}
@@ -655,6 +753,19 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(err).Should(MatchError(ContainSubstring("delete snapshot failed")))
 			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: "update-snapshot-delete-fails"}, &pipelinev1.TaskRun{})).Should(Succeed())
 			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: snapshotName}, &v1.ConfigMap{})).Should(Succeed())
+		})
+
+		It("should recognize only the TaskRun UID as the snapshot owner", func() {
+			cm := &v1.ConfigMap{}
+			tr := &pipelinev1.TaskRun{}
+			Expect(ownedByTaskRun(cm, tr)).Should(BeFalse())
+
+			tr.UID = "task-uid"
+			cm.OwnerReferences = []metav1.OwnerReference{{UID: "other-uid"}}
+			Expect(ownedByTaskRun(cm, tr)).Should(BeFalse())
+
+			cm.OwnerReferences[0].UID = tr.UID
+			Expect(ownedByTaskRun(cm, tr)).Should(BeTrue())
 		})
 	})
 })
@@ -688,6 +799,18 @@ func (f failSnapshotDelete) Delete(ctx context.Context, obj runtimeclient.Object
 		return errors.New("delete snapshot failed")
 	}
 	return f.Client.Delete(ctx, obj, opts...)
+}
+
+type failSnapshotGet struct {
+	runtimeclient.Client
+	name string
+}
+
+func (f failSnapshotGet) Get(ctx context.Context, key runtimeclient.ObjectKey, obj runtimeclient.Object, opts ...runtimeclient.GetOption) error {
+	if key.Name == f.name {
+		return errors.New("get snapshot failed")
+	}
+	return f.Client.Get(ctx, key, obj, opts...)
 }
 
 // mismatchAfterReplace reports a deterministic ConfigMap as already present with other content,
@@ -748,8 +871,8 @@ func expectSSHConfigSnapshot(ctx SpecContext, client runtimeclient.Client, userT
 	Expect(snapshot.Annotations).Should(HaveKeyWithValue(sshConfigSourceAnnotation, userTask.Namespace+"/"+userTask.Name))
 }
 
-func sshConfigBinding(provision *pipelinev1.TaskRun) pipelinev1.WorkspaceBinding {
-	for _, binding := range provision.Spec.Workspaces {
+func sshConfigBinding(tr *pipelinev1.TaskRun) pipelinev1.WorkspaceBinding {
+	for _, binding := range tr.Spec.Workspaces {
 		if binding.Name == sshConfigWorkspaceName {
 			return binding
 		}

@@ -254,7 +254,9 @@ func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, tr *tektonapi.Ta
 }
 
 func (r *ReconcileTaskRun) handleUpdateTask(ctx context.Context, tr *tektonapi.TaskRun) (reconcile.Result, error) {
-	if !tr.DeletionTimestamp.IsZero() || tr.Status.CompletionTime == nil {
+	// Update tasks are created only in the operator namespace. A TaskRun in another
+	// namespace can carry the same label, and its workspace must not choose a ConfigMap to delete.
+	if tr.Namespace != r.operatorNamespace || !tr.DeletionTimestamp.IsZero() || tr.Status.CompletionTime == nil {
 		return reconcile.Result{}, nil
 	}
 	success := tr.Status.GetCondition(apis.ConditionSucceeded).IsTrue()
@@ -263,15 +265,49 @@ func (r *ReconcileTaskRun) handleUpdateTask(ctx context.Context, tr *tektonapi.T
 	if !success && tr.Status.CompletionTime.Add(time.Hour).After(time.Now()) {
 		return reconcile.Result{RequeueAfter: time.Hour}, nil
 	}
-	for _, binding := range tr.Spec.Workspaces {
-		if binding.Name != sshConfigWorkspaceName || binding.ConfigMap == nil {
-			continue
-		}
-		if err := r.deleteNamedSSHConfigSnapshot(ctx, binding.ConfigMap.Name); err != nil {
-			return reconcile.Result{}, err
-		}
+	if err := r.deleteOwnedUpdateSnapshot(ctx, tr); err != nil {
+		return reconcile.Result{}, err
 	}
 	return reconcile.Result{}, r.client.Delete(ctx, tr)
+}
+
+// deleteOwnedUpdateSnapshot removes the ssh-config ConfigMap this update TaskRun owns.
+// The workspace name is only a lookup key. A ConfigMap is deleted when its owner UID is this TaskRun.
+func (r *ReconcileTaskRun) deleteOwnedUpdateSnapshot(ctx context.Context, tr *tektonapi.TaskRun) error {
+	log := logr.FromContextOrDiscard(ctx)
+	for _, binding := range tr.Spec.Workspaces {
+		if binding.Name != sshConfigWorkspaceName || binding.ConfigMap == nil || binding.ConfigMap.Name == "" {
+			continue
+		}
+		cm := &kubecore.ConfigMap{}
+		err := r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: binding.ConfigMap.Name}, cm)
+		if k8serrors.IsNotFound(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if !ownedByTaskRun(cm, tr) {
+			log.Info("skipping ssh-config ConfigMap that this update task does not own", "configMap", cm.Name)
+			continue
+		}
+		if err := r.client.Delete(ctx, cm); err != nil && !k8serrors.IsNotFound(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+func ownedByTaskRun(cm *kubecore.ConfigMap, tr *tektonapi.TaskRun) bool {
+	if tr.GetUID() == "" {
+		return false
+	}
+	for _, ref := range cm.GetOwnerReferences() {
+		if ref.UID == tr.GetUID() {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonapi.TaskRun) (reconcile.Result, error) {
@@ -1221,10 +1257,10 @@ func createSSHConfigMap(ctx context.Context, c client.Client, reader client.Read
 			recorded = existing.Annotations[sshConfigSourceAnnotation]
 		}
 		if recorded != "" && recorded != source {
-			return nil, fmt.Errorf("ssh config ConfigMap %s already exists with different contents", name)
+			return nil, fmt.Errorf("ssh-config ConfigMap %s already exists with different contents", name)
 		}
 		if attempt > 0 {
-			return nil, fmt.Errorf("ssh config ConfigMap %s already exists with different contents", name)
+			return nil, fmt.Errorf("ssh-config ConfigMap %s already exists with different contents", name)
 		}
 		if delErr := c.Delete(ctx, existing); delErr != nil && !k8serrors.IsNotFound(delErr) {
 			return nil, delErr
