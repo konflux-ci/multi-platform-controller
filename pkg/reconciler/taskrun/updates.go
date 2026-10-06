@@ -13,14 +13,15 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	k8sRuntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // UpdateHostPools Run the host update task periodically
-func UpdateHostPools(operatorNamespace string, client client.Client, scheme *k8sRuntime.Scheme, log *logr.Logger) {
+func UpdateHostPools(operatorNamespace string, c client.Client, scheme *k8sRuntime.Scheme, recorder record.EventRecorder, log *logr.Logger) {
 	log.Info("running pooled host update")
 	cm := v12.ConfigMap{}
-	err := client.Get(context.Background(), types.NamespacedName{Namespace: operatorNamespace, Name: HostConfig}, &cm)
+	err := c.Get(context.Background(), types.NamespacedName{Namespace: operatorNamespace, Name: HostConfig}, &cm)
 	if err != nil {
 		log.Error(err, "Failed to read config to update hosts", "audit", "true")
 		return
@@ -66,6 +67,9 @@ func UpdateHostPools(operatorNamespace string, client client.Client, scheme *k8s
 			if sshConfig := strings.TrimSpace(v); sshConfig != "" {
 				if err := config.ValidateSSHClientConfig(sshConfig); err != nil {
 					log.Error(err, "ignoring ssh-config", "host", host.Name)
+					if recorder != nil {
+						recorder.Eventf(&cm, v12.EventTypeWarning, "SSHConfigRejected", "host %s ssh-config was rejected and will not be used for host updates: %v", host.Name, err)
+					}
 					continue
 				}
 				host.SSHConfig = sshConfig
@@ -96,7 +100,7 @@ func UpdateHostPools(operatorNamespace string, client client.Client, scheme *k8s
 			provision.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: host.Secret}}}
 			var sshConfigCM *v12.ConfigMap
 			if host.SSHConfig != "" {
-				cm, binding, snapErr := snapshotSSHConfig(context.Background(), client, client, operatorNamespace, "", host.SSHConfig)
+				cm, binding, snapErr := snapshotSSHConfig(context.Background(), c, operatorNamespace, host.SSHConfig)
 				if snapErr != nil {
 					log.Error(snapErr, "failed to snapshot ssh-config", "host", realHostName)
 					return
@@ -125,9 +129,9 @@ func UpdateHostPools(operatorNamespace string, client client.Client, scheme *k8s
 					Value: *v1.NewStructuredValues(hostsConcurrency[host.Name]),
 				},
 			}
-			if err := client.Create(context.Background(), &provision); err != nil {
+			if err := c.Create(context.Background(), &provision); err != nil {
 				if sshConfigCM != nil {
-					_ = client.Delete(context.Background(), sshConfigCM)
+					_ = c.Delete(context.Background(), sshConfigCM)
 				}
 				log.Error(err, "failed to create host update task", "host", realHostName)
 				return
@@ -135,8 +139,12 @@ func UpdateHostPools(operatorNamespace string, client client.Client, scheme *k8s
 			if sshConfigCM == nil {
 				return
 			}
-			if err := setSSHConfigMapOwner(context.Background(), client, scheme, &provision, sshConfigCM); err != nil {
+			if err := setSSHConfigMapOwner(context.Background(), c, scheme, &provision, sshConfigCM); err != nil {
+				if delErr := c.Delete(context.Background(), sshConfigCM); delErr != nil {
+					log.Error(delErr, "failed to delete ssh-config snapshot", "host", realHostName)
+				}
 				log.Error(err, "failed to set ssh-config owner", "host", realHostName)
+				return
 			}
 		}()
 	}

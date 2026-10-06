@@ -118,7 +118,7 @@ type ReconcileTaskRun struct {
 //+kubebuilder:rbac:groups="tekton.dev",resources=taskruns/status,verbs=create;delete;deletecollection;get;list;patch;update;watch
 //+kubebuilder:rbac:groups="apiextensions.k8s.io",resources=customresourcedefinitions,verbs=get
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;delete
+//+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;patch;delete
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
@@ -1109,15 +1109,10 @@ func (r *ReconcileTaskRun) deleteSSHConfigSnapshot(ctx context.Context, tr *tekt
 	return nil
 }
 
-// snapshotSSHConfig stores sshConfig in an immutable ConfigMap. An empty taskName
-// asks the API server for a generated name. The caller owns the returned ConfigMap
-// from the TaskRun once that TaskRun exists.
-func snapshotSSHConfig(ctx context.Context, c client.Client, reader client.Reader, namespace, taskName, sshConfig string) (*kubecore.ConfigMap, tektonapi.WorkspaceBinding, error) {
-	name := ""
-	if taskName != "" {
-		name = kmeta.ChildName(taskName, "-ssh-config")
-	}
-	cm, err := createSSHConfigMap(ctx, c, reader, namespace, name, sshConfig)
+// snapshotSSHConfig stores sshConfig in an immutable ConfigMap with a generated name.
+// Host updates use this; provision and cleanup share the snapshot recorded on the user TaskRun.
+func snapshotSSHConfig(ctx context.Context, c client.Client, namespace, sshConfig string) (*kubecore.ConfigMap, tektonapi.WorkspaceBinding, error) {
+	cm, err := createSSHConfigMap(ctx, c, c, namespace, "", sshConfig)
 	if err != nil {
 		return nil, tektonapi.WorkspaceBinding{}, err
 	}
@@ -1153,10 +1148,20 @@ func createSSHConfigMap(ctx context.Context, c client.Client, reader client.Read
 }
 
 func setSSHConfigMapOwner(ctx context.Context, c client.Client, scheme *k8sRuntime.Scheme, owner client.Object, cm *kubecore.ConfigMap) error {
+	base := cm.DeepCopy()
 	if err := controllerutil.SetOwnerReference(owner, cm, scheme); err != nil {
 		return err
 	}
-	return c.Update(ctx, cm)
+	// Strategic merge adds this owner by uid and does not replace the rest of the ConfigMap.
+	patch := client.StrategicMergeFrom(base)
+	data, err := patch.Data(cm)
+	if err != nil {
+		return err
+	}
+	if len(data) == 0 || string(data) == "{}" {
+		return nil
+	}
+	return c.Patch(ctx, cm, patch)
 }
 
 func sshConfigWorkspaceBinding(configMapName string) tektonapi.WorkspaceBinding {

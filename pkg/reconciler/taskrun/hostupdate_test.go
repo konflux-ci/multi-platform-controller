@@ -4,7 +4,7 @@
 //	- That the TaskRun created was a host updating TaskRun was created
 //	- That the configuration data in the TaskRun spec Params and Workspace contain the test data
 //
-// There are 10 test cases:
+// There are 11 test cases:
 // 	1. A positive test to verify all is working correctly
 //	2. A negative test with no configuration data
 //	3. A negative test to verify UpdateHostPools only creates TaskRuns for static hosts
@@ -15,11 +15,14 @@
 //	8. A negative test to verify data validation on the host username field
 //	9. A negative test to verify data validation on the host platform field
 //	10. A test that a blank or forbidden ssh-config is not mounted on the update task
+//	11. A test that a failed owner update deletes the generated ssh-config snapshot
 
 package taskrun
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,6 +34,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
@@ -105,7 +109,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 
 		// when: host pools are updated
 		log := logr.FromContextOrDiscard(ctx)
-		UpdateHostPools(testNamespace, k8sClient, scheme, &log)
+		UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
 
 		// then: no host pool update tasks are created
 		list := v1.TaskRunList{}
@@ -154,7 +158,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 
 		// when: host pools are updated
 		log := logr.FromContextOrDiscard(ctx)
-		UpdateHostPools(testNamespace, k8sClient, scheme, &log)
+		UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
 
 		// when: spawned threads run to completion
 		waitGroup.Wait()
@@ -185,6 +189,57 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 			g.Expect(snapshot.Immutable).ShouldNot(BeNil())
 			g.Expect(*snapshot.Immutable).Should(BeTrue())
 			g.Expect(snapshot.OwnerReferences).Should(ContainElement(HaveField("Name", createdList.Items[0].Name)))
+		}).Should(Succeed())
+	})
+
+	It("should delete the ssh-config snapshot when setting its owner fails", func(ctx SpecContext) {
+		waitGroup := &sync.WaitGroup{}
+		hostConfig.Data = testConfigDataFromTestData(map[string]string{
+			"address":     "10.130.75.23",
+			"secret":      "internal-koko-hazamar-ssh-key",
+			"concurrency": "1",
+			"user":        "koko_hazamar",
+			"platform":    "linux/ppc64le",
+			"ssh-config":  "Host *\n  ProxyJump bastion\n",
+		}, "host.koko-hazamar-prod-1.")
+		waitGroup.Add(1)
+
+		k8sClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithRuntimeObjects(hostConfig).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Create: func(
+					ctx context.Context,
+					client client.WithWatch,
+					obj client.Object,
+					opts ...client.CreateOption,
+				) error {
+					err := client.Create(ctx, obj, opts...)
+					if _, ok := obj.(*v1.TaskRun); ok {
+						waitGroup.Done()
+					}
+					return err
+				},
+				Patch: func(
+					ctx context.Context,
+					client client.WithWatch,
+					obj client.Object,
+					patch client.Patch,
+					opts ...client.PatchOption,
+				) error {
+					return fmt.Errorf("owner patch failed")
+				},
+			}).
+			Build()
+
+		log := logr.FromContextOrDiscard(ctx)
+		UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
+		waitGroup.Wait()
+
+		Eventually(func(g Gomega) {
+			list := &corev1.ConfigMapList{}
+			g.Expect(k8sClient.List(ctx, list, client.InNamespace(testNamespace))).Should(Succeed())
+			g.Expect(list.Items).Should(ConsistOf(HaveField("Name", HostConfig)))
 		}).Should(Succeed())
 	})
 
@@ -222,7 +277,8 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 				Build()
 
 			log := logr.FromContextOrDiscard(ctx)
-			UpdateHostPools(testNamespace, k8sClient, scheme, &log)
+			recorder := record.NewFakeRecorder(10)
+			UpdateHostPools(testNamespace, k8sClient, scheme, recorder, &log)
 			waitGroup.Wait()
 
 			createdList := v1.TaskRunList{}
@@ -230,6 +286,11 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 			Expect(createdList.Items).Should(HaveLen(1))
 			Expect(createdList.Items[0].Spec.Workspaces).Should(HaveLen(1))
 			Expect(createdList.Items[0].Spec.Workspaces[0].Name).Should(Equal("ssh"))
+			if strings.TrimSpace(sshConfig) == "" {
+				Expect(recorder.Events).ShouldNot(Receive())
+				return
+			}
+			Expect(recorder.Events).Should(Receive(ContainSubstring("SSHConfigRejected")))
 		},
 		Entry("when ssh-config contains a forbidden directive", "Host *\n  ProxyCommand ssh bastion -W %h:%p\n"),
 		Entry("when ssh-config is blank", "   "),
@@ -255,7 +316,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 
 				// when: host pools are updated
 				log := logr.FromContextOrDiscard(ctx)
-				UpdateHostPools(testNamespace, k8sClient, scheme, &log)
+				UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
 
 				// test everything in TaskRun creation that is not part of the table testing
 				Eventually(func(g Gomega) {
