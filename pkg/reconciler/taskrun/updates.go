@@ -60,6 +60,8 @@ func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.L
 			} else {
 				continue
 			}
+		case "ssh-config":
+			host.SSHConfig = strings.TrimSpace(v)
 
 		default:
 			log.Info("unknown key", "key", key)

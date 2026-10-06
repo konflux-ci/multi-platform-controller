@@ -528,6 +528,7 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 					Expect(hostConfig.Platform).Should(Equal(expectedPlatform))
 					Expect(hostConfig.Secret).Should(Equal(expectedSecret))
 					Expect(hostConfig.Concurrency).Should(Equal(expectedConcurrency))
+					Expect(hostConfig.SSHConfig).Should(BeEmpty())
 				},
 				Entry("with all fields",
 					map[string]string{},
@@ -541,6 +542,27 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 					map[string]string{"concurrency": ""},
 					"127.0.0.1", "root", "linux/s390x", "test-s390x-static-secret", 0,
 				),
+			)
+		})
+
+		When("parsing the optional ssh-config field", func() {
+			DescribeTable("should keep SSH client config text or treat the field as unset",
+				func(value, expected string) {
+					data := map[string]string{
+						"host.moshe-kipod-s390x-static.address":     "127.0.0.1",
+						"host.moshe-kipod-s390x-static.user":        "root",
+						"host.moshe-kipod-s390x-static.platform":    "linux/s390x",
+						"host.moshe-kipod-s390x-static.secret":      "test-s390x-static-secret",
+						"host.moshe-kipod-s390x-static.concurrency": "4",
+						"host.moshe-kipod-s390x-static.ssh-config":  value,
+					}
+					hostConfig, err := ParseStaticHostConfig(data, "moshe-kipod-s390x-static")
+					Expect(err).ShouldNot(HaveOccurred())
+					Expect(hostConfig.SSHConfig).Should(Equal(expected))
+				},
+				Entry("when the field is empty", "", ""),
+				Entry("when the field is whitespace", "   ", ""),
+				Entry("when the field contains an SSH client config", "  Host *\n  ProxyJump bastion.example.com\n", "Host *\n  ProxyJump bastion.example.com"),
 			)
 		})
 

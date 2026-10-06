@@ -42,6 +42,8 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		Expect(params["NAMESPACE"]).Should(Equal(userNamespace))
 		Expect(params["USER"]).Should(Equal("ec2-user"))
 		Expect(params["HOST"]).Should(BeElementOf("192.0.2.1", "192.0.2.2"))
+		Expect(provision.Spec.Workspaces).Should(HaveLen(1))
+		Expect(provision.Spec.Workspaces[0].Name).Should(Equal("ssh"))
 	})
 
 	// It tests the scenario where all available host slots are occupied.
@@ -309,4 +311,41 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(updated.Finalizers).Should(ContainElement("external-finalizer"))
 		})
 	})
+
+	When("a static host sets ssh-config", func() {
+		const sshConfigText = "Host *\n  ProxyJump bastion.example.com\n"
+
+		BeforeEach(func() {
+			client, reconciler = setupClientAndReconciler(staticHostsWithSSHConfig(sshConfigText))
+		})
+
+		It("should mount that text on the provision task", func(ctx SpecContext) {
+			tr := runUserPipeline(ctx, client, reconciler, "test-ssh-config")
+			provision := getProvisionTaskRun(ctx, client, tr)
+			binding := sshConfigBinding(provision)
+			Expect(binding.ConfigMap.Name).Should(Equal(HostConfig))
+			Expect(binding.SubPath).Should(Equal(sshConfigFileName))
+			Expect(binding.ConfigMap.Items).Should(HaveLen(1))
+			Expect(binding.ConfigMap.Items[0].Key).Should(Equal("host." + tr.Labels[AssignedHost] + ".ssh-config"))
+			Expect(binding.ConfigMap.Items[0].Path).Should(Equal(sshConfigFileName))
+		})
+	})
 })
+
+func staticHostsWithSSHConfig(sshConfig string) []runtimeclient.Object {
+	objs := createHostConfig()
+	hostConfig := objs[0].(*v1.ConfigMap)
+	hostConfig.Data["host.host1.ssh-config"] = sshConfig
+	hostConfig.Data["host.host2.ssh-config"] = sshConfig
+	return objs
+}
+
+func sshConfigBinding(provision *pipelinev1.TaskRun) pipelinev1.WorkspaceBinding {
+	for _, binding := range provision.Spec.Workspaces {
+		if binding.Name == sshConfigWorkspaceName {
+			return binding
+		}
+	}
+	Fail("ssh-config workspace was not bound")
+	return pipelinev1.WorkspaceBinding{}
+}

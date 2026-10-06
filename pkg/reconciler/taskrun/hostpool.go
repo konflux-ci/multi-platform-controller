@@ -131,7 +131,7 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 		return reconcile.Result{}, err
 	}
 
-	err = launchProvisioningTask(r, ctx, tr, secretName, selected.Secret, selected.Address, selected.User, hp.targetPlatform, "")
+	err = launchProvisioningTask(r, ctx, tr, secretName, selected.Secret, selected.Address, selected.User, hp.targetPlatform, "", selected.SSHConfig)
 
 	if err != nil {
 		//ugh, try and unassign

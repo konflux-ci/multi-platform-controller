@@ -92,6 +92,11 @@ const (
 	ParamSudoCommands      = "SUDO_COMMANDS"
 	ParamRawPlatform       = "RAW_PLATFORM"
 	ParamInstanceTag       = "INSTANCE_TAG"
+
+	// sshConfigWorkspaceName is the optional provision-task workspace for a custom SSH client config.
+	// sshConfigFileName is the file projected from host.<name>.ssh-config and mounted at /root/.ssh/config.
+	sshConfigWorkspaceName = "ssh-config"
+	sshConfigFileName      = "config"
 )
 
 type ReconcileTaskRun struct {
@@ -840,6 +845,7 @@ func (r *ReconcileTaskRun) getPlatformConfig(ctx context.Context, targetPlatform
 				Platform:    hostConfig.Platform,
 				Secret:      hostConfig.Secret,
 				Concurrency: hostConfig.Concurrency,
+				SSHConfig:   hostConfig.SSHConfig,
 			}
 		}
 	}
@@ -968,7 +974,7 @@ type PlatformConfig interface {
 	Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *tektonapi.TaskRun, secretName string, selectedHost string) error
 }
 
-func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tektonapi.TaskRun, secretName string, sshSecret string, address string, user string, platform string, sudoCommands string) error {
+func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tektonapi.TaskRun, secretName string, sshSecret string, address string, user string, platform string, sudoCommands string, sshConfig string) error {
 	//kick off the provisioning task
 	//note that we can't use owner refs here because this task runs in a different namespace
 
@@ -998,7 +1004,11 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 	default:
 		// Keep default "provision-shared-host"
 	}
-	provision.Spec.Workspaces = []tektonapi.WorkspaceBinding{{Name: "ssh", Secret: &kubecore.SecretVolumeSource{SecretName: sshSecret}}}
+	workspaces := []tektonapi.WorkspaceBinding{{Name: "ssh", Secret: &kubecore.SecretVolumeSource{SecretName: sshSecret}}}
+	if sshConfig != "" && provision.Spec.TaskRef.Name == "provision-shared-host" {
+		workspaces = append(workspaces, sshConfigWorkspaceBinding(tr.Labels[constant.AssignedHost]))
+	}
+	provision.Spec.Workspaces = workspaces
 	computeRequests := map[kubecore.ResourceName]resource.Quantity{kubecore.ResourceCPU: resource.MustParse("100m"), kubecore.ResourceMemory: resource.MustParse("256Mi")}
 	computeLimits := map[kubecore.ResourceName]resource.Quantity{kubecore.ResourceCPU: resource.MustParse("100m"), kubecore.ResourceMemory: resource.MustParse("512Mi")}
 	provision.Spec.ComputeResources = &kubecore.ResourceRequirements{Requests: computeRequests, Limits: computeLimits}
@@ -1053,6 +1063,23 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 	return err
 }
 
+func sshConfigWorkspaceBinding(hostName string) tektonapi.WorkspaceBinding {
+	mode := int32(0600)
+	return tektonapi.WorkspaceBinding{
+		Name:    sshConfigWorkspaceName,
+		SubPath: sshConfigFileName,
+		ConfigMap: &kubecore.ConfigMapVolumeSource{
+			LocalObjectReference: kubecore.LocalObjectReference{Name: HostConfig},
+			DefaultMode:          &mode,
+			Items: []kubecore.KeyToPath{{
+				Key:  "host." + hostName + ".ssh-config",
+				Path: sshConfigFileName,
+				Mode: &mode,
+			}},
+		},
+	}
+}
+
 type Host struct {
 	Address     string
 	Name        string
@@ -1060,6 +1087,7 @@ type Host struct {
 	Concurrency int
 	Platform    string
 	Secret      string
+	SSHConfig   string
 	StartTime   *time.Time // Only used for the dynamic pool
 }
 

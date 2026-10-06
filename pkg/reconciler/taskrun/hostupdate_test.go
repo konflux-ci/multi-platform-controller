@@ -125,6 +125,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 			"concurrency": "1",
 			"user":        "koko_hazamar",
 			"platform":    "linux/ppc64le",
+			"ssh-config":  "Host *\n  ProxyJump bastion\n",
 		}
 		hostConfig.Data = testConfigDataFromTestData(hostConfigData, "host.koko-hazamar-prod-1.")
 
@@ -168,7 +169,8 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 		// extract TaskRun data to begin testing individual fields were correctly filled
 		updatedHostData := hostDataFromTRSpec(createdList.Items[0])
 
-		// then: the updated host data should be equivalent to what we provided
+		// ssh-config is consumed by provisioning, not the update task.
+		delete(hostConfigData, "ssh-config")
 		Expect(hostConfigData).To(BeEquivalentTo(updatedHostData))
 	})
 
