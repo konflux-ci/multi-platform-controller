@@ -62,12 +62,13 @@ func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.L
 				continue
 			}
 		case "ssh-config":
-			sshConfig := strings.TrimSpace(v)
-			if err := config.ValidateSSHClientConfig(sshConfig); err != nil {
-				log.Error(err, "ignoring ssh-config", "host", host.Name)
-				continue
+			if sshConfig := strings.TrimSpace(v); sshConfig != "" {
+				if err := config.ValidateSSHClientConfig(sshConfig); err != nil {
+					log.Error(err, "ignoring ssh-config", "host", host.Name)
+					continue
+				}
+				host.SSHConfig = sshConfig
 			}
-			host.SSHConfig = sshConfig
 
 		default:
 			log.Info("unknown key", "key", key)

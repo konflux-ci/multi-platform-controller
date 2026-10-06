@@ -166,7 +166,18 @@ func validateNonZeroPositiveNumberWithMax(value string, maxValue int) (int, erro
 }
 
 // ValidateSSHClientConfig rejects SSH client config directives that can execute local commands.
-// Match is rejected entirely because Match exec runs during config parsing.
+// Validation rules:
+// - Blank lines and lines starting with # are ignored
+// - Directive names are case-insensitive and may use keyword=value form
+// - ProxyCommand, LocalCommand, PermitLocalCommand, Match, KnownHostsCommand, Include, PKCS11Provider, and SecurityKeyProvider are rejected
+// - Match is rejected entirely because Match exec runs during config parsing
+//
+// Parameters:
+// - sshConfig: SSH client configuration text
+//
+// Returns:
+// - nil if sshConfig contains no forbidden directive
+// - error if a forbidden directive is present
 func ValidateSSHClientConfig(sshConfig string) error {
 	for _, line := range strings.Split(sshConfig, "\n") {
 		line = strings.TrimSpace(line)
