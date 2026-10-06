@@ -24,7 +24,6 @@ package taskrun
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -231,7 +230,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 					patch client.Patch,
 					opts ...client.PatchOption,
 				) error {
-					return fmt.Errorf("owner patch failed")
+					return errors.New("owner patch failed")
 				},
 			}).
 			Build()
