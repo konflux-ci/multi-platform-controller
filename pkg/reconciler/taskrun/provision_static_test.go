@@ -447,6 +447,10 @@ var _ = Describe("Test Static Host Provisioning", func() {
 				ContainSubstring("failed to delete ssh config snapshot"),
 				ContainSubstring("delete snapshot failed"),
 			)))
+
+			Expect(reconciler.client.Delete(ctx, &v1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Namespace: systemNamespace, Name: HostConfig}})).Should(Succeed())
+			err = client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: HostConfig}, &v1.ConfigMap{})
+			Expect(k8serrors.IsNotFound(err)).Should(BeTrue())
 		})
 	})
 
