@@ -17,6 +17,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"knative.dev/pkg/apis"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -382,6 +383,54 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(k8serrors.IsNotFound(err)).Should(BeTrue())
 		})
 
+		It("should replace a stale ssh-config snapshot", func(ctx SpecContext) {
+			name := "test-stale-snapshot"
+			snapshotName := sshConfigSnapshotName(userNamespace, name)
+			stale := &v1.ConfigMap{}
+			stale.Name = snapshotName
+			stale.Namespace = systemNamespace
+			immutable := true
+			stale.Immutable = &immutable
+			stale.Data = map[string]string{sshConfigFileName: "Host *\n  ProxyJump old.example.com"}
+			Expect(client.Create(ctx, stale)).Should(Succeed())
+
+			created, err := createSSHConfigMap(ctx, client, client, systemNamespace, snapshotName, sshConfigText)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(created.Data).Should(HaveKeyWithValue(sshConfigFileName, sshConfigText))
+
+			stored := &v1.ConfigMap{}
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: snapshotName}, stored)).Should(Succeed())
+			Expect(stored.Data).Should(HaveKeyWithValue(sshConfigFileName, sshConfigText))
+			Expect(stored.Immutable).ShouldNot(BeNil())
+			Expect(*stored.Immutable).Should(BeTrue())
+		})
+
+		It("should return the snapshot delete error when a stale snapshot cannot be replaced", func(ctx SpecContext) {
+			snapshotName := sshConfigSnapshotName(userNamespace, "test-stale-snapshot-delete")
+			stale := &v1.ConfigMap{}
+			stale.Name = snapshotName
+			stale.Namespace = systemNamespace
+			immutable := true
+			stale.Immutable = &immutable
+			stale.Data = map[string]string{sshConfigFileName: "Host *\n  ProxyJump old.example.com"}
+			Expect(client.Create(ctx, stale)).Should(Succeed())
+
+			wrapped := failSnapshotDelete{failTaskRunUpdate: failTaskRunUpdate{Client: client}, snapshotName: snapshotName}
+			_, err := createSSHConfigMap(ctx, wrapped, client, systemNamespace, snapshotName, sshConfigText)
+			Expect(err).Should(MatchError(ContainSubstring("delete snapshot failed")))
+
+			stored := &v1.ConfigMap{}
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: snapshotName}, stored)).Should(Succeed())
+			Expect(stored.Data).Should(HaveKeyWithValue(sshConfigFileName, "Host *\n  ProxyJump old.example.com"))
+		})
+
+		It("should return an error when a replaced snapshot still has different content", func(ctx SpecContext) {
+			snapshotName := sshConfigSnapshotName(userNamespace, "test-stale-snapshot-again")
+			wrapped := mismatchAfterReplace{Client: client, name: snapshotName}
+			_, err := createSSHConfigMap(ctx, wrapped, wrapped, systemNamespace, snapshotName, sshConfigText)
+			Expect(err).Should(MatchError(ContainSubstring("already exists with different contents")))
+		})
+
 		It("should snapshot the next host when the first provision fails", func(ctx SpecContext) {
 			const otherSSHConfig = "Host *\n  ProxyJump other.example.com"
 			client, reconciler = setupClientAndReconciler(staticHostsWithDistinctSSHConfig(sshConfigText, otherSSHConfig))
@@ -444,7 +493,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(err).Should(MatchError(ContainSubstring("induced update failure")))
 			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: snapshotName}, &v1.ConfigMap{})).Should(Succeed())
 			Expect(logged).Should(ContainElement(And(
-				ContainSubstring("failed to delete ssh config snapshot"),
+				ContainSubstring("failed to delete ssh-config snapshot"),
 				ContainSubstring("delete snapshot failed"),
 			)))
 
@@ -512,6 +561,32 @@ func (f failSnapshotDelete) Delete(ctx context.Context, obj runtimeclient.Object
 		return errors.New("delete snapshot failed")
 	}
 	return f.Client.Delete(ctx, obj, opts...)
+}
+
+// mismatchAfterReplace reports a deterministic ConfigMap as already present with other content,
+// including after it is deleted, so a single replacement cannot succeed.
+type mismatchAfterReplace struct {
+	runtimeclient.Client
+	name string
+}
+
+func (m mismatchAfterReplace) Create(_ context.Context, obj runtimeclient.Object, _ ...runtimeclient.CreateOption) error {
+	return k8serrors.NewAlreadyExists(schema.GroupResource{Resource: "configmaps"}, obj.GetName())
+}
+
+func (m mismatchAfterReplace) Get(_ context.Context, key runtimeclient.ObjectKey, obj runtimeclient.Object, _ ...runtimeclient.GetOption) error {
+	cm, ok := obj.(*v1.ConfigMap)
+	if !ok || key.Name != m.name {
+		return m.Client.Get(context.Background(), key, obj)
+	}
+	cm.Name = key.Name
+	cm.Namespace = key.Namespace
+	cm.Data = map[string]string{sshConfigFileName: "Host *\n  ProxyJump old.example.com"}
+	return nil
+}
+
+func (m mismatchAfterReplace) Delete(context.Context, runtimeclient.Object, ...runtimeclient.DeleteOption) error {
+	return nil
 }
 
 func staticHostsWithSSHConfig(sshConfig string) []runtimeclient.Object {

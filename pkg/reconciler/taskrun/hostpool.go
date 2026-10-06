@@ -135,7 +135,7 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 	if err != nil {
 		if selected.SSHConfig != "" {
 			if delErr := r.deleteNamedSSHConfigSnapshot(ctx, sshConfigSnapshotName(tr.Namespace, tr.Name)); delErr != nil {
-				log.Error(delErr, "failed to delete ssh config snapshot")
+				log.Error(delErr, "failed to delete ssh-config snapshot")
 			}
 		}
 		return reconcile.Result{}, err
@@ -147,7 +147,7 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 		//ugh, try and unassign
 		log.Error(err, "failed to launch provisioning task, unassigning host")
 		if delErr := r.deleteSSHConfigSnapshot(ctx, tr); delErr != nil {
-			log.Error(delErr, "failed to delete ssh config snapshot")
+			log.Error(delErr, "failed to delete ssh-config snapshot")
 		} else if tr.Annotations != nil {
 			delete(tr.Annotations, sshConfigSnapshotAnnotation)
 		}

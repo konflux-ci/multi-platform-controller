@@ -1160,31 +1160,40 @@ func snapshotSSHConfig(ctx context.Context, c client.Client, namespace, sshConfi
 }
 
 func createSSHConfigMap(ctx context.Context, c client.Client, reader client.Reader, namespace, name, sshConfig string) (*kubecore.ConfigMap, error) {
-	cm := &kubecore.ConfigMap{}
-	cm.Namespace = namespace
-	immutable := true
-	cm.Immutable = &immutable
-	cm.Data = map[string]string{sshConfigFileName: sshConfig}
-	if name == "" {
-		cm.GenerateName = "ssh-config-"
-	} else {
-		cm.Name = name
+	for attempt := 0; ; attempt++ {
+		cm := &kubecore.ConfigMap{}
+		cm.Namespace = namespace
+		immutable := true
+		cm.Immutable = &immutable
+		cm.Data = map[string]string{sshConfigFileName: sshConfig}
+		if name == "" {
+			cm.GenerateName = "ssh-config-"
+		} else {
+			cm.Name = name
+		}
+		err := c.Create(ctx, cm)
+		if err == nil {
+			return cm, nil
+		}
+		if name == "" || !k8serrors.IsAlreadyExists(err) {
+			return nil, err
+		}
+		existing := &kubecore.ConfigMap{}
+		if getErr := reader.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, existing); getErr != nil {
+			return nil, getErr
+		}
+		if existing.Data[sshConfigFileName] == sshConfig {
+			return existing, nil
+		}
+		// A failed earlier assignment can leave this deterministic name behind with the
+		// previous host's config. Replace it once so the new host can be assigned.
+		if attempt > 0 {
+			return nil, fmt.Errorf("ssh config ConfigMap %s already exists with different contents", name)
+		}
+		if delErr := c.Delete(ctx, existing); delErr != nil && !k8serrors.IsNotFound(delErr) {
+			return nil, delErr
+		}
 	}
-	err := c.Create(ctx, cm)
-	if err == nil {
-		return cm, nil
-	}
-	if name == "" || !k8serrors.IsAlreadyExists(err) {
-		return nil, err
-	}
-	existing := &kubecore.ConfigMap{}
-	if getErr := reader.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, existing); getErr != nil {
-		return nil, getErr
-	}
-	if existing.Data[sshConfigFileName] != sshConfig {
-		return nil, fmt.Errorf("ssh config ConfigMap %s already exists with different contents", name)
-	}
-	return existing, nil
 }
 
 func setSSHConfigMapOwner(ctx context.Context, c client.Client, scheme *k8sRuntime.Scheme, owner client.Object, cm *kubecore.ConfigMap) error {
