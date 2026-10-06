@@ -11,12 +11,13 @@ import (
 	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v12 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	k8sRuntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // UpdateHostPools Run the host update task periodically
-func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.Logger) {
+func UpdateHostPools(operatorNamespace string, client client.Client, scheme *k8sRuntime.Scheme, log *logr.Logger) {
 	log.Info("running pooled host update")
 	cm := v12.ConfigMap{}
 	err := client.Get(context.Background(), types.NamespacedName{Namespace: operatorNamespace, Name: HostConfig}, &cm)
@@ -93,8 +94,15 @@ func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.L
 			provision.Labels = map[string]string{TaskTypeLabel: TaskTypeUpdate, constant.AssignedHost: realHostName}
 			provision.Spec.TaskRef = &v1.TaskRef{Name: "update-host"}
 			provision.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: host.Secret}}}
+			var sshConfigCM *v12.ConfigMap
 			if host.SSHConfig != "" {
-				provision.Spec.Workspaces = append(provision.Spec.Workspaces, sshConfigWorkspaceBinding(host.Name))
+				cm, binding, snapErr := snapshotSSHConfig(context.Background(), client, client, operatorNamespace, "", host.SSHConfig)
+				if snapErr != nil {
+					log.Error(snapErr, "failed to snapshot ssh-config", "host", realHostName)
+					return
+				}
+				sshConfigCM = cm
+				provision.Spec.Workspaces = append(provision.Spec.Workspaces, binding)
 			}
 			compute := map[v12.ResourceName]resource.Quantity{v12.ResourceCPU: resource.MustParse("100m"), v12.ResourceMemory: resource.MustParse("256Mi")}
 			provision.Spec.ComputeResources = &v12.ResourceRequirements{Requests: compute, Limits: compute}
@@ -117,7 +125,19 @@ func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.L
 					Value: *v1.NewStructuredValues(hostsConcurrency[host.Name]),
 				},
 			}
-			err = client.Create(context.Background(), &provision)
+			if err := client.Create(context.Background(), &provision); err != nil {
+				if sshConfigCM != nil {
+					_ = client.Delete(context.Background(), sshConfigCM)
+				}
+				log.Error(err, "failed to create host update task", "host", realHostName)
+				return
+			}
+			if sshConfigCM == nil {
+				return
+			}
+			if err := setSSHConfigMapOwner(context.Background(), client, scheme, &provision, sshConfigCM); err != nil {
+				log.Error(err, "failed to set ssh-config owner", "host", realHostName)
+			}
 		}()
 	}
 }

@@ -105,14 +105,14 @@ func NewManager(cfg *rest.Config, managerOptions ctrl.Options, controllerOptions
 	ticker := time.NewTicker(time.Hour * 24)
 	go func() {
 		for range ticker.C {
-			taskrun.UpdateHostPools(operatorNamespace, mgr.GetClient(), &controllerLog)
+			taskrun.UpdateHostPools(operatorNamespace, mgr.GetClient(), mgr.GetScheme(), &controllerLog)
 		}
 	}()
 	timer := time.NewTimer(time.Minute)
 	go func() {
 		<-timer.C
 		//update the nodes on startup
-		taskrun.UpdateHostPools(operatorNamespace, mgr.GetClient(), &controllerLog)
+		taskrun.UpdateHostPools(operatorNamespace, mgr.GetClient(), mgr.GetScheme(), &controllerLog)
 	}()
 
 	if err := mpcmetrics.AddTaskRunMetricsExporter(mgr); err != nil {

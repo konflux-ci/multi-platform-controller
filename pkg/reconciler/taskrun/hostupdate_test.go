@@ -105,7 +105,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 
 		// when: host pools are updated
 		log := logr.FromContextOrDiscard(ctx)
-		UpdateHostPools(testNamespace, k8sClient, &log)
+		UpdateHostPools(testNamespace, k8sClient, scheme, &log)
 
 		// then: no host pool update tasks are created
 		list := v1.TaskRunList{}
@@ -144,7 +144,9 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 					opts ...client.CreateOption,
 				) error {
 					err := client.Create(ctx, obj, opts...)
-					waitGroup.Done()
+					if _, ok := obj.(*v1.TaskRun); ok {
+						waitGroup.Done()
+					}
 					return err
 				},
 			}).
@@ -152,7 +154,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 
 		// when: host pools are updated
 		log := logr.FromContextOrDiscard(ctx)
-		UpdateHostPools(testNamespace, k8sClient, &log)
+		UpdateHostPools(testNamespace, k8sClient, scheme, &log)
 
 		// when: spawned threads run to completion
 		waitGroup.Wait()
@@ -174,7 +176,16 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 		Expect(hostConfigData).To(BeEquivalentTo(updatedHostData))
 		Expect(createdList.Items[0].Spec.Workspaces).Should(HaveLen(2))
 		Expect(createdList.Items[0].Spec.Workspaces[1].Name).Should(Equal(sshConfigWorkspaceName))
-		Expect(createdList.Items[0].Spec.Workspaces[1].ConfigMap.Items[0].Key).Should(Equal("host.koko-hazamar-prod-1.ssh-config"))
+		Expect(createdList.Items[0].Spec.Workspaces[1].ConfigMap.Name).ShouldNot(Equal(HostConfig))
+		Expect(createdList.Items[0].Spec.Workspaces[1].ConfigMap.Items[0].Key).Should(Equal(sshConfigFileName))
+		snapshot := &corev1.ConfigMap{}
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: testNamespace, Name: createdList.Items[0].Spec.Workspaces[1].ConfigMap.Name}, snapshot)).Should(Succeed())
+			g.Expect(snapshot.Data).Should(HaveKeyWithValue(sshConfigFileName, "Host *\n  ProxyJump bastion"))
+			g.Expect(snapshot.Immutable).ShouldNot(BeNil())
+			g.Expect(*snapshot.Immutable).Should(BeTrue())
+			g.Expect(snapshot.OwnerReferences).Should(ContainElement(HaveField("Name", createdList.Items[0].Name)))
+		}).Should(Succeed())
 	})
 
 	DescribeTable("should omit the ssh-config workspace",
@@ -202,14 +213,16 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 						opts ...client.CreateOption,
 					) error {
 						err := client.Create(ctx, obj, opts...)
-						waitGroup.Done()
+						if _, ok := obj.(*v1.TaskRun); ok {
+							waitGroup.Done()
+						}
 						return err
 					},
 				}).
 				Build()
 
 			log := logr.FromContextOrDiscard(ctx)
-			UpdateHostPools(testNamespace, k8sClient, &log)
+			UpdateHostPools(testNamespace, k8sClient, scheme, &log)
 			waitGroup.Wait()
 
 			createdList := v1.TaskRunList{}
@@ -242,7 +255,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 
 				// when: host pools are updated
 				log := logr.FromContextOrDiscard(ctx)
-				UpdateHostPools(testNamespace, k8sClient, &log)
+				UpdateHostPools(testNamespace, k8sClient, scheme, &log)
 
 				// test everything in TaskRun creation that is not part of the table testing
 				Eventually(func(g Gomega) {

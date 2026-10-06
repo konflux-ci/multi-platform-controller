@@ -12,6 +12,7 @@ import (
 	. "github.com/onsi/gomega"
 	pipelinev1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"knative.dev/pkg/apis"
@@ -313,7 +314,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 	})
 
 	When("a static host sets ssh-config", func() {
-		const sshConfigText = "Host *\n  ProxyJump bastion.example.com\n"
+		const sshConfigText = "Host *\n  ProxyJump bastion.example.com"
 
 		BeforeEach(func() {
 			client, reconciler = setupClientAndReconciler(staticHostsWithSSHConfig(sshConfigText))
@@ -323,15 +324,27 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			tr := runUserPipeline(ctx, client, reconciler, "test-ssh-config")
 			provision := getProvisionTaskRun(ctx, client, tr)
 			binding := sshConfigBinding(provision)
-			Expect(binding.ConfigMap.Name).Should(Equal(HostConfig))
-			Expect(binding.SubPath).Should(Equal(sshConfigFileName))
-			Expect(binding.ConfigMap.Items).Should(HaveLen(1))
-			Expect(binding.ConfigMap.Items[0].Key).Should(Equal("host." + tr.Labels[AssignedHost] + ".ssh-config"))
-			Expect(binding.ConfigMap.Items[0].Path).Should(Equal(sshConfigFileName))
+			expectSSHConfigSnapshot(ctx, client, tr, binding, sshConfigText)
+
+			hostConfig := &v1.ConfigMap{}
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: HostConfig}, hostConfig)).Should(Succeed())
+			delete(hostConfig.Data, "host."+tr.Labels[AssignedHost]+".ssh-config")
+			Expect(client.Update(ctx, hostConfig)).Should(Succeed())
+
+			snapshot := &v1.ConfigMap{}
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: binding.ConfigMap.Name}, snapshot)).Should(Succeed())
+			Expect(snapshot.Data).Should(HaveKeyWithValue(sshConfigFileName, sshConfigText))
 		})
 
-		It("should mount that text on the cleanup task", func(ctx SpecContext) {
+		It("should mount the same text on the cleanup task", func(ctx SpecContext) {
 			tr := runUserPipeline(ctx, client, reconciler, "test-ssh-config-cleanup")
+			provisionBinding := sshConfigBinding(getProvisionTaskRun(ctx, client, tr))
+
+			hostConfig := &v1.ConfigMap{}
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: HostConfig}, hostConfig)).Should(Succeed())
+			hostConfig.Data["host."+tr.Labels[AssignedHost]+".ssh-config"] = "Host *\n  ProxyJump other.example.com"
+			Expect(client.Update(ctx, hostConfig)).Should(Succeed())
+
 			tr.Status.CompletionTime = &metav1.Time{Time: time.Now()}
 			tr.Status.SetCondition(&apis.Condition{
 				Type:   apis.ConditionSucceeded,
@@ -349,7 +362,20 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			})).Should(Succeed())
 			Expect(cleanupTasks.Items).Should(HaveLen(1))
 			binding := sshConfigBinding(&cleanupTasks.Items[0])
-			Expect(binding.ConfigMap.Items[0].Key).Should(Equal("host." + tr.Labels[AssignedHost] + ".ssh-config"))
+			Expect(binding.ConfigMap.Name).Should(Equal(provisionBinding.ConfigMap.Name))
+			expectSSHConfigSnapshot(ctx, client, tr, binding, sshConfigText)
+
+			cleanup := &cleanupTasks.Items[0]
+			cleanup.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			cleanup.Status.SetCondition(&apis.Condition{
+				Type:   apis.ConditionSucceeded,
+				Status: v1.ConditionTrue,
+			})
+			Expect(client.Status().Update(ctx, cleanup)).Should(Succeed())
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: cleanup.Namespace, Name: cleanup.Name}})
+			Expect(err).ShouldNot(HaveOccurred())
+			err = client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: binding.ConfigMap.Name}, &v1.ConfigMap{})
+			Expect(k8serrors.IsNotFound(err)).Should(BeTrue())
 		})
 	})
 })
@@ -360,6 +386,21 @@ func staticHostsWithSSHConfig(sshConfig string) []runtimeclient.Object {
 	hostConfig.Data["host.host1.ssh-config"] = sshConfig
 	hostConfig.Data["host.host2.ssh-config"] = sshConfig
 	return objs
+}
+
+func expectSSHConfigSnapshot(ctx SpecContext, client runtimeclient.Client, userTask *pipelinev1.TaskRun, binding pipelinev1.WorkspaceBinding, sshConfigText string) {
+	Expect(binding.ConfigMap.Name).Should(Equal(userTask.Annotations[sshConfigSnapshotAnnotation]))
+	Expect(binding.ConfigMap.Name).ShouldNot(Equal(HostConfig))
+	Expect(binding.SubPath).Should(Equal(sshConfigFileName))
+	Expect(binding.ConfigMap.Items).Should(HaveLen(1))
+	Expect(binding.ConfigMap.Items[0].Key).Should(Equal(sshConfigFileName))
+	Expect(binding.ConfigMap.Items[0].Path).Should(Equal(sshConfigFileName))
+
+	snapshot := &v1.ConfigMap{}
+	Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: binding.ConfigMap.Name}, snapshot)).Should(Succeed())
+	Expect(snapshot.Immutable).ShouldNot(BeNil())
+	Expect(*snapshot.Immutable).Should(BeTrue())
+	Expect(snapshot.Data).Should(HaveKeyWithValue(sshConfigFileName, sshConfigText))
 }
 
 func sshConfigBinding(provision *pipelinev1.TaskRun) pipelinev1.WorkspaceBinding {

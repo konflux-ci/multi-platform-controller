@@ -122,6 +122,11 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 	}
 
 	log.Info("allocated host", "host", selected.Name)
+	if selected.SSHConfig != "" {
+		if err = r.ensureUserSSHConfigSnapshot(ctx, tr, selected.SSHConfig); err != nil {
+			return reconcile.Result{}, err
+		}
+	}
 	tr.Labels[constant.AssignedHost] = selected.Name
 	delete(tr.Labels, constant.WaitingForPlatformLabel)
 	//add a finalizer to clean up the secret
@@ -131,11 +136,16 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 		return reconcile.Result{}, err
 	}
 
-	err = launchProvisioningTask(r, ctx, tr, secretName, selected.Secret, selected.Address, selected.User, hp.targetPlatform, "", selected.SSHConfig)
+	err = launchProvisioningTask(r, ctx, tr, secretName, selected.Secret, selected.Address, selected.User, hp.targetPlatform, "")
 
 	if err != nil {
 		//ugh, try and unassign
 		log.Error(err, "failed to launch provisioning task, unassigning host")
+		if delErr := r.deleteSSHConfigSnapshot(ctx, tr); delErr != nil {
+			log.Error(delErr, "failed to delete ssh config snapshot")
+		} else if tr.Annotations != nil {
+			delete(tr.Annotations, sshConfigSnapshotAnnotation)
+		}
 		delete(tr.Labels, constant.AssignedHost)
 		controllerutil.RemoveFinalizer(tr, PipelineFinalizer)
 		updateErr := UpdateTaskRunWithRetry(ctx, r.client, r.apiReader, tr)
@@ -157,11 +167,9 @@ func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.T
 		err := r.client.List(ctx, &list, client.MatchingLabels(labelMap))
 		if err != nil {
 			log.Error(err, "failed to check for existing cleanup task")
-		} else {
-			if len(list.Items) > 0 {
-				log.Info("cleanup task already exists")
-				return nil
-			}
+		} else if len(list.Items) > 0 {
+			log.Info("cleanup task already exists")
+			return ensureExistingSSHConfigOwner(ctx, r, tr, &list.Items[0])
 		}
 
 		log.Info("starting cleanup task")
@@ -178,8 +186,13 @@ func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.T
 		compute := map[v12.ResourceName]resource.Quantity{v12.ResourceCPU: resource.MustParse("100m"), v12.ResourceMemory: resource.MustParse("128Mi")}
 		cleanup.Spec.ComputeResources = &v12.ResourceRequirements{Requests: compute}
 		cleanup.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: selected.Secret}}}
-		if selected.SSHConfig != "" {
-			cleanup.Spec.Workspaces = append(cleanup.Spec.Workspaces, sshConfigWorkspaceBinding(selected.Name))
+		snapshotName := sshConfigSnapshotNameFrom(tr)
+		if snapshotName != "" {
+			if cleanup.Annotations == nil {
+				cleanup.Annotations = map[string]string{}
+			}
+			cleanup.Annotations[sshConfigSnapshotAnnotation] = snapshotName
+			cleanup.Spec.Workspaces = append(cleanup.Spec.Workspaces, sshConfigWorkspaceBinding(snapshotName))
 		}
 		cleanup.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
 		cleanup.Spec.Params = []v1.Param{
@@ -205,7 +218,23 @@ func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.T
 			},
 		}
 		err = r.client.Create(ctx, &cleanup)
-		return err
+		if err != nil {
+			return err
+		}
+		return ensureExistingSSHConfigOwner(ctx, r, tr, &cleanup)
 	}
 	return nil
+}
+
+// ensureExistingSSHConfigOwner makes the cleanup TaskRun own the snapshot captured for the user TaskRun.
+func ensureExistingSSHConfigOwner(ctx context.Context, r *ReconcileTaskRun, userTask, cleanup *v1.TaskRun) error {
+	name := sshConfigSnapshotNameFrom(userTask)
+	if name == "" {
+		return nil
+	}
+	cm := &v12.ConfigMap{}
+	if err := r.apiReader.Get(ctx, client.ObjectKey{Namespace: r.operatorNamespace, Name: name}, cm); err != nil {
+		return err
+	}
+	return setSSHConfigMapOwner(ctx, r.client, r.scheme, cleanup, cm)
 }

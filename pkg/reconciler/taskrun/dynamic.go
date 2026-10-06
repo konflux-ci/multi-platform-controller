@@ -110,7 +110,7 @@ func (r DynamicResolver) Allocate(taskRun *ReconcileTaskRun, ctx context.Context
 			message := fmt.Sprintf("starting %s provisioning task for %s", r.instanceTag, tr.Name)
 			log.Info(message)
 			r.eventRecorder.Event(tr, "Normal", "Provisioning", message)
-			err = launchProvisioningTask(taskRun, ctx, tr, secretName, r.sshSecret, address, r.SshUser(), r.platform, r.sudoCommands, "")
+			err = launchProvisioningTask(taskRun, ctx, tr, secretName, r.sshSecret, address, r.SshUser(), r.platform, r.sudoCommands)
 			if err != nil {
 				//Try to delete the instance and unassign it from the TaskRun
 				terr := r.TerminateInstance(taskRun.client, ctx, cloud.InstanceIdentifier(tr.Annotations[CloudInstanceId]))

@@ -351,7 +351,7 @@ func ParseDynamicPoolPlatformConfig(data map[string]string, platform string) (Dy
 //   - host.<hostname>.secret (required): non-empty SSH secret name (AWS platforms) or pass validateIBMHostSecret (IBM platforms)
 //   - host.<hostname>.concurrency (optional): Maximum concurrent jobs - must be between 1 and 8 if provided
 //   - host.<hostname>.ssh-config (optional): SSH client configuration.
-//     When set, that text is mounted at /root/.ssh/config in the provision, cleanup, and update task pods.
+//     When set, that text is copied into an immutable ConfigMap when the host is assigned and mounted at /root/.ssh/config for that task's provision and cleanup pods.
 //     ProxyCommand, LocalCommand, PermitLocalCommand, Match, KnownHostsCommand, Include, PKCS11Provider, and SecurityKeyProvider are rejected.
 //
 // Parameters:
