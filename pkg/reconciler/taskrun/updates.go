@@ -132,7 +132,9 @@ func UpdateHostPools(operatorNamespace string, c client.Client, scheme *k8sRunti
 			}
 			if err := c.Create(context.Background(), &provision); err != nil {
 				if sshConfigCM != nil {
-					_ = c.Delete(context.Background(), sshConfigCM)
+					if delErr := c.Delete(context.Background(), sshConfigCM); delErr != nil && !k8serrors.IsNotFound(delErr) {
+						log.Error(delErr, "failed to delete ssh-config snapshot", "host", realHostName)
+					}
 				}
 				log.Error(err, "failed to create host update task", "host", realHostName)
 				return

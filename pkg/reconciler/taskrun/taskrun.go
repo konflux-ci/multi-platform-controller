@@ -58,6 +58,8 @@ const (
 	ProvisionTaskProcessed = "build.appstudio.redhat.com/provision-task-processed"
 	// sshConfigSnapshotAnnotation names the immutable SSH client config captured when a host is assigned.
 	sshConfigSnapshotAnnotation = "build.appstudio.redhat.com/ssh-config-snapshot"
+	// sshConfigSourceAnnotation records the user TaskRun that a named snapshot was created for.
+	sshConfigSourceAnnotation = "build.appstudio.redhat.com/ssh-config-source"
 	// ProvisionTaskFinalizer = "build.appstudio.redhat.com/provision-task-finalizer"
 
 	//AllocationStartTimeAnnotation Some allocations can take multiple calls, we track the actual start time in this annotation
@@ -178,8 +180,8 @@ func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, tr *tekton
 				log.Info("Reconciling provision task")
 				return r.handleProvisionTask(ctx, tr)
 			case TaskTypeUpdate:
-				log.V(1).Info("Ignoring update task")
-				return reconcile.Result{}, nil
+				log.Info("Reconciling update task")
+				return r.handleUpdateTask(ctx, tr)
 			default:
 				log.V(1).Info("Unknown task type, ignoring", "taskType", taskType)
 				return reconcile.Result{}, nil
@@ -249,6 +251,27 @@ func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, tr *tektonapi.Ta
 		return reconcile.Result{}, r.client.Delete(ctx, tr)
 	}
 	return reconcile.Result{RequeueAfter: time.Hour}, nil
+}
+
+func (r *ReconcileTaskRun) handleUpdateTask(ctx context.Context, tr *tektonapi.TaskRun) (reconcile.Result, error) {
+	if !tr.DeletionTimestamp.IsZero() || tr.Status.CompletionTime == nil {
+		return reconcile.Result{}, nil
+	}
+	success := tr.Status.GetCondition(apis.ConditionSucceeded).IsTrue()
+	// Keep a failed update task for an hour so its logs can be read. The snapshot
+	// stays until then because the update pod may still be the thing mounting it.
+	if !success && tr.Status.CompletionTime.Add(time.Hour).After(time.Now()) {
+		return reconcile.Result{RequeueAfter: time.Hour}, nil
+	}
+	for _, binding := range tr.Spec.Workspaces {
+		if binding.Name != sshConfigWorkspaceName || binding.ConfigMap == nil {
+			continue
+		}
+		if err := r.deleteNamedSSHConfigSnapshot(ctx, binding.ConfigMap.Name); err != nil {
+			return reconcile.Result{}, err
+		}
+	}
+	return reconcile.Result{}, r.client.Delete(ctx, tr)
 }
 
 func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonapi.TaskRun) (reconcile.Result, error) {
@@ -1078,9 +1101,11 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 }
 
 func sshConfigSnapshotName(namespace, taskName string) string {
-	// #nosec G401 -- MD5 used only for non-cryptographic uniqueness
+	// Twenty-five hex characters fit in a ConfigMap name and distinguish TaskRuns
+	// that share a name across namespaces.
+	// #nosec G401 -- MD5 used only for non-cryptographic uniqueness.
 	sum := md5.Sum([]byte(namespace + "/" + taskName))
-	return kmeta.ChildName(taskName, "-ssh-"+hex.EncodeToString(sum[:])[:5])
+	return kmeta.ChildName(taskName, "-ssh-"+hex.EncodeToString(sum[:])[:25])
 }
 
 func sshConfigSnapshotNameFrom(tr *tektonapi.TaskRun) string {
@@ -1117,7 +1142,8 @@ func recordedSSHConfigSnapshotName(operatorNamespace string, tr *tektonapi.TaskR
 
 func (r *ReconcileTaskRun) ensureUserSSHConfigSnapshot(ctx context.Context, tr *tektonapi.TaskRun, sshConfig string) error {
 	name := sshConfigSnapshotName(tr.Namespace, tr.Name)
-	if _, err := createSSHConfigMap(ctx, r.client, r.apiReader, r.operatorNamespace, name, sshConfig); err != nil {
+	source := tr.Namespace + "/" + tr.Name
+	if _, err := createSSHConfigMap(ctx, r.client, r.apiReader, r.operatorNamespace, name, sshConfig, source); err != nil {
 		return err
 	}
 	if tr.Annotations == nil {
@@ -1152,20 +1178,23 @@ func (r *ReconcileTaskRun) deleteNamedSSHConfigSnapshot(ctx context.Context, nam
 // snapshotSSHConfig stores sshConfig in an immutable ConfigMap with a generated name.
 // Host updates use this; provision and cleanup share the snapshot recorded on the user TaskRun.
 func snapshotSSHConfig(ctx context.Context, c client.Client, namespace, sshConfig string) (*kubecore.ConfigMap, tektonapi.WorkspaceBinding, error) {
-	cm, err := createSSHConfigMap(ctx, c, c, namespace, "", sshConfig)
+	cm, err := createSSHConfigMap(ctx, c, c, namespace, "", sshConfig, "")
 	if err != nil {
 		return nil, tektonapi.WorkspaceBinding{}, err
 	}
 	return cm, sshConfigWorkspaceBinding(cm.Name), nil
 }
 
-func createSSHConfigMap(ctx context.Context, c client.Client, reader client.Reader, namespace, name, sshConfig string) (*kubecore.ConfigMap, error) {
+func createSSHConfigMap(ctx context.Context, c client.Client, reader client.Reader, namespace, name, sshConfig, source string) (*kubecore.ConfigMap, error) {
 	for attempt := 0; ; attempt++ {
 		cm := &kubecore.ConfigMap{}
 		cm.Namespace = namespace
 		immutable := true
 		cm.Immutable = &immutable
 		cm.Data = map[string]string{sshConfigFileName: sshConfig}
+		if source != "" {
+			cm.Annotations = map[string]string{sshConfigSourceAnnotation: source}
+		}
 		if name == "" {
 			cm.GenerateName = "ssh-config-"
 		} else {
@@ -1185,8 +1214,15 @@ func createSSHConfigMap(ctx context.Context, c client.Client, reader client.Read
 		if existing.Data[sshConfigFileName] == sshConfig {
 			return existing, nil
 		}
-		// A failed earlier assignment can leave this deterministic name behind with the
-		// previous host's config. Replace it once so the new host can be assigned.
+		// A failed earlier assignment can leave this deterministic name behind. Replace it
+		// once when it belongs to this TaskRun. A different source means another build.
+		recorded := ""
+		if existing.Annotations != nil {
+			recorded = existing.Annotations[sshConfigSourceAnnotation]
+		}
+		if recorded != "" && recorded != source {
+			return nil, fmt.Errorf("ssh config ConfigMap %s already exists with different contents", name)
+		}
 		if attempt > 0 {
 			return nil, fmt.Errorf("ssh config ConfigMap %s already exists with different contents", name)
 		}

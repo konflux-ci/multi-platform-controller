@@ -18,6 +18,10 @@
 //	11. A test that a failed owner update deletes the update task and its ssh-config snapshot
 //	12. A test that a failed snapshot delete after a failed owner update is logged and leaves the snapshot
 //	13. A test that a failed update-task delete keeps the ssh-config snapshot and logs the error
+//	14. A test that a second owner update does not patch the snapshot again
+//	15. A test that a failed snapshot create does not create an update task
+//	16. A test that a failed update-task create deletes the snapshot
+//	17. A test that a failed snapshot delete after a failed update-task create is logged
 
 package taskrun
 
@@ -421,6 +425,212 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 				ContainSubstring("failed to delete host update task"),
 				ContainSubstring("delete update task failed"),
 			)))
+		}).Should(Succeed())
+	})
+
+	It("should skip the owner patch when the snapshot already records that owner", func(ctx SpecContext) {
+		owner := &v1.TaskRun{}
+		owner.Name = "update-task"
+		owner.Namespace = testNamespace
+		owner.UID = "owner-uid"
+		snapshot := &corev1.ConfigMap{}
+		snapshot.Name = "ssh-config-owned"
+		snapshot.Namespace = testNamespace
+		immutable := true
+		snapshot.Immutable = &immutable
+		snapshot.Data = map[string]string{sshConfigFileName: "Host *"}
+
+		patches := 0
+		k8sClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(owner, snapshot).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Patch: func(
+					ctx context.Context,
+					client client.WithWatch,
+					obj client.Object,
+					patch client.Patch,
+					opts ...client.PatchOption,
+				) error {
+					patches++
+					return client.Patch(ctx, obj, patch, opts...)
+				},
+			}).
+			Build()
+
+		Expect(setSSHConfigMapOwner(ctx, k8sClient, scheme, owner, snapshot)).Should(Succeed())
+		Expect(patches).Should(Equal(1))
+
+		stored := &corev1.ConfigMap{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: testNamespace, Name: snapshot.Name}, stored)).Should(Succeed())
+		Expect(setSSHConfigMapOwner(ctx, k8sClient, scheme, owner, stored)).Should(Succeed())
+		Expect(patches).Should(Equal(1))
+	})
+
+	It("should not create an update task when the ssh-config snapshot cannot be created", func(ctx SpecContext) {
+		hostConfig.Data = testConfigDataFromTestData(map[string]string{
+			"address":     "10.130.75.23",
+			"secret":      "internal-koko-hazamar-ssh-key",
+			"concurrency": "1",
+			"user":        "koko_hazamar",
+			"platform":    "linux/ppc64le",
+			"ssh-config":  "Host *\n  ProxyJump bastion\n",
+		}, "host.koko-hazamar-prod-1.")
+
+		var logged []string
+		var logMu sync.Mutex
+		log := funcr.New(func(prefix, args string) {
+			logMu.Lock()
+			logged = append(logged, args)
+			logMu.Unlock()
+		}, funcr.Options{})
+
+		k8sClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithRuntimeObjects(hostConfig).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Create: func(
+					ctx context.Context,
+					client client.WithWatch,
+					obj client.Object,
+					opts ...client.CreateOption,
+				) error {
+					if cm, ok := obj.(*corev1.ConfigMap); ok && cm.GenerateName == "ssh-config-" {
+						return errors.New("snapshot create failed")
+					}
+					return client.Create(ctx, obj, opts...)
+				},
+			}).
+			Build()
+
+		UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
+		Eventually(func(g Gomega) {
+			logMu.Lock()
+			messages := append([]string(nil), logged...)
+			logMu.Unlock()
+			g.Expect(messages).Should(ContainElement(And(
+				ContainSubstring("failed to snapshot ssh-config"),
+				ContainSubstring("snapshot create failed"),
+			)))
+			tasks := &v1.TaskRunList{}
+			g.Expect(k8sClient.List(ctx, tasks, client.InNamespace(testNamespace))).Should(Succeed())
+			g.Expect(tasks.Items).Should(BeEmpty())
+		}).Should(Succeed())
+	})
+
+	It("should delete the ssh-config snapshot when the update task cannot be created", func(ctx SpecContext) {
+		hostConfig.Data = testConfigDataFromTestData(map[string]string{
+			"address":     "10.130.75.23",
+			"secret":      "internal-koko-hazamar-ssh-key",
+			"concurrency": "1",
+			"user":        "koko_hazamar",
+			"platform":    "linux/ppc64le",
+			"ssh-config":  "Host *\n  ProxyJump bastion\n",
+		}, "host.koko-hazamar-prod-1.")
+
+		var logged []string
+		var logMu sync.Mutex
+		log := funcr.New(func(prefix, args string) {
+			logMu.Lock()
+			logged = append(logged, args)
+			logMu.Unlock()
+		}, funcr.Options{})
+
+		k8sClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithRuntimeObjects(hostConfig).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Create: func(
+					ctx context.Context,
+					client client.WithWatch,
+					obj client.Object,
+					opts ...client.CreateOption,
+				) error {
+					if _, ok := obj.(*v1.TaskRun); ok {
+						return errors.New("create update task failed")
+					}
+					return client.Create(ctx, obj, opts...)
+				},
+			}).
+			Build()
+
+		UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
+		Eventually(func(g Gomega) {
+			logMu.Lock()
+			messages := append([]string(nil), logged...)
+			logMu.Unlock()
+			g.Expect(messages).Should(ContainElement(And(
+				ContainSubstring("failed to create host update task"),
+				ContainSubstring("create update task failed"),
+			)))
+			list := &corev1.ConfigMapList{}
+			g.Expect(k8sClient.List(ctx, list, client.InNamespace(testNamespace))).Should(Succeed())
+			g.Expect(list.Items).Should(ConsistOf(HaveField("Name", HostConfig)))
+			tasks := &v1.TaskRunList{}
+			g.Expect(k8sClient.List(ctx, tasks, client.InNamespace(testNamespace))).Should(Succeed())
+			g.Expect(tasks.Items).Should(BeEmpty())
+		}).Should(Succeed())
+	})
+
+	It("should log a snapshot delete failure when the update task cannot be created", func(ctx SpecContext) {
+		hostConfig.Data = testConfigDataFromTestData(map[string]string{
+			"address":     "10.130.75.23",
+			"secret":      "internal-koko-hazamar-ssh-key",
+			"concurrency": "1",
+			"user":        "koko_hazamar",
+			"platform":    "linux/ppc64le",
+			"ssh-config":  "Host *\n  ProxyJump bastion\n",
+		}, "host.koko-hazamar-prod-1.")
+
+		var logged []string
+		var logMu sync.Mutex
+		log := funcr.New(func(prefix, args string) {
+			logMu.Lock()
+			logged = append(logged, args)
+			logMu.Unlock()
+		}, funcr.Options{})
+
+		k8sClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithRuntimeObjects(hostConfig).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Create: func(
+					ctx context.Context,
+					client client.WithWatch,
+					obj client.Object,
+					opts ...client.CreateOption,
+				) error {
+					if _, ok := obj.(*v1.TaskRun); ok {
+						return errors.New("create update task failed")
+					}
+					return client.Create(ctx, obj, opts...)
+				},
+				Delete: func(
+					ctx context.Context,
+					client client.WithWatch,
+					obj client.Object,
+					opts ...client.DeleteOption,
+				) error {
+					if cm, ok := obj.(*corev1.ConfigMap); ok && cm.Name != HostConfig {
+						return errors.New("delete snapshot failed")
+					}
+					return client.Delete(ctx, obj, opts...)
+				},
+			}).
+			Build()
+
+		UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
+		Eventually(func(g Gomega) {
+			logMu.Lock()
+			messages := append([]string(nil), logged...)
+			logMu.Unlock()
+			g.Expect(messages).Should(ContainElement(And(
+				ContainSubstring("failed to delete ssh-config snapshot"),
+				ContainSubstring("delete snapshot failed"),
+			)))
+			list := &corev1.ConfigMapList{}
+			g.Expect(k8sClient.List(ctx, list, client.InNamespace(testNamespace))).Should(Succeed())
+			g.Expect(list.Items).Should(HaveLen(2))
 		}).Should(Succeed())
 	})
 
