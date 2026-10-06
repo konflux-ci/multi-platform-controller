@@ -5,9 +5,11 @@ package taskrun
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/go-logr/logr/funcr"
 	. "github.com/konflux-ci/multi-platform-controller/pkg/constant"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -17,6 +19,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"knative.dev/pkg/apis"
+	ctrl "sigs.k8s.io/controller-runtime"
 	runtimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -423,6 +426,28 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(k8serrors.IsNotFound(snapshotErr)).Should(BeTrue())
 			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: HostConfig}, &v1.ConfigMap{})).Should(Succeed())
 		})
+
+		It("should log a snapshot delete failure when the user TaskRun update fails", func(ctx SpecContext) {
+			name := "test-ssh-config-delete-failure"
+			createUserTaskRun(ctx, client, name, "linux/arm64")
+			snapshotName := sshConfigSnapshotName(userNamespace, name)
+			reconciler.client = failSnapshotDelete{failTaskRunUpdate: failTaskRunUpdate{Client: client}, snapshotName: snapshotName}
+
+			previousLog := ctrl.Log
+			var logged []string
+			ctrl.Log = funcr.New(func(_, args string) {
+				logged = append(logged, args)
+			}, funcr.Options{})
+			defer func() { ctrl.Log = previousLog }()
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
+			Expect(err).Should(MatchError(ContainSubstring("induced update failure")))
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: snapshotName}, &v1.ConfigMap{})).Should(Succeed())
+			Expect(logged).Should(ContainElement(And(
+				ContainSubstring("failed to delete ssh config snapshot"),
+				ContainSubstring("delete snapshot failed"),
+			)))
+		})
 	})
 
 	It("should ignore a snapshot annotation that names another ConfigMap", func(ctx SpecContext) {
@@ -468,9 +493,21 @@ type failTaskRunUpdate struct {
 
 func (f failTaskRunUpdate) Update(ctx context.Context, obj runtimeclient.Object, opts ...runtimeclient.UpdateOption) error {
 	if _, ok := obj.(*pipelinev1.TaskRun); ok {
-		return fmt.Errorf("induced update failure")
+		return errors.New("induced update failure")
 	}
 	return f.Client.Update(ctx, obj, opts...)
+}
+
+type failSnapshotDelete struct {
+	failTaskRunUpdate
+	snapshotName string
+}
+
+func (f failSnapshotDelete) Delete(ctx context.Context, obj runtimeclient.Object, opts ...runtimeclient.DeleteOption) error {
+	if cm, ok := obj.(*v1.ConfigMap); ok && cm.Name == f.snapshotName {
+		return errors.New("delete snapshot failed")
+	}
+	return f.Client.Delete(ctx, obj, opts...)
 }
 
 func staticHostsWithSSHConfig(sshConfig string) []runtimeclient.Object {
