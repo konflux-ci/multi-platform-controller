@@ -20,11 +20,14 @@ var (
 	errIBMHostSecretPlatformMismatch = errors.New("host secret key and value must contain matching platform substring")
 
 	forbiddenSSHConfigDirectives = map[string]struct{}{
-		"proxycommand":       {},
-		"localcommand":       {},
-		"permitlocalcommand": {},
-		"match":              {},
-		"knownhostscommand":  {},
+		"proxycommand":        {},
+		"localcommand":        {},
+		"permitlocalcommand":  {},
+		"match":               {},
+		"knownhostscommand":   {},
+		"include":             {},
+		"pkcs11provider":      {},
+		"securitykeyprovider": {},
 	}
 )
 

@@ -638,6 +638,18 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 					map[string]string{"ssh-config": "Host *\n  KnownHostsCommand /usr/bin/true\n"},
 					`forbidden directive "knownhostscommand"`,
 				),
+				Entry("for ssh-config with Include",
+					map[string]string{"ssh-config": "Include /tmp/extra-ssh-config\n"},
+					`forbidden directive "include"`,
+				),
+				Entry("for ssh-config with PKCS11Provider",
+					map[string]string{"ssh-config": "Host *\n  PKCS11Provider /usr/lib/pkcs11.so\n"},
+					`forbidden directive "pkcs11provider"`,
+				),
+				Entry("for ssh-config with SecurityKeyProvider",
+					map[string]string{"ssh-config": "Host *\n  SecurityKeyProvider /usr/lib/sk-lib.so\n"},
+					`forbidden directive "securitykeyprovider"`,
+				),
 			)
 		})
 	})
