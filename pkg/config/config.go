@@ -447,5 +447,5 @@ type StaticHostConfig struct {
 	Platform    string `mapstructure:"platform"`
 	Secret      string `mapstructure:"secret"`
 	Concurrency int    `mapstructure:"concurrency"`
-	SSHConfig   string `mapstructure:"ssh-config,omitempty"`
+	SSHConfig   string `mapstructure:"ssh-config"`
 }
