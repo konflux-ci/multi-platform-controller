@@ -352,7 +352,7 @@ func ParseDynamicPoolPlatformConfig(data map[string]string, platform string) (Dy
 //   - host.<hostname>.concurrency (optional): Maximum concurrent jobs - must be between 1 and 8 if provided
 //   - host.<hostname>.ssh-config (optional): SSH client configuration.
 //     When set, that text is mounted at /root/.ssh/config in the provision, cleanup, and update task pods.
-//     ProxyCommand, LocalCommand, and PermitLocalCommand are rejected.
+//     ProxyCommand, LocalCommand, PermitLocalCommand, Match, and KnownHostsCommand are rejected.
 //
 // Parameters:
 // - data: The ConfigMap data map containing host configuration

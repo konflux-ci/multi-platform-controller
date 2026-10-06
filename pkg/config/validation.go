@@ -23,6 +23,8 @@ var (
 		"proxycommand":       {},
 		"localcommand":       {},
 		"permitlocalcommand": {},
+		"match":              {},
+		"knownhostscommand":  {},
 	}
 )
 
@@ -160,9 +162,10 @@ func validateNonZeroPositiveNumberWithMax(value string, maxValue int) (int, erro
 	return num, nil
 }
 
-// ValidateSSHClientConfig rejects SSH client config directives that execute local commands.
-func ValidateSSHClientConfig(config string) error {
-	for _, line := range strings.Split(config, "\n") {
+// ValidateSSHClientConfig rejects SSH client config directives that can execute local commands.
+// Match is rejected entirely because Match exec runs during config parsing.
+func ValidateSSHClientConfig(sshConfig string) error {
+	for _, line := range strings.Split(sshConfig, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue

