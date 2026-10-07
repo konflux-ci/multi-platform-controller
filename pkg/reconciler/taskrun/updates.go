@@ -6,19 +6,23 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/konflux-ci/multi-platform-controller/pkg/config"
 	"github.com/konflux-ci/multi-platform-controller/pkg/constant"
 	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v12 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
+	k8sRuntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // UpdateHostPools Run the host update task periodically
-func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.Logger) {
+func UpdateHostPools(operatorNamespace string, c client.Client, scheme *k8sRuntime.Scheme, recorder record.EventRecorder, log *logr.Logger) {
 	log.Info("running pooled host update")
 	cm := v12.ConfigMap{}
-	err := client.Get(context.Background(), types.NamespacedName{Namespace: operatorNamespace, Name: HostConfig}, &cm)
+	err := c.Get(context.Background(), types.NamespacedName{Namespace: operatorNamespace, Name: HostConfig}, &cm)
 	if err != nil {
 		log.Error(err, "Failed to read config to update hosts", "audit", "true")
 		return
@@ -60,6 +64,17 @@ func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.L
 			} else {
 				continue
 			}
+		case "ssh-config":
+			if sshConfig := strings.TrimSpace(v); sshConfig != "" {
+				if err := config.ValidateSSHClientConfig(sshConfig); err != nil {
+					log.Error(err, "ignoring ssh-config", "host", host.Name)
+					if recorder != nil {
+						recorder.Eventf(&cm, v12.EventTypeWarning, "SSHConfigRejected", "host %s ssh-config was rejected and will not be used for host updates: %v", host.Name, err)
+					}
+					continue
+				}
+				host.SSHConfig = sshConfig
+			}
 
 		default:
 			log.Info("unknown key", "key", key)
@@ -84,6 +99,16 @@ func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.L
 			provision.Labels = map[string]string{TaskTypeLabel: TaskTypeUpdate, constant.AssignedHost: realHostName}
 			provision.Spec.TaskRef = &v1.TaskRef{Name: "update-host"}
 			provision.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: host.Secret}}}
+			var sshConfigCM *v12.ConfigMap
+			if host.SSHConfig != "" {
+				cm, binding, snapErr := snapshotSSHConfig(context.Background(), c, operatorNamespace, host.SSHConfig)
+				if snapErr != nil {
+					log.Error(snapErr, "failed to snapshot ssh-config", "host", realHostName)
+					return
+				}
+				sshConfigCM = cm
+				provision.Spec.Workspaces = append(provision.Spec.Workspaces, binding)
+			}
 			compute := map[v12.ResourceName]resource.Quantity{v12.ResourceCPU: resource.MustParse("100m"), v12.ResourceMemory: resource.MustParse("256Mi")}
 			provision.Spec.ComputeResources = &v12.ResourceRequirements{Requests: compute, Limits: compute}
 			provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
@@ -105,7 +130,32 @@ func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.L
 					Value: *v1.NewStructuredValues(hostsConcurrency[host.Name]),
 				},
 			}
-			err = client.Create(context.Background(), &provision)
+			if err := c.Create(context.Background(), &provision); err != nil {
+				if sshConfigCM != nil {
+					if delErr := c.Delete(context.Background(), sshConfigCM); delErr != nil && !k8serrors.IsNotFound(delErr) {
+						log.Error(delErr, "failed to delete ssh-config snapshot", "host", realHostName)
+					}
+				}
+				log.Error(err, "failed to create host update task", "host", realHostName)
+				return
+			}
+			if sshConfigCM == nil {
+				return
+			}
+			if err := setSSHConfigMapOwner(context.Background(), c, scheme, &provision, sshConfigCM); err != nil {
+				log.Error(err, "failed to set ssh-config owner", "host", realHostName)
+				// The TaskRun already references this snapshot. Remove the task before the
+				// snapshot so it cannot start against a ConfigMap that no longer exists.
+				// Keep the snapshot when the task cannot be removed.
+				if delErr := c.Delete(context.Background(), &provision); delErr != nil && !k8serrors.IsNotFound(delErr) {
+					log.Error(delErr, "failed to delete host update task", "host", realHostName)
+					return
+				}
+				if delErr := c.Delete(context.Background(), sshConfigCM); delErr != nil && !k8serrors.IsNotFound(delErr) {
+					log.Error(delErr, "failed to delete ssh-config snapshot", "host", realHostName)
+				}
+				return
+			}
 		}()
 	}
 }

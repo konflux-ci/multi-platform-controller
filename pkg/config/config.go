@@ -345,11 +345,14 @@ func ParseDynamicPoolPlatformConfig(data map[string]string, platform string) (Dy
 // Static hosts are fixed, pre-configured hosts with concurrency limits and load balancing.
 //
 // Configuration format in ConfigMap and its validation rules:
-// - host.<hostname>.address (required): IP address must be a valid and reachable IPv4 address
-// - host.<hostname>.user (required): SSH user for the host - must not be empty or whitespace-only if provided
-// - host.<hostname>.platform (required): Platform identifier (e.g., "linux/s390x") - must pass validatePlatformFormat if provided
-// - host.<hostname>.secret (required): non-empty SSH secret name (AWS platforms) or pass validateIBMHostSecret (IBM platforms)
-// - host.<hostname>.concurrency (optional): Maximum concurrent jobs - must be between 1 and 8 if provided
+//   - host.<hostname>.address (required): IP address must be a valid and reachable IPv4 address
+//   - host.<hostname>.user (required): SSH user for the host - must not be empty or whitespace-only if provided
+//   - host.<hostname>.platform (required): Platform identifier (e.g., "linux/s390x") - must pass validatePlatformFormat if provided
+//   - host.<hostname>.secret (required): non-empty SSH secret name (AWS platforms) or pass validateIBMHostSecret (IBM platforms)
+//   - host.<hostname>.concurrency (optional): Maximum concurrent jobs - must be between 1 and 8 if provided
+//   - host.<hostname>.ssh-config (optional): SSH client configuration.
+//     When set, that text is copied into an immutable ConfigMap when the host is assigned and mounted at /root/.ssh/config for that task's provision and cleanup pods.
+//     ProxyCommand, LocalCommand, PermitLocalCommand, Match, KnownHostsCommand, Include, PKCS11Provider, and SecurityKeyProvider are rejected.
 //
 // Parameters:
 // - data: The ConfigMap data map containing host configuration
@@ -401,6 +404,13 @@ func ParseStaticHostConfig(data map[string]string, hostName string) (StaticHostC
 		hostConfig.Concurrency = defaultStaticHostsConcurrency
 	}
 
+	if sshConfig := strings.TrimSpace(data[prefix+"ssh-config"]); sshConfig != "" {
+		if err := ValidateSSHClientConfig(sshConfig); err != nil {
+			return StaticHostConfig{}, fmt.Errorf("static host '%s': invalid ssh-config: %w", hostName, err)
+		}
+		hostConfig.SSHConfig = sshConfig
+	}
+
 	// Validate that address field was provided
 	if hostConfig.Address == "" {
 		return StaticHostConfig{}, fmt.Errorf("static host '%s': address field is required", hostName)
@@ -437,4 +447,5 @@ type StaticHostConfig struct {
 	Platform    string `mapstructure:"platform"`
 	Secret      string `mapstructure:"secret"`
 	Concurrency int    `mapstructure:"concurrency"`
+	SSHConfig   string `mapstructure:"ssh-config"`
 }
