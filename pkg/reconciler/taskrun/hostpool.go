@@ -17,6 +17,7 @@ import (
 	"github.com/konflux-ci/multi-platform-controller/pkg/constant"
 	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v12 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/utils/strings/slices"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -239,6 +240,10 @@ func ensureExistingSSHConfigOwner(ctx context.Context, r *ReconcileTaskRun, user
 	}
 	cm := &v12.ConfigMap{}
 	if err := r.apiReader.Get(ctx, client.ObjectKey{Namespace: r.operatorNamespace, Name: name}, cm); err != nil {
+		// The snapshot can be removed after allocation. Cleanup still proceeds.
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
 		return err
 	}
 	return setSSHConfigMapOwner(ctx, r.client, r.scheme, cleanup, cm)

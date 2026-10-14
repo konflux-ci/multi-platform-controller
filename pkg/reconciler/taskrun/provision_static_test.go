@@ -342,6 +342,18 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(snapshot.Data).Should(HaveKeyWithValue(sshConfigFileName, sshConfigText))
 		})
 
+		It("should continue cleanup when the ssh-config snapshot is already gone", func(ctx SpecContext) {
+			tr := runUserPipeline(ctx, client, reconciler, "test-ssh-config-missing-snapshot")
+			snapshotName := recordedSSHConfigSnapshotName(reconciler.operatorNamespace, tr)
+			Expect(snapshotName).ShouldNot(BeEmpty())
+			Expect(client.Delete(ctx, &v1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Namespace: systemNamespace, Name: snapshotName}})).Should(Succeed())
+
+			cleanup := &pipelinev1.TaskRun{}
+			cleanup.Name = "cleanup"
+			cleanup.Namespace = systemNamespace
+			Expect(ensureExistingSSHConfigOwner(ctx, reconciler, tr, cleanup)).Should(Succeed())
+		})
+
 		It("should mount the same text on the cleanup task", func(ctx SpecContext) {
 			tr := runUserPipeline(ctx, client, reconciler, "test-ssh-config-cleanup")
 			provisionBinding := sshConfigBinding(getProvisionTaskRun(ctx, client, tr))
@@ -727,6 +739,18 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(k8serrors.IsNotFound(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: tr.Name}, &pipelinev1.TaskRun{}))).Should(BeTrue())
 		})
 
+		It("should delete a finished update task when its snapshot disappears before deletion", func(ctx SpecContext) {
+			createFinishedUpdate(ctx, "update-snapshot-vanished", time.Now(), v1.ConditionTrue)
+			gone := &snapshotGoneOnDelete{Client: client, name: snapshotName}
+			reconciler.client = gone
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: systemNamespace, Name: "update-snapshot-vanished"}})
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(gone.deleted).Should(BeTrue())
+			Expect(k8serrors.IsNotFound(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: "update-snapshot-vanished"}, &pipelinev1.TaskRun{}))).Should(BeTrue())
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: snapshotName}, &v1.ConfigMap{})).Should(Succeed())
+		})
+
 		It("should delete a finished update task when its snapshot is already gone", func(ctx SpecContext) {
 			createFinishedUpdate(ctx, "update-snapshot-gone", time.Now(), v1.ConditionTrue)
 			Expect(client.Delete(ctx, &v1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Namespace: systemNamespace, Name: snapshotName}})).Should(Succeed())
@@ -799,6 +823,22 @@ func (f failSnapshotDelete) Delete(ctx context.Context, obj runtimeclient.Object
 		return errors.New("delete snapshot failed")
 	}
 	return f.Client.Delete(ctx, obj, opts...)
+}
+
+// snapshotGoneOnDelete returns the stored snapshot from Get and NotFound from Delete,
+// matching a ConfigMap removed between those calls.
+type snapshotGoneOnDelete struct {
+	runtimeclient.Client
+	name    string
+	deleted bool
+}
+
+func (s *snapshotGoneOnDelete) Delete(ctx context.Context, obj runtimeclient.Object, opts ...runtimeclient.DeleteOption) error {
+	if cm, ok := obj.(*v1.ConfigMap); ok && cm.Name == s.name {
+		s.deleted = true
+		return k8serrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, cm.Name)
+	}
+	return s.Client.Delete(ctx, obj, opts...)
 }
 
 type failSnapshotGet struct {

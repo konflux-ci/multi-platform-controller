@@ -479,7 +479,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 
 		var logged []string
 		var logMu sync.Mutex
-		log := funcr.New(func(prefix, args string) {
+		log := funcr.New(func(_, args string) {
 			logMu.Lock()
 			logged = append(logged, args)
 			logMu.Unlock()
@@ -530,7 +530,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 
 		var logged []string
 		var logMu sync.Mutex
-		log := funcr.New(func(prefix, args string) {
+		log := funcr.New(func(_, args string) {
 			logMu.Lock()
 			logged = append(logged, args)
 			logMu.Unlock()
@@ -584,7 +584,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 
 		var logged []string
 		var logMu sync.Mutex
-		log := funcr.New(func(prefix, args string) {
+		log := funcr.New(func(_, args string) {
 			logMu.Lock()
 			logged = append(logged, args)
 			logMu.Unlock()
