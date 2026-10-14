@@ -918,6 +918,10 @@ func (m mismatchAfterReplace) Get(_ context.Context, key runtimeclient.ObjectKey
 	return nil
 }
 
+func (m mismatchAfterReplace) Delete(context.Context, runtimeclient.Object, ...runtimeclient.DeleteOption) error {
+	return nil
+}
+
 type alreadyExistsMissing struct {
 	runtimeclient.Client
 }
@@ -928,10 +932,6 @@ func (a alreadyExistsMissing) Create(_ context.Context, obj runtimeclient.Object
 
 func (a alreadyExistsMissing) Get(_ context.Context, key runtimeclient.ObjectKey, _ runtimeclient.Object, _ ...runtimeclient.GetOption) error {
 	return k8serrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, key.Name)
-}
-
-func (m mismatchAfterReplace) Delete(context.Context, runtimeclient.Object, ...runtimeclient.DeleteOption) error {
-	return nil
 }
 
 func staticHostsWithSSHConfig(sshConfig string) []runtimeclient.Object {
