@@ -140,6 +140,17 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 			Expect(pool.hosts).Should(HaveKey("host2"))
 			Expect(recorder.Events).Should(Receive(ContainSubstring("HostConfigRejected")))
 		})
+
+		It("should fail when a static host has an invalid address", func(ctx SpecContext) {
+			objs := createHostConfig()
+			cm := objs[0].(*corev1.ConfigMap)
+			cm.Data["host.host1.address"] = "not-an-ip"
+			_, reconciler := setupClientAndReconciler(objs)
+
+			_, err := reconciler.getPlatformConfig(ctx, "linux/arm64", userNamespace)
+			Expect(err).Should(MatchError(ContainSubstring("failed to parse static host 'host1'")))
+			Expect(err).Should(MatchError(ContainSubstring("invalid address")))
+		})
 	})
 
 	// This section tests the controller's behavior in edge cases where no suitable

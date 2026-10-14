@@ -908,19 +908,23 @@ func (r *ReconcileTaskRun) getPlatformConfig(ctx context.Context, targetPlatform
 		hostNames[name] = true
 	}
 
-	// Parse each host for this platform. A host for another platform is ignored here,
-	// so its invalid ssh-config cannot block allocation or deallocation.
+	// Hosts for another platform are ignored, so their config cannot block this pool.
+	// On this platform, rejected ssh-config drops that host. Any other invalid field
+	// still fails the pool, as it did before ssh-config existed.
 	for hostName := range hostNames {
 		if strings.TrimSpace(data["host."+hostName+".platform"]) != targetPlatform {
 			continue
 		}
 		hostConfig, err := config.ParseStaticHostConfig(data, hostName)
 		if err != nil {
-			log.Error(err, "skipping static host with invalid configuration", "host", hostName)
-			if r.eventRecorder != nil {
-				r.eventRecorder.Eventf(&cm, kubecore.EventTypeWarning, "HostConfigRejected", "skipping static host %s: %v", hostName, err)
+			if errors.Is(err, config.ErrInvalidSSHConfig) {
+				log.Error(err, "skipping static host with invalid ssh-config", "host", hostName)
+				if r.eventRecorder != nil {
+					r.eventRecorder.Eventf(&cm, kubecore.EventTypeWarning, "HostConfigRejected", "skipping static host %s: %v", hostName, err)
+				}
+				continue
 			}
-			continue
+			return nil, fmt.Errorf("failed to parse static host '%s': %w", hostName, err)
 		}
 		if hostConfig.Platform == targetPlatform {
 			ret.hosts[hostName] = &Host{

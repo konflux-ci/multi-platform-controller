@@ -404,16 +404,17 @@ func ParseStaticHostConfig(data map[string]string, hostName string) (StaticHostC
 		hostConfig.Concurrency = defaultStaticHostsConcurrency
 	}
 
-	if sshConfig := strings.TrimSpace(data[prefix+"ssh-config"]); sshConfig != "" {
-		if err := ValidateSSHClientConfig(sshConfig); err != nil {
-			return StaticHostConfig{}, fmt.Errorf("static host '%s': invalid ssh-config: %w", hostName, err)
-		}
-		hostConfig.SSHConfig = sshConfig
-	}
-
-	// Validate that address field was provided
+	// Validate that address field was provided before the optional ssh-config.
+	// A missing address must still fail the host even when ssh-config is also rejected.
 	if hostConfig.Address == "" {
 		return StaticHostConfig{}, fmt.Errorf("static host '%s': address field is required", hostName)
+	}
+
+	if sshConfig := strings.TrimSpace(data[prefix+"ssh-config"]); sshConfig != "" {
+		if err := ValidateSSHClientConfig(sshConfig); err != nil {
+			return StaticHostConfig{}, fmt.Errorf("static host '%s': %w: %w", hostName, ErrInvalidSSHConfig, err)
+		}
+		hostConfig.SSHConfig = sshConfig
 	}
 
 	return hostConfig, nil

@@ -19,6 +19,9 @@ var (
 
 	errIBMHostSecretPlatformMismatch = errors.New("host secret key and value must contain matching platform substring")
 
+	// ErrInvalidSSHConfig is returned when host ssh-config contains a directive that is not allowed.
+	ErrInvalidSSHConfig = errors.New("invalid ssh-config")
+
 	// allowedSSHConfigDirectives is the jumphost client config this controller will mount.
 	// Anything else is rejected, including directives that execute local commands.
 	allowedSSHConfigDirectives = map[string]struct{}{
