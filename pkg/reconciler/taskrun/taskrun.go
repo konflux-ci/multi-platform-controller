@@ -56,10 +56,6 @@ const (
 	CloudAddress           = "build.appstudio.redhat.com/cloud-address"
 	CloudDynamicPlatform   = "build.appstudio.redhat.com/cloud-dynamic-platform"
 	ProvisionTaskProcessed = "build.appstudio.redhat.com/provision-task-processed"
-	// sshConfigSnapshotAnnotation names the immutable SSH client config captured when a host is assigned.
-	sshConfigSnapshotAnnotation = "build.appstudio.redhat.com/ssh-config-snapshot"
-	// sshConfigSourceAnnotation records the user TaskRun that a named snapshot was created for.
-	sshConfigSourceAnnotation = "build.appstudio.redhat.com/ssh-config-source"
 	// ProvisionTaskFinalizer = "build.appstudio.redhat.com/provision-task-finalizer"
 
 	//AllocationStartTimeAnnotation Some allocations can take multiple calls, we track the actual start time in this annotation
@@ -69,6 +65,15 @@ const (
 
 	UserTaskName      = "build.appstudio.redhat.com/user-task-name"
 	UserTaskNamespace = "build.appstudio.redhat.com/user-task-namespace"
+)
+
+const (
+	// sshConfigSnapshotAnnotation names the immutable SSH client config captured when a host is assigned.
+	sshConfigSnapshotAnnotation = "build.appstudio.redhat.com/ssh-config-snapshot"
+	// sshConfigSourceAnnotation records the user TaskRun that a named snapshot was created for.
+	sshConfigSourceAnnotation = "build.appstudio.redhat.com/ssh-config-source"
+	// sshConfigUpdateLabel marks a snapshot created for a periodic host update.
+	sshConfigUpdateLabel = "build.appstudio.redhat.com/ssh-config-update"
 
 	FinishedWaitingLabel = "build.appstudio.redhat.com/finished-waiting"
 	PipelineFinalizer    = "appstudio.io/multi-platform-finalizer"
@@ -903,13 +908,20 @@ func (r *ReconcileTaskRun) getPlatformConfig(ctx context.Context, targetPlatform
 		hostNames[name] = true
 	}
 
-	// Parse each host and add to pool if it matches our platform
+	// Parse each host for this platform. A host for another platform is ignored here,
+	// so its invalid ssh-config cannot block allocation or deallocation.
 	for hostName := range hostNames {
+		if strings.TrimSpace(data["host."+hostName+".platform"]) != targetPlatform {
+			continue
+		}
 		hostConfig, err := config.ParseStaticHostConfig(data, hostName)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse static host '%s': %w", hostName, err)
+			log.Error(err, "skipping static host with invalid configuration", "host", hostName)
+			if r.eventRecorder != nil {
+				r.eventRecorder.Eventf(&cm, kubecore.EventTypeWarning, "HostConfigRejected", "skipping static host %s: %v", hostName, err)
+			}
+			continue
 		}
-		// Only add hosts that match our target platform
 		if hostConfig.Platform == targetPlatform {
 			ret.hosts[hostName] = &Host{
 				Name:        hostName,
@@ -1233,6 +1245,7 @@ func createSSHConfigMap(ctx context.Context, c client.Client, reader client.Read
 		}
 		if name == "" {
 			cm.GenerateName = "ssh-config-"
+			cm.Labels = map[string]string{sshConfigUpdateLabel: "true"}
 		} else {
 			cm.Name = name
 		}
@@ -1246,6 +1259,11 @@ func createSSHConfigMap(ctx context.Context, c client.Client, reader client.Read
 		existing := &kubecore.ConfigMap{}
 		if getErr := reader.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, existing); getErr != nil {
 			return nil, getErr
+		}
+		// A cleanup task for an earlier TaskRun with this name can still own the object.
+		// Reusing or replacing it lets that cleanup delete the new build's config.
+		if len(existing.OwnerReferences) > 0 {
+			return nil, fmt.Errorf("ssh-config ConfigMap %s is still in use", name)
 		}
 		if existing.Data[sshConfigFileName] == sshConfig {
 			return existing, nil

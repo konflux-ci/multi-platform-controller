@@ -453,6 +453,53 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(created.Data).Should(HaveKeyWithValue(sshConfigFileName, sshConfigText))
 		})
 
+		It("should refuse a snapshot that a cleanup task still owns", func(ctx SpecContext) {
+			snapshotName := sshConfigSnapshotName(userNamespace, "test-owned-snapshot")
+			existing := &v1.ConfigMap{}
+			existing.Name = snapshotName
+			existing.Namespace = systemNamespace
+			immutable := true
+			existing.Immutable = &immutable
+			existing.Data = map[string]string{sshConfigFileName: sshConfigText}
+			existing.OwnerReferences = []metav1.OwnerReference{{
+				APIVersion: "tekton.dev/v1",
+				Kind:       "TaskRun",
+				Name:       "old-cleanup",
+				UID:        "old-cleanup-uid",
+			}}
+			Expect(client.Create(ctx, existing)).Should(Succeed())
+
+			_, err := createSSHConfigMap(ctx, client, client, systemNamespace, snapshotName, sshConfigText, userNamespace+"/test-owned-snapshot")
+			Expect(err).Should(MatchError(ContainSubstring("is still in use")))
+
+			_, err = createSSHConfigMap(ctx, client, client, systemNamespace, snapshotName, "Host *\n  ProxyJump other.example.com", userNamespace+"/test-owned-snapshot")
+			Expect(err).Should(MatchError(ContainSubstring("is still in use")))
+
+			stored := &v1.ConfigMap{}
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: snapshotName}, stored)).Should(Succeed())
+			Expect(stored.Data).Should(HaveKeyWithValue(sshConfigFileName, sshConfigText))
+		})
+
+		It("should delete the ssh-config snapshot when the assigned host is gone", func(ctx SpecContext) {
+			name := "test-removed-host"
+			snapshotName := sshConfigSnapshotName(userNamespace, name)
+			snapshot := &v1.ConfigMap{}
+			snapshot.Name = snapshotName
+			snapshot.Namespace = systemNamespace
+			snapshot.Data = map[string]string{sshConfigFileName: sshConfigText}
+			Expect(client.Create(ctx, snapshot)).Should(Succeed())
+
+			tr := &pipelinev1.TaskRun{}
+			tr.Name = name
+			tr.Namespace = userNamespace
+			tr.Annotations = map[string]string{sshConfigSnapshotAnnotation: snapshotName}
+			pool := HostPool{hosts: map[string]*Host{}, targetPlatform: "linux/arm64"}
+			Expect(pool.Deallocate(reconciler, ctx, tr, "awskeys", "host1")).Should(Succeed())
+
+			err := client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: snapshotName}, &v1.ConfigMap{})
+			Expect(k8serrors.IsNotFound(err)).Should(BeTrue())
+		})
+
 		It("should return a lookup error when an existing snapshot cannot be read", func(ctx SpecContext) {
 			wrapped := alreadyExistsMissing{Client: client}
 			_, err := createSSHConfigMap(ctx, wrapped, wrapped, systemNamespace, "ssh-config-missing", sshConfigText, "")

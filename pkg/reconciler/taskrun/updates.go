@@ -21,6 +21,7 @@ import (
 // UpdateHostPools Run the host update task periodically
 func UpdateHostPools(operatorNamespace string, c client.Client, scheme *k8sRuntime.Scheme, recorder record.EventRecorder, log *logr.Logger) {
 	log.Info("running pooled host update")
+	deleteUnownedUpdateSnapshots(context.Background(), c, operatorNamespace, log)
 	cm := v12.ConfigMap{}
 	err := c.Get(context.Background(), types.NamespacedName{Namespace: operatorNamespace, Name: HostConfig}, &cm)
 	if err != nil {
@@ -75,7 +76,6 @@ func UpdateHostPools(operatorNamespace string, c client.Client, scheme *k8sRunti
 				}
 				host.SSHConfig = sshConfig
 			}
-
 		default:
 			log.Info("unknown key", "key", key)
 		}
@@ -157,5 +157,25 @@ func UpdateHostPools(operatorNamespace string, c client.Client, scheme *k8sRunti
 				return
 			}
 		}()
+	}
+}
+
+// deleteUnownedUpdateSnapshots removes host-update snapshots whose TaskRun never took ownership.
+// A snapshot younger than an hour is left alone so a staggered update can still mount it.
+func deleteUnownedUpdateSnapshots(ctx context.Context, c client.Client, namespace string, log *logr.Logger) {
+	list := &v12.ConfigMapList{}
+	if err := c.List(ctx, list, client.InNamespace(namespace), client.MatchingLabels{sshConfigUpdateLabel: "true"}); err != nil {
+		log.Error(err, "failed to list unowned ssh-config snapshots")
+		return
+	}
+	cutoff := time.Now().Add(-time.Hour)
+	for i := range list.Items {
+		cm := &list.Items[i]
+		if len(cm.OwnerReferences) > 0 || cm.CreationTimestamp.After(cutoff) {
+			continue
+		}
+		if err := c.Delete(ctx, cm); err != nil && !k8serrors.IsNotFound(err) {
+			log.Error(err, "failed to delete ssh-config snapshot", "configMap", cm.Name)
+		}
 	}
 }

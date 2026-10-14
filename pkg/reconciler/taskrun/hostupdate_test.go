@@ -4,7 +4,7 @@
 //	- That the TaskRun created was a host updating TaskRun was created
 //	- That the configuration data in the TaskRun spec Params and Workspace contain the test data
 //
-// There are 17 test cases:
+// There are 20 test cases:
 // 	1. A positive test to verify all is working correctly
 //	2. A negative test with no configuration data
 //	3. A negative test to verify UpdateHostPools only creates TaskRuns for static hosts
@@ -14,7 +14,7 @@
 //	7. Another negative test to data verify on the host concurrency field
 //	8. A negative test to verify data validation on the host username field
 //	9. A negative test to verify data validation on the host platform field
-//	10. A test that a blank or forbidden ssh-config is not mounted on the update task
+//	10. A test that a blank or rejected ssh-config is not mounted on the update task
 //	11. A test that a failed owner update deletes the update task and its ssh-config snapshot
 //	12. A test that a failed snapshot delete after a failed owner update is logged and leaves the snapshot
 //	13. A test that a failed update-task delete keeps the ssh-config snapshot and logs the error
@@ -22,6 +22,9 @@
 //	15. A test that a failed snapshot create does not create an update task
 //	16. A test that a failed update-task create deletes the snapshot
 //	17. A test that a failed snapshot delete after a failed update-task create is logged
+//	18. A test that an old unowned update snapshot is deleted and a young or owned one is kept
+//	19. A test that a failed snapshot list is logged
+//	20. A test that a failed snapshot delete is logged and leaves the snapshot
 
 package taskrun
 
@@ -38,6 +41,7 @@ import (
 	. "github.com/onsi/gomega"
 	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -683,7 +687,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 			}
 			Expect(recorder.Events).Should(Receive(ContainSubstring("SSHConfigRejected")))
 		},
-		Entry("when ssh-config contains a forbidden directive", "Host *\n  ProxyCommand ssh bastion -W %h:%p\n"),
+		Entry("when ssh-config contains a rejected directive", "Host *\n  ProxyCommand ssh bastion -W %h:%p\n"),
 		Entry("when ssh-config is blank", "   "),
 	)
 
@@ -737,4 +741,67 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 				"host."),
 		)
 	})
+
+	It("should delete an old unowned ssh-config snapshot", func(ctx SpecContext) {
+		oldSnapshot := updateSnapshot("old-snapshot", time.Now().Add(-2*time.Hour), nil)
+		youngSnapshot := updateSnapshot("young-snapshot", time.Now(), nil)
+		ownedSnapshot := updateSnapshot("owned-snapshot", time.Now().Add(-2*time.Hour), []metav1.OwnerReference{{
+			APIVersion: "tekton.dev/v1",
+			Kind:       "TaskRun",
+			Name:       "update-task",
+			UID:        "update-task-uid",
+		}})
+		k8sClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithRuntimeObjects(oldSnapshot, youngSnapshot, ownedSnapshot).
+			Build()
+
+		log := logr.FromContextOrDiscard(ctx)
+		deleteUnownedUpdateSnapshots(ctx, k8sClient, testNamespace, &log)
+
+		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(oldSnapshot), &corev1.ConfigMap{})
+		Expect(k8serrors.IsNotFound(err)).Should(BeTrue())
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(youngSnapshot), &corev1.ConfigMap{})).Should(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(ownedSnapshot), &corev1.ConfigMap{})).Should(Succeed())
+	})
+
+	It("should log a failed snapshot list", func(ctx SpecContext) {
+		var logged string
+		log := funcr.New(func(_, args string) { logged += args }, funcr.Options{})
+		k8sClient := interceptor.NewClient(fake.NewClientBuilder().WithScheme(scheme).Build(), interceptor.Funcs{
+			List: func(context.Context, client.WithWatch, client.ObjectList, ...client.ListOption) error {
+				return errors.New("list snapshots failed")
+			},
+		})
+		deleteUnownedUpdateSnapshots(ctx, k8sClient, testNamespace, &log)
+		Expect(logged).Should(ContainSubstring("failed to list unowned ssh-config snapshots"))
+	})
+
+	It("should log a failed snapshot delete", func(ctx SpecContext) {
+		oldSnapshot := updateSnapshot("old-snapshot", time.Now().Add(-2*time.Hour), nil)
+		var logged string
+		log := funcr.New(func(_, args string) { logged += args }, funcr.Options{})
+		base := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(oldSnapshot).Build()
+		k8sClient := interceptor.NewClient(base, interceptor.Funcs{
+			Delete: func(context.Context, client.WithWatch, client.Object, ...client.DeleteOption) error {
+				return errors.New("delete snapshot failed")
+			},
+		})
+		deleteUnownedUpdateSnapshots(ctx, k8sClient, testNamespace, &log)
+		Expect(logged).Should(ContainSubstring("failed to delete ssh-config snapshot"))
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(oldSnapshot), &corev1.ConfigMap{})).Should(Succeed())
+	})
 })
+
+func updateSnapshot(name string, created time.Time, owners []metav1.OwnerReference) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              name,
+			Namespace:         testNamespace,
+			CreationTimestamp: metav1.NewTime(created),
+			Labels:            map[string]string{sshConfigUpdateLabel: "true"},
+			OwnerReferences:   owners,
+		},
+		Data: map[string]string{sshConfigFileName: "Host *\n  ProxyJump bastion.example.com"},
+	}
+}
