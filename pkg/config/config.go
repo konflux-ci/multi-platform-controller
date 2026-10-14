@@ -412,7 +412,7 @@ func ParseStaticHostConfig(data map[string]string, hostName string) (StaticHostC
 
 	if sshConfig := strings.TrimSpace(data[prefix+"ssh-config"]); sshConfig != "" {
 		if err := ValidateSSHClientConfig(sshConfig); err != nil {
-			return StaticHostConfig{}, fmt.Errorf("static host '%s': %w: %w", hostName, ErrInvalidSSHConfig, err)
+			return StaticHostConfig{}, fmt.Errorf("static host '%s': %w: %v", hostName, ErrInvalidSSHConfig, err)
 		}
 		hostConfig.SSHConfig = sshConfig
 	}
