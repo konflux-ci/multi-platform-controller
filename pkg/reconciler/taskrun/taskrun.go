@@ -1160,6 +1160,8 @@ func sshConfigSnapshotName(namespace, taskName string) string {
 	return kmeta.ChildName(taskName, "-ssh-"+hex.EncodeToString(sum[:])[:25])
 }
 
+// sshConfigSnapshotNameFrom returns the snapshot name recorded on tr.
+// The value is not checked against the name this controller generated.
 func sshConfigSnapshotNameFrom(tr *tektonapi.TaskRun) string {
 	if tr.Annotations == nil {
 		return ""

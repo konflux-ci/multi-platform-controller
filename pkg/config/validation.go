@@ -210,6 +210,9 @@ func ValidateSSHClientConfig(sshConfig string) error {
 	return nil
 }
 
+// sshConfigDirective returns the lowercase directive from one config field.
+// A matching pair of quotes is removed, and keyword=value keeps only the keyword.
+// A backslash or a leftover quote is rejected.
 func sshConfigDirective(field string) (string, error) {
 	if strings.Contains(field, `\`) {
 		return "", fmt.Errorf("ssh-config directive %q is not allowed", field)
