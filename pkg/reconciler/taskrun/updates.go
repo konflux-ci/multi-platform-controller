@@ -162,6 +162,8 @@ func UpdateHostPools(operatorNamespace string, c client.Client, apiReader client
 
 // deleteUnownedUpdateSnapshots removes host-update snapshots whose TaskRun never took ownership.
 // A snapshot younger than an hour is left alone so a staggered update can still mount it.
+// An older unowned snapshot is also kept while an update TaskRun still references it. That happens
+// when setting the owner fails and the task itself cannot be deleted.
 // reader lists through the API. The manager cache only stores ConfigMaps that carry ConfigMapLabel,
 // and these snapshots do not, so a cached List would always be empty.
 func deleteUnownedUpdateSnapshots(ctx context.Context, c client.Client, reader client.Reader, namespace string, log *logr.Logger) {
@@ -170,14 +172,37 @@ func deleteUnownedUpdateSnapshots(ctx context.Context, c client.Client, reader c
 		log.Error(err, "failed to list unowned ssh-config snapshots")
 		return
 	}
+	inUse, err := updateSnapshotsInUse(ctx, reader, namespace)
+	if err != nil {
+		log.Error(err, "failed to list host update tasks")
+		return
+	}
 	cutoff := time.Now().Add(-time.Hour)
 	for i := range list.Items {
 		cm := &list.Items[i]
-		if len(cm.OwnerReferences) > 0 || cm.CreationTimestamp.After(cutoff) {
+		if _, used := inUse[cm.Name]; used || len(cm.OwnerReferences) > 0 || cm.CreationTimestamp.After(cutoff) {
 			continue
 		}
 		if err := c.Delete(ctx, cm); err != nil && !k8serrors.IsNotFound(err) {
 			log.Error(err, "failed to delete ssh-config snapshot", "configMap", cm.Name)
 		}
 	}
+}
+
+// updateSnapshotsInUse returns the ConfigMap names mounted by update tasks in namespace.
+func updateSnapshotsInUse(ctx context.Context, reader client.Reader, namespace string) (map[string]struct{}, error) {
+	list := &v1.TaskRunList{}
+	if err := reader.List(ctx, list, client.InNamespace(namespace), client.MatchingLabels{TaskTypeLabel: TaskTypeUpdate}); err != nil {
+		return nil, err
+	}
+	inUse := map[string]struct{}{}
+	for i := range list.Items {
+		for _, binding := range list.Items[i].Spec.Workspaces {
+			if binding.Name != sshConfigWorkspaceName || binding.ConfigMap == nil || binding.ConfigMap.Name == "" {
+				continue
+			}
+			inUse[binding.ConfigMap.Name] = struct{}{}
+		}
+	}
+	return inUse, nil
 }

@@ -4,7 +4,7 @@
 //	- That the TaskRun created was a host updating TaskRun was created
 //	- That the configuration data in the TaskRun spec Params and Workspace contain the test data
 //
-// There are 20 test cases:
+// There are 22 test cases:
 // 	1. A positive test to verify all is working correctly
 //	2. A negative test with no configuration data
 //	3. A negative test to verify UpdateHostPools only creates TaskRuns for static hosts
@@ -25,6 +25,8 @@
 //	18. A test that an old unowned update snapshot is deleted and a young or owned one is kept
 //	19. A test that a failed snapshot list is logged
 //	20. A test that a failed snapshot delete is logged and leaves the snapshot
+//	21. A test that an old snapshot mounted by an update task is kept
+//	22. A test that snapshots are kept when update tasks cannot be listed
 
 package taskrun
 
@@ -790,6 +792,50 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 		deleteUnownedUpdateSnapshots(ctx, k8sClient, k8sClient, testNamespace, &log)
 		Expect(logged).Should(ContainSubstring("failed to delete ssh-config snapshot"))
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(oldSnapshot), &corev1.ConfigMap{})).Should(Succeed())
+	})
+
+	It("should keep an old snapshot that an update task still mounts", func(ctx SpecContext) {
+		snapshot := updateSnapshot("mounted-snapshot", time.Now().Add(-2*time.Hour), nil)
+		unreferenced := updateSnapshot("unreferenced-snapshot", time.Now().Add(-2*time.Hour), nil)
+		mounted := &v1.TaskRun{}
+		mounted.Name = "update-still-mounted"
+		mounted.Namespace = testNamespace
+		mounted.Labels = map[string]string{TaskTypeLabel: TaskTypeUpdate}
+		mounted.Spec.Workspaces = []v1.WorkspaceBinding{sshConfigWorkspaceBinding(snapshot.Name)}
+		other := &v1.TaskRun{}
+		other.Name = "update-without-ssh-config"
+		other.Namespace = testNamespace
+		other.Labels = map[string]string{TaskTypeLabel: TaskTypeUpdate}
+		other.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &corev1.SecretVolumeSource{SecretName: "host-key"}}}
+		k8sClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithRuntimeObjects(snapshot, unreferenced, mounted, other).
+			Build()
+
+		log := logr.FromContextOrDiscard(ctx)
+		deleteUnownedUpdateSnapshots(ctx, k8sClient, k8sClient, testNamespace, &log)
+
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(snapshot), &corev1.ConfigMap{})).Should(Succeed())
+		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(unreferenced), &corev1.ConfigMap{})
+		Expect(k8serrors.IsNotFound(err)).Should(BeTrue())
+	})
+
+	It("should keep snapshots when update tasks cannot be listed", func(ctx SpecContext) {
+		snapshot := updateSnapshot("old-snapshot", time.Now().Add(-2*time.Hour), nil)
+		var logged string
+		log := funcr.New(func(_, args string) { logged += args }, funcr.Options{})
+		base := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(snapshot).Build()
+		k8sClient := interceptor.NewClient(base, interceptor.Funcs{
+			List: func(ctx context.Context, c client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+				if _, ok := list.(*v1.TaskRunList); ok {
+					return errors.New("list taskruns failed")
+				}
+				return c.List(ctx, list, opts...)
+			},
+		})
+		deleteUnownedUpdateSnapshots(ctx, k8sClient, k8sClient, testNamespace, &log)
+		Expect(logged).Should(ContainSubstring("failed to list host update tasks"))
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(snapshot), &corev1.ConfigMap{})).Should(Succeed())
 	})
 })
 
