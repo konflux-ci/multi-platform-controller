@@ -128,10 +128,10 @@ policies include `ssm:GetParameters` before merging.
 | Static AMI ID | `ami-06f37afe6d4f43c47` | Traditional format, must match `ami-[0-9a-f]+` |
 | SSM parameter path | `resolve:ssm:/aws/service/ami-windows-latest/...` | Resolved by EC2 at launch time |
 
-**Note on AMI validation (#1098):** Issue #1098 proposes adding AMI ID
-format validation. Any such validation must accept the `resolve:ssm:`
-prefix as a valid format — it is an intentional feature, not malformed
-input.
+**Note on AMI validation (#1098):** Issue #1098 (open as of this writing)
+proposes adding AMI ID format validation. Any such validation should
+accept the `resolve:ssm:` prefix as a valid format — it is an
+intentional feature, not malformed input.
 
 ## Troubleshooting
 
