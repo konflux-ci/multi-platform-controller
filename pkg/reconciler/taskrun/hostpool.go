@@ -241,7 +241,7 @@ func ensureExistingSSHConfigOwner(ctx context.Context, r *ReconcileTaskRun, user
 		return nil
 	}
 	cm := &v12.ConfigMap{}
-	if err := r.client.Get(ctx, client.ObjectKey{Namespace: r.operatorNamespace, Name: name}, cm); err != nil {
+	if err := r.apiReader.Get(ctx, client.ObjectKey{Namespace: r.operatorNamespace, Name: name}, cm); err != nil {
 		// The snapshot can be removed after allocation. Cleanup still proceeds.
 		if k8serrors.IsNotFound(err) {
 			return nil
