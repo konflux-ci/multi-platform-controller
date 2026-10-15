@@ -74,7 +74,15 @@ const (
 	sshConfigSourceAnnotation = "build.appstudio.redhat.com/ssh-config-source"
 	// sshConfigUpdateLabel marks a snapshot created for a periodic host update.
 	sshConfigUpdateLabel = "build.appstudio.redhat.com/ssh-config-update"
+	// provisionSharedHostTaskName is the Tekton Task that provisions Linux shared hosts.
+	provisionSharedHostTaskName = "provision-shared-host"
+	// sshConfigWorkspaceName is the optional workspace that carries a custom SSH client config.
+	sshConfigWorkspaceName = "ssh-config"
+	// sshConfigFileName is the key and path of the SSH client config snapshot mounted at /root/.ssh/config.
+	sshConfigFileName = "config"
+)
 
+const (
 	FinishedWaitingLabel = "build.appstudio.redhat.com/finished-waiting"
 	PipelineFinalizer    = "appstudio.io/multi-platform-finalizer"
 	HostConfig           = "host-config"
@@ -101,13 +109,6 @@ const (
 	ParamSudoCommands      = "SUDO_COMMANDS"
 	ParamRawPlatform       = "RAW_PLATFORM"
 	ParamInstanceTag       = "INSTANCE_TAG"
-
-	// provisionSharedHostTaskName is the Tekton Task that provisions Linux shared hosts.
-	provisionSharedHostTaskName = "provision-shared-host"
-	// sshConfigWorkspaceName is the optional workspace that carries a custom SSH client config.
-	sshConfigWorkspaceName = "ssh-config"
-	// sshConfigFileName is the key and path of the SSH client config snapshot mounted at /root/.ssh/config.
-	sshConfigFileName = "config"
 )
 
 type ReconcileTaskRun struct {
@@ -921,7 +922,7 @@ func (r *ReconcileTaskRun) getPlatformConfig(ctx context.Context, targetPlatform
 			if errors.Is(err, config.ErrInvalidSSHConfig) {
 				log.Error(err, "skipping static host with invalid ssh-config", "host", hostName)
 				if r.eventRecorder != nil {
-					r.eventRecorder.Eventf(&cm, kubecore.EventTypeWarning, "HostConfigRejected", "skipping static host %s: %v", hostName, err)
+					r.eventRecorder.Eventf(&cm, kubecore.EventTypeWarning, "SSHConfigRejected", "skipping static host %s: %v", hostName, err)
 				}
 				continue
 			}

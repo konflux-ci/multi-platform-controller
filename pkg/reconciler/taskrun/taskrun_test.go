@@ -138,7 +138,7 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 			pool := configIface.(HostPool)
 			Expect(pool.hosts).Should(HaveLen(1))
 			Expect(pool.hosts).Should(HaveKey("host2"))
-			Expect(recorder.Events).Should(Receive(ContainSubstring("HostConfigRejected")))
+			Expect(recorder.Events).Should(Receive(ContainSubstring("SSHConfigRejected")))
 		})
 
 		It("should fail when a static host has an invalid address", func(ctx SpecContext) {
