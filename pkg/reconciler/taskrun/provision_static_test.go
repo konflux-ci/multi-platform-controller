@@ -809,7 +809,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 
 		It("should keep the update task when its snapshot cannot be read", func(ctx SpecContext) {
 			createFinishedUpdate(ctx, "update-snapshot-unreadable", time.Now(), v1.ConditionTrue)
-			reconciler.client = failSnapshotGet{Client: client, name: snapshotName}
+			reconciler.apiReader = failSnapshotGet{Client: client, name: snapshotName}
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: systemNamespace, Name: "update-snapshot-unreadable"}})
 			Expect(err).Should(MatchError(ContainSubstring("get snapshot failed")))

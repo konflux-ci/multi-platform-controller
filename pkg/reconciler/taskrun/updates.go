@@ -19,9 +19,9 @@ import (
 )
 
 // UpdateHostPools Run the host update task periodically
-func UpdateHostPools(operatorNamespace string, c client.Client, scheme *k8sRuntime.Scheme, recorder record.EventRecorder, log *logr.Logger) {
+func UpdateHostPools(operatorNamespace string, c client.Client, apiReader client.Reader, scheme *k8sRuntime.Scheme, recorder record.EventRecorder, log *logr.Logger) {
 	log.Info("running pooled host update")
-	deleteUnownedUpdateSnapshots(context.Background(), c, operatorNamespace, log)
+	deleteUnownedUpdateSnapshots(context.Background(), apiReader, c, operatorNamespace, log)
 	cm := v12.ConfigMap{}
 	err := c.Get(context.Background(), types.NamespacedName{Namespace: operatorNamespace, Name: HostConfig}, &cm)
 	if err != nil {
@@ -162,9 +162,11 @@ func UpdateHostPools(operatorNamespace string, c client.Client, scheme *k8sRunti
 
 // deleteUnownedUpdateSnapshots removes host-update snapshots whose TaskRun never took ownership.
 // A snapshot younger than an hour is left alone so a staggered update can still mount it.
-func deleteUnownedUpdateSnapshots(ctx context.Context, c client.Client, namespace string, log *logr.Logger) {
+// reader lists through the API. The manager cache only stores ConfigMaps that carry ConfigMapLabel,
+// and these snapshots do not, so a cached List would always be empty.
+func deleteUnownedUpdateSnapshots(ctx context.Context, reader client.Reader, c client.Client, namespace string, log *logr.Logger) {
 	list := &v12.ConfigMapList{}
-	if err := c.List(ctx, list, client.InNamespace(namespace), client.MatchingLabels{sshConfigUpdateLabel: "true"}); err != nil {
+	if err := reader.List(ctx, list, client.InNamespace(namespace), client.MatchingLabels{sshConfigUpdateLabel: "true"}); err != nil {
 		log.Error(err, "failed to list unowned ssh-config snapshots")
 		return
 	}

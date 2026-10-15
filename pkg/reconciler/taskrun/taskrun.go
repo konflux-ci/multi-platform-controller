@@ -278,6 +278,7 @@ func (r *ReconcileTaskRun) handleUpdateTask(ctx context.Context, tr *tektonapi.T
 
 // deleteOwnedUpdateSnapshot removes the ssh-config ConfigMap this update TaskRun owns.
 // The workspace name is only a lookup key. A ConfigMap is deleted when its owner UID is this TaskRun.
+// The lookup uses the API reader because snapshot ConfigMaps are not in the manager cache.
 func (r *ReconcileTaskRun) deleteOwnedUpdateSnapshot(ctx context.Context, tr *tektonapi.TaskRun) error {
 	log := logr.FromContextOrDiscard(ctx)
 	for _, binding := range tr.Spec.Workspaces {
@@ -285,7 +286,7 @@ func (r *ReconcileTaskRun) deleteOwnedUpdateSnapshot(ctx context.Context, tr *te
 			continue
 		}
 		cm := &kubecore.ConfigMap{}
-		err := r.client.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: binding.ConfigMap.Name}, cm)
+		err := r.apiReader.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: binding.ConfigMap.Name}, cm)
 		if k8serrors.IsNotFound(err) {
 			continue
 		}

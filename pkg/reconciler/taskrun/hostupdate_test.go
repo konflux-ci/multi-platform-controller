@@ -120,7 +120,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 
 		// when: host pools are updated
 		log := logr.FromContextOrDiscard(ctx)
-		UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
+		UpdateHostPools(testNamespace, k8sClient, k8sClient, scheme, record.NewFakeRecorder(10), &log)
 
 		// then: no host pool update tasks are created
 		list := v1.TaskRunList{}
@@ -169,7 +169,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 
 		// when: host pools are updated
 		log := logr.FromContextOrDiscard(ctx)
-		UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
+		UpdateHostPools(testNamespace, k8sClient, k8sClient, scheme, record.NewFakeRecorder(10), &log)
 
 		// when: spawned threads run to completion
 		waitGroup.Wait()
@@ -244,7 +244,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 			Build()
 
 		log := logr.FromContextOrDiscard(ctx)
-		UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
+		UpdateHostPools(testNamespace, k8sClient, k8sClient, scheme, record.NewFakeRecorder(10), &log)
 		waitGroup.Wait()
 
 		Eventually(func(g Gomega) {
@@ -315,7 +315,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 			defer logMu.Unlock()
 			logged = append(logged, args)
 		}, funcr.Options{})
-		UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
+		UpdateHostPools(testNamespace, k8sClient, k8sClient, scheme, record.NewFakeRecorder(10), &log)
 		waitGroup.Wait()
 
 		Eventually(func(g Gomega) {
@@ -402,7 +402,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 			defer logMu.Unlock()
 			logged = append(logged, args)
 		}, funcr.Options{})
-		UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
+		UpdateHostPools(testNamespace, k8sClient, k8sClient, scheme, record.NewFakeRecorder(10), &log)
 		waitGroup.Wait()
 
 		Eventually(func(g Gomega) {
@@ -507,7 +507,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 			}).
 			Build()
 
-		UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
+		UpdateHostPools(testNamespace, k8sClient, k8sClient, scheme, record.NewFakeRecorder(10), &log)
 		Eventually(func(g Gomega) {
 			logMu.Lock()
 			messages := append([]string(nil), logged...)
@@ -558,7 +558,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 			}).
 			Build()
 
-		UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
+		UpdateHostPools(testNamespace, k8sClient, k8sClient, scheme, record.NewFakeRecorder(10), &log)
 		Eventually(func(g Gomega) {
 			logMu.Lock()
 			messages := append([]string(nil), logged...)
@@ -623,7 +623,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 			}).
 			Build()
 
-		UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
+		UpdateHostPools(testNamespace, k8sClient, k8sClient, scheme, record.NewFakeRecorder(10), &log)
 		Eventually(func(g Gomega) {
 			logMu.Lock()
 			messages := append([]string(nil), logged...)
@@ -673,7 +673,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 
 			log := logr.FromContextOrDiscard(ctx)
 			recorder := record.NewFakeRecorder(10)
-			UpdateHostPools(testNamespace, k8sClient, scheme, recorder, &log)
+			UpdateHostPools(testNamespace, k8sClient, k8sClient, scheme, recorder, &log)
 			waitGroup.Wait()
 
 			createdList := v1.TaskRunList{}
@@ -711,7 +711,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 
 				// when: host pools are updated
 				log := logr.FromContextOrDiscard(ctx)
-				UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
+				UpdateHostPools(testNamespace, k8sClient, k8sClient, scheme, record.NewFakeRecorder(10), &log)
 
 				// test everything in TaskRun creation that is not part of the table testing
 				Eventually(func(g Gomega) {
@@ -757,7 +757,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 			Build()
 
 		log := logr.FromContextOrDiscard(ctx)
-		deleteUnownedUpdateSnapshots(ctx, k8sClient, testNamespace, &log)
+		deleteUnownedUpdateSnapshots(ctx, k8sClient, k8sClient, testNamespace, &log)
 
 		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(oldSnapshot), &corev1.ConfigMap{})
 		Expect(k8serrors.IsNotFound(err)).Should(BeTrue())
@@ -773,7 +773,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 				return errors.New("list snapshots failed")
 			},
 		})
-		deleteUnownedUpdateSnapshots(ctx, k8sClient, testNamespace, &log)
+		deleteUnownedUpdateSnapshots(ctx, k8sClient, k8sClient, testNamespace, &log)
 		Expect(logged).Should(ContainSubstring("failed to list unowned ssh-config snapshots"))
 	})
 
@@ -787,7 +787,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 				return errors.New("delete snapshot failed")
 			},
 		})
-		deleteUnownedUpdateSnapshots(ctx, k8sClient, testNamespace, &log)
+		deleteUnownedUpdateSnapshots(ctx, k8sClient, k8sClient, testNamespace, &log)
 		Expect(logged).Should(ContainSubstring("failed to delete ssh-config snapshot"))
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(oldSnapshot), &corev1.ConfigMap{})).Should(Succeed())
 	})
