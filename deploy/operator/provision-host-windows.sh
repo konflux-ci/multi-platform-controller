@@ -28,11 +28,38 @@ SSH_OPTS=(-i /tmp/master_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/
 
 export USERNAME=konflux-builder
 
+# Wait for the SSH key file to be created by the user-data script.
+# The EC2 user-data PowerShell script generates the key asynchronously during
+# VM bootstrap, so it may not exist yet when we first connect via SSH.
+MAX_RETRIES=30
+RETRY_INTERVAL=10
+KEY_PATH="C:\\Users\\Administrator\\${USERNAME}"
+
+echo "{message: \"Waiting for SSH key file to appear on remote host (up to $((MAX_RETRIES * RETRY_INTERVAL))s)...\", level: \"INFO\"}"
+for i in $(seq 1 "$MAX_RETRIES"); do
+    SSH_EXIT=0
+    ssh "${SSH_OPTS[@]}" -o ConnectTimeout=10 "$SSH_HOST" "powershell -Command \"if (Test-Path '${KEY_PATH}') { exit 0 } else { exit 1 }\"" || SSH_EXIT=$?
+    if [ "$SSH_EXIT" -eq 0 ]; then
+        echo "{message: \"SSH key file found on attempt ${i}/${MAX_RETRIES}.\", level: \"INFO\"}"
+        break
+    fi
+    if [ "$i" -eq "$MAX_RETRIES" ]; then
+        echo "{message: \"SSH key file not found after ${MAX_RETRIES} attempts (${KEY_PATH}). user-data script may have failed.\", level: \"ERROR\"}" >&2
+        exit 1
+    fi
+    if [ "$SSH_EXIT" -eq 255 ]; then
+        echo "{message: \"SSH connection failed (attempt ${i}/${MAX_RETRIES}), retrying in ${RETRY_INTERVAL}s...\", level: \"INFO\"}"
+    else
+        echo "{message: \"SSH key file not found (attempt ${i}/${MAX_RETRIES}), retrying in ${RETRY_INTERVAL}s...\", level: \"INFO\"}"
+    fi
+    sleep "$RETRY_INTERVAL"
+done
+
 # Copy remote SSH key and then delete on VM
-ssh "${SSH_OPTS[@]}" "$SSH_HOST" "powershell -Command cat C:\\Users\\Administrator\\${USERNAME}" | sed 's/\r$//' > id_rsa
+ssh "${SSH_OPTS[@]}" "$SSH_HOST" "powershell -Command cat ${KEY_PATH}" | sed 's/\r$//' > id_rsa
 echo "{message: \"Successfully copied remote SSH key from VM.\", level: \"INFO\"}"
 SSH_KEY_RM_OUTPUT=$(
-    ssh "${SSH_OPTS[@]}" "$SSH_HOST" "powershell -Command rm C:\\Users\\Administrator\\${USERNAME}"
+    ssh "${SSH_OPTS[@]}" "$SSH_HOST" "powershell -Command rm ${KEY_PATH}"
 ) || {
     # If the command fails, the '||' block executes.
     # Note: Using '||' suppresses set -e for this line.
