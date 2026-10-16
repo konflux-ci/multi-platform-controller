@@ -25,6 +25,13 @@ spec:
       type: string
   workspaces:
     - name: ssh
+    - name: ssh-config
+      description: >-
+        Optional SSH client configuration from the static host.
+        Mounted at /root/.ssh/config when the workspace is provided.
+      optional: true
+      mountPath: /root/.ssh/config
+      readOnly: true
   stepTemplate:
     env:
       - name: SECRET_NAME
