@@ -143,11 +143,6 @@ data:
       # Restart sshd to apply key changes
       Restart-Service sshd
 
-      # Configure the Firewall to allow SSH (Port 22)
-      Remove-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' | Out-Null
-      New-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -DisplayName 'OpenSSH Server (sshd)' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 -RemoteAddress any
-      Write-Output "Firewall Rule 'OpenSSH-Server-In-TCP' updated"
-
       ## -------------------------------------
       ## --------- Create Local User ---------
       ## -------------------------------------
@@ -247,6 +242,17 @@ data:
       Add-MpPreference -ExclusionProcess "docker.exe"
       Add-MpPreference -ExclusionProcess "containerd.exe"
       Add-MpPreference -ExclusionProcess "vmcompute.exe"
+
+      ## -------------------------------------------------
+      ## --------- Open SSH Port in the Firewall ---------
+      ## -------------------------------------------------
+      # NOTE: this is done last (after local user creation and Windows Containers/
+      # Docker setup) so that the multi-platform-controller cannot start connecting
+      # and provisioning the host until it is fully ready. sshd itself is started
+      # and configured earlier, but the port stays closed until now.
+      Remove-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' | Out-Null
+      New-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -DisplayName 'OpenSSH Server (sshd)' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 -RemoteAddress any
+      Write-Output "Firewall Rule 'OpenSSH-Server-In-TCP' updated"
       </powershell>
       <persist>true</persist>
 
