@@ -165,6 +165,20 @@ var _ = Describe("Test Dynamic Pool Host Provisioning", func() {
 		})
 	})
 
+	When("error messages contain diagnostic context", func() {
+
+		It("should include instance tag and platform in error when launch fails in dynamic pool", func(ctx SpecContext) {
+			cloudImpl.FailLaunch = true
+			defer func() { cloudImpl.FailLaunch = false }()
+
+			createUserTaskRun(ctx, client, "test-pool-launch-err", "linux/arm64")
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: "test-pool-launch-err"}})
+			Expect(err).Should(HaveOccurred())
+			Expect(err.Error()).Should(ContainSubstring("dynamic pool"))
+			Expect(err.Error()).Should(ContainSubstring("launch failed"))
+		})
+	})
+
 	// Tests for buildDynamicHostPool function
 	When("testing buildDynamicHostPool error paths", func() {
 		It("should use default instance tag when platform config doesn't specify one", func(ctx SpecContext) {
