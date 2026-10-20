@@ -14,3 +14,6 @@ images:
   - name: multi-platform-otp-server
     newName: quay.io/QUAY_USERNAME/multi-platform-otp
     newTag: dev
+
+patches:
+- path: otp-tls-secret.yaml
