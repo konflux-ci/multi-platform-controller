@@ -62,7 +62,7 @@ Instances persist across requests until their TTL expires, balancing cost and la
    (or raw SSH key if TLS is not configured) and host details, which the original TaskRun mounts.
    When TLS is configured, the script also embeds the OTP server's TLS cert as `otp-ca` in the
    secret so consumer TaskRuns can verify the server with `curl --cacert /ssh/otp-ca`. Because the
-   cert is self-signed, it doubles as the CA trust anchor — rotating it breaks all in-flight secrets
+   cert is self-signed, it doubles as the CA trust anchor — rotating it breaks all in-flight secrets that embed the old cert.
 5. **Cleanup** — finalizers ensure host and secret cleanup on TaskRun completion
 
 ## Constants — Split Across Two Files
