@@ -5,7 +5,6 @@ resources:
  - "../../operator"
  - "../../otp"
  - host-config.yaml
- - otp-certificate.yaml
  - otelcollector.yaml
 
 images:
@@ -16,3 +15,5 @@ images:
     newName: quay.io/QUAY_USERNAME/multi-platform-otp
     newTag: dev
 
+patches:
+- path: otp-tls-secret.yaml
