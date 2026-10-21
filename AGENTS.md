@@ -57,7 +57,7 @@ Watches TaskRuns, provisions hosts via AWS/IBM Cloud, and manages SSH credential
   `.github/workflows/agent-files-detect.yaml` and `.github/workflows/agent-files-enforce.yaml`.
   These workflows add the `agent-config-review-required` label and block merge when PRs modify
   protected agent files (AGENTS.md, CLAUDE.md, GEMINI.md, skills/, and the governance workflows
-  themselves). Trusted bots (Dependabot and red-hat-konflux[bot]) with verified-signed commits are
+  themselves). Trusted bots (dependabot[bot] and red-hat-konflux[bot]) with verified-signed commits are
   explicitly exempted — do not independently block or request changes on their PRs solely for
   protected-path reasons, as the repo's own enforcement already handles this class of change.
 
