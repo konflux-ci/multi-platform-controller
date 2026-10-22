@@ -4,6 +4,7 @@ metadata:
   name: serving-cert
   namespace: multi-platform-controller
 spec:
+  commonName: multi-platform-otp-server
   duration: 2160h    # 90 days
   renewBefore: 360h  # renew 15 days before expiry
   dnsNames:
