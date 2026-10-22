@@ -56,7 +56,7 @@ Watches TaskRuns, provisions hosts via AWS/IBM Cloud, and manages SSH credential
 - **Self-signed cert-manager Certificates need a non-empty Subject** — cert-manager's
   self-signed issuer copies the Subject into the Issuer field. If neither `commonName` nor
   `subject` is set on the Certificate spec, both Subject and Issuer DNs are empty — violating
-  RFC 5280 §4.1.2.6 and breaking strict TLS clients (`curl: (60) SSL: couldn't get
+  RFC 5280 §§4.1.2.4–4.1.2.6 and breaking strict TLS clients (`curl: (60) SSL: couldn't get
   X509-issuer name!`). Always set `commonName` or `subject` on Certificates using a
   self-signed Issuer. See PRs #1095 and #1119 for the incident.
 
