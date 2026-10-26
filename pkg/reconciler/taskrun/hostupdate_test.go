@@ -4,7 +4,7 @@
 //	- That the TaskRun created was a host updating TaskRun was created
 //	- That the configuration data in the TaskRun spec Params and Workspace contain the test data
 //
-// There are 22 test cases:
+// There are 17 test cases:
 // 	1. A positive test to verify all is working correctly
 //	2. A negative test with no configuration data
 //	3. A negative test to verify UpdateHostPools only creates TaskRuns for static hosts
@@ -22,11 +22,6 @@
 //	15. A test that a failed snapshot create does not create an update task
 //	16. A test that a failed update-task create deletes the snapshot
 //	17. A test that a failed snapshot delete after a failed update-task create is logged
-//	18. A test that an old unowned update snapshot is deleted and a young or owned one is kept
-//	19. A test that a failed snapshot list is logged
-//	20. A test that a failed snapshot delete is logged and leaves the snapshot
-//	21. A test that an old snapshot mounted by an update task is kept
-//	22. A test that snapshots are kept when update tasks cannot be listed
 
 package taskrun
 
@@ -43,7 +38,6 @@ import (
 	. "github.com/onsi/gomega"
 	v1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	corev1 "k8s.io/api/core/v1"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -122,7 +116,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 
 		// when: host pools are updated
 		log := logr.FromContextOrDiscard(ctx)
-		UpdateHostPools(testNamespace, k8sClient, k8sClient, scheme, record.NewFakeRecorder(10), &log)
+		UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
 
 		// then: no host pool update tasks are created
 		list := v1.TaskRunList{}
@@ -171,7 +165,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 
 		// when: host pools are updated
 		log := logr.FromContextOrDiscard(ctx)
-		UpdateHostPools(testNamespace, k8sClient, k8sClient, scheme, record.NewFakeRecorder(10), &log)
+		UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
 
 		// when: spawned threads run to completion
 		waitGroup.Wait()
@@ -246,7 +240,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 			Build()
 
 		log := logr.FromContextOrDiscard(ctx)
-		UpdateHostPools(testNamespace, k8sClient, k8sClient, scheme, record.NewFakeRecorder(10), &log)
+		UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
 		waitGroup.Wait()
 
 		Eventually(func(g Gomega) {
@@ -317,7 +311,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 			defer logMu.Unlock()
 			logged = append(logged, args)
 		}, funcr.Options{})
-		UpdateHostPools(testNamespace, k8sClient, k8sClient, scheme, record.NewFakeRecorder(10), &log)
+		UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
 		waitGroup.Wait()
 
 		Eventually(func(g Gomega) {
@@ -404,7 +398,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 			defer logMu.Unlock()
 			logged = append(logged, args)
 		}, funcr.Options{})
-		UpdateHostPools(testNamespace, k8sClient, k8sClient, scheme, record.NewFakeRecorder(10), &log)
+		UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
 		waitGroup.Wait()
 
 		Eventually(func(g Gomega) {
@@ -509,7 +503,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 			}).
 			Build()
 
-		UpdateHostPools(testNamespace, k8sClient, k8sClient, scheme, record.NewFakeRecorder(10), &log)
+		UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
 		Eventually(func(g Gomega) {
 			logMu.Lock()
 			messages := append([]string(nil), logged...)
@@ -560,7 +554,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 			}).
 			Build()
 
-		UpdateHostPools(testNamespace, k8sClient, k8sClient, scheme, record.NewFakeRecorder(10), &log)
+		UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
 		Eventually(func(g Gomega) {
 			logMu.Lock()
 			messages := append([]string(nil), logged...)
@@ -625,7 +619,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 			}).
 			Build()
 
-		UpdateHostPools(testNamespace, k8sClient, k8sClient, scheme, record.NewFakeRecorder(10), &log)
+		UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
 		Eventually(func(g Gomega) {
 			logMu.Lock()
 			messages := append([]string(nil), logged...)
@@ -675,7 +669,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 
 			log := logr.FromContextOrDiscard(ctx)
 			recorder := record.NewFakeRecorder(10)
-			UpdateHostPools(testNamespace, k8sClient, k8sClient, scheme, recorder, &log)
+			UpdateHostPools(testNamespace, k8sClient, scheme, recorder, &log)
 			waitGroup.Wait()
 
 			createdList := v1.TaskRunList{}
@@ -713,7 +707,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 
 				// when: host pools are updated
 				log := logr.FromContextOrDiscard(ctx)
-				UpdateHostPools(testNamespace, k8sClient, k8sClient, scheme, record.NewFakeRecorder(10), &log)
+				UpdateHostPools(testNamespace, k8sClient, scheme, record.NewFakeRecorder(10), &log)
 
 				// test everything in TaskRun creation that is not part of the table testing
 				Eventually(func(g Gomega) {
@@ -743,111 +737,4 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 				"host."),
 		)
 	})
-
-	It("should delete an old unowned ssh-config snapshot", func(ctx SpecContext) {
-		oldSnapshot := updateSnapshot("old-snapshot", time.Now().Add(-2*time.Hour), nil)
-		youngSnapshot := updateSnapshot("young-snapshot", time.Now(), nil)
-		ownedSnapshot := updateSnapshot("owned-snapshot", time.Now().Add(-2*time.Hour), []metav1.OwnerReference{{
-			APIVersion: "tekton.dev/v1",
-			Kind:       "TaskRun",
-			Name:       "update-task",
-			UID:        "update-task-uid",
-		}})
-		k8sClient := fake.NewClientBuilder().
-			WithScheme(scheme).
-			WithRuntimeObjects(oldSnapshot, youngSnapshot, ownedSnapshot).
-			Build()
-
-		log := logr.FromContextOrDiscard(ctx)
-		deleteUnownedUpdateSnapshots(ctx, k8sClient, k8sClient, testNamespace, &log)
-
-		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(oldSnapshot), &corev1.ConfigMap{})
-		Expect(k8serrors.IsNotFound(err)).Should(BeTrue())
-		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(youngSnapshot), &corev1.ConfigMap{})).Should(Succeed())
-		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(ownedSnapshot), &corev1.ConfigMap{})).Should(Succeed())
-	})
-
-	It("should log a failed snapshot list", func(ctx SpecContext) {
-		var logged string
-		log := funcr.New(func(_, args string) { logged += args }, funcr.Options{})
-		k8sClient := interceptor.NewClient(fake.NewClientBuilder().WithScheme(scheme).Build(), interceptor.Funcs{
-			List: func(context.Context, client.WithWatch, client.ObjectList, ...client.ListOption) error {
-				return errors.New("list snapshots failed")
-			},
-		})
-		deleteUnownedUpdateSnapshots(ctx, k8sClient, k8sClient, testNamespace, &log)
-		Expect(logged).Should(ContainSubstring("failed to list unowned ssh-config snapshots"))
-	})
-
-	It("should log a failed snapshot delete", func(ctx SpecContext) {
-		oldSnapshot := updateSnapshot("old-snapshot", time.Now().Add(-2*time.Hour), nil)
-		var logged string
-		log := funcr.New(func(_, args string) { logged += args }, funcr.Options{})
-		base := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(oldSnapshot).Build()
-		k8sClient := interceptor.NewClient(base, interceptor.Funcs{
-			Delete: func(context.Context, client.WithWatch, client.Object, ...client.DeleteOption) error {
-				return errors.New("delete snapshot failed")
-			},
-		})
-		deleteUnownedUpdateSnapshots(ctx, k8sClient, k8sClient, testNamespace, &log)
-		Expect(logged).Should(ContainSubstring("failed to delete ssh-config snapshot"))
-		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(oldSnapshot), &corev1.ConfigMap{})).Should(Succeed())
-	})
-
-	It("should keep an old snapshot that an update task still mounts", func(ctx SpecContext) {
-		snapshot := updateSnapshot("mounted-snapshot", time.Now().Add(-2*time.Hour), nil)
-		unreferenced := updateSnapshot("unreferenced-snapshot", time.Now().Add(-2*time.Hour), nil)
-		mounted := &v1.TaskRun{}
-		mounted.Name = "update-still-mounted"
-		mounted.Namespace = testNamespace
-		mounted.Labels = map[string]string{TaskTypeLabel: TaskTypeUpdate}
-		mounted.Spec.Workspaces = []v1.WorkspaceBinding{sshConfigWorkspaceBinding(snapshot.Name)}
-		other := &v1.TaskRun{}
-		other.Name = "update-without-ssh-config"
-		other.Namespace = testNamespace
-		other.Labels = map[string]string{TaskTypeLabel: TaskTypeUpdate}
-		other.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &corev1.SecretVolumeSource{SecretName: "host-key"}}}
-		k8sClient := fake.NewClientBuilder().
-			WithScheme(scheme).
-			WithRuntimeObjects(snapshot, unreferenced, mounted, other).
-			Build()
-
-		log := logr.FromContextOrDiscard(ctx)
-		deleteUnownedUpdateSnapshots(ctx, k8sClient, k8sClient, testNamespace, &log)
-
-		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(snapshot), &corev1.ConfigMap{})).Should(Succeed())
-		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(unreferenced), &corev1.ConfigMap{})
-		Expect(k8serrors.IsNotFound(err)).Should(BeTrue())
-	})
-
-	It("should keep snapshots when update tasks cannot be listed", func(ctx SpecContext) {
-		snapshot := updateSnapshot("old-snapshot", time.Now().Add(-2*time.Hour), nil)
-		var logged string
-		log := funcr.New(func(_, args string) { logged += args }, funcr.Options{})
-		base := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(snapshot).Build()
-		k8sClient := interceptor.NewClient(base, interceptor.Funcs{
-			List: func(ctx context.Context, c client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
-				if _, ok := list.(*v1.TaskRunList); ok {
-					return errors.New("list taskruns failed")
-				}
-				return c.List(ctx, list, opts...)
-			},
-		})
-		deleteUnownedUpdateSnapshots(ctx, k8sClient, k8sClient, testNamespace, &log)
-		Expect(logged).Should(ContainSubstring("failed to list host update tasks"))
-		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(snapshot), &corev1.ConfigMap{})).Should(Succeed())
-	})
 })
-
-func updateSnapshot(name string, created time.Time, owners []metav1.OwnerReference) *corev1.ConfigMap {
-	return &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:              name,
-			Namespace:         testNamespace,
-			CreationTimestamp: metav1.NewTime(created),
-			Labels:            map[string]string{sshConfigUpdateLabel: "true"},
-			OwnerReferences:   owners,
-		},
-		Data: map[string]string{sshConfigFileName: "Host *\n  ProxyJump bastion.example.com"},
-	}
-}

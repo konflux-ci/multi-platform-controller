@@ -72,8 +72,6 @@ const (
 	sshConfigSnapshotAnnotation = "build.appstudio.redhat.com/ssh-config-snapshot"
 	// sshConfigSourceAnnotation records the user TaskRun that a named snapshot was created for.
 	sshConfigSourceAnnotation = "build.appstudio.redhat.com/ssh-config-source"
-	// sshConfigUpdateLabel marks a snapshot created for a periodic host update.
-	sshConfigUpdateLabel = "build.appstudio.redhat.com/ssh-config-update"
 	// provisionSharedHostTaskName is the Tekton Task that provisions Linux shared hosts.
 	provisionSharedHostTaskName = "provision-shared-host"
 	// sshConfigWorkspaceName is the optional workspace that carries a custom SSH client config.
@@ -1253,7 +1251,6 @@ func createSSHConfigMap(ctx context.Context, c client.Client, reader client.Read
 		}
 		if name == "" {
 			cm.GenerateName = "ssh-config-"
-			cm.Labels = map[string]string{sshConfigUpdateLabel: "true"}
 		} else {
 			cm.Name = name
 		}
