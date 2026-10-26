@@ -90,6 +90,49 @@ WaitingForPlatformLabel = "build.appstudio.redhat.com/waiting-for-platform"
 - Configuration loading and parsing lives in `pkg/config/config.go`
 - Prometheus metrics for platform availability and allocation rates are exported from `pkg/metrics/`
 
+### SSM Parameter Resolution for AMI Config
+
+AWS dynamic platform configs support the `resolve:ssm:` prefix in the
+`ami` field to delegate AMI selection to AWS Systems Manager Parameter
+Store. Instead of hardcoding a static AMI ID (e.g., `ami-0b3cc04e917ae5753`),
+the config can reference a public or private SSM parameter that always
+resolves to the latest AMI for a given OS:
+
+```yaml
+dynamic.windows-c4xlarge-amd64.ami: resolve:ssm:/aws/service/ami-windows-latest/Windows_Server-2025-English-Core-Base
+```
+
+**How it works:** The `resolve:ssm:` value is passed directly to the EC2
+`RunInstances` API via the `ImageId` field (`pkg/aws/ec2_helpers.go`).
+EC2 natively resolves SSM parameter paths at launch time — no
+controller-side resolution logic is needed. See the [AWS documentation
+on finding AMIs with SSM parameters](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/finding-an-ami-parameter-store.html).
+
+**IAM permission requirement:** Any IAM role that launches instances
+with an SSM-based AMI config must have `ssm:GetParameters` permission
+on the target SSM parameter ARN. This includes:
+
+- The controller's production IAM role
+- CI IAM roles used by E2E tests (e.g., `multi-platform-github-action`)
+- Any dev/staging roles used for manual testing
+
+Without this permission, `RunInstances` fails with an authorization
+error. When reviewing PRs that introduce or modify `resolve:ssm:`
+values in deploy overlay configs, verify that the relevant IAM
+policies include `ssm:GetParameters` before merging.
+
+**Valid AMI config formats:**
+
+| Format | Example | Notes |
+|--------|---------|-------|
+| Static AMI ID | `ami-06f37afe6d4f43c47` | Traditional format, must match `ami-[0-9a-f]+` |
+| SSM parameter path | `resolve:ssm:/aws/service/ami-windows-latest/...` | Resolved by EC2 at launch time |
+
+**Note on AMI validation (#1098):** Issue #1098 (open as of this writing)
+proposes adding AMI ID format validation. Any such validation should
+accept the `resolve:ssm:` prefix as a valid format — it is an
+intentional feature, not malformed input.
+
 ## Troubleshooting
 
 | Symptom | Likely Cause | Where to Look |
