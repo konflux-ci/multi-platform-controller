@@ -826,17 +826,28 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: snapshotName}, &v1.ConfigMap{})).Should(Succeed())
 		})
 
-		It("should recognize only the TaskRun UID as the snapshot owner", func() {
+		It("should treat the snapshot as owned when the owner name matches the update task", func() {
 			cm := &v1.ConfigMap{}
 			tr := &pipelinev1.TaskRun{}
-			Expect(ownedByTaskRun(cm, tr)).Should(BeFalse())
+			tr.Name = "update-task"
+			owned, err := controllerutil.HasOwnerReference(cm.GetOwnerReferences(), tr, reconciler.scheme)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(owned).Should(BeFalse())
 
-			tr.UID = "task-uid"
-			cm.OwnerReferences = []metav1.OwnerReference{{UID: "other-uid"}}
-			Expect(ownedByTaskRun(cm, tr)).Should(BeFalse())
+			cm.OwnerReferences = []metav1.OwnerReference{{
+				APIVersion: "tekton.dev/v1",
+				Kind:       "TaskRun",
+				Name:       "other-task",
+				UID:        "other-uid",
+			}}
+			owned, err = controllerutil.HasOwnerReference(cm.GetOwnerReferences(), tr, reconciler.scheme)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(owned).Should(BeFalse())
 
-			cm.OwnerReferences[0].UID = tr.UID
-			Expect(ownedByTaskRun(cm, tr)).Should(BeTrue())
+			cm.OwnerReferences[0].Name = tr.Name
+			owned, err = controllerutil.HasOwnerReference(cm.GetOwnerReferences(), tr, reconciler.scheme)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(owned).Should(BeTrue())
 		})
 	})
 })

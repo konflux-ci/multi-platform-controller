@@ -277,7 +277,7 @@ func (r *ReconcileTaskRun) handleUpdateTask(ctx context.Context, tr *tektonapi.T
 }
 
 // deleteOwnedUpdateSnapshot removes the ssh-config ConfigMap this update TaskRun owns.
-// The workspace name is only a lookup key. A ConfigMap is deleted when its owner UID is this TaskRun.
+// The workspace name is only a lookup key. A ConfigMap is deleted when an owner reference matches this TaskRun.
 // The lookup uses the API reader because snapshot ConfigMaps are not in the manager cache.
 func (r *ReconcileTaskRun) deleteOwnedUpdateSnapshot(ctx context.Context, tr *tektonapi.TaskRun) error {
 	log := logr.FromContextOrDiscard(ctx)
@@ -293,7 +293,11 @@ func (r *ReconcileTaskRun) deleteOwnedUpdateSnapshot(ctx context.Context, tr *te
 		if err != nil {
 			return err
 		}
-		if !ownedByTaskRun(cm, tr) {
+		owned, err := controllerutil.HasOwnerReference(cm.GetOwnerReferences(), tr, r.scheme)
+		if err != nil {
+			return err
+		}
+		if !owned {
 			log.Info("skipping ssh-config ConfigMap that this update task does not own", "configMap", cm.Name)
 			continue
 		}
@@ -302,18 +306,6 @@ func (r *ReconcileTaskRun) deleteOwnedUpdateSnapshot(ctx context.Context, tr *te
 		}
 	}
 	return nil
-}
-
-func ownedByTaskRun(cm *kubecore.ConfigMap, tr *tektonapi.TaskRun) bool {
-	if tr.GetUID() == "" {
-		return false
-	}
-	for _, ref := range cm.GetOwnerReferences() {
-		if ref.UID == tr.GetUID() {
-			return true
-		}
-	}
-	return false
 }
 
 func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonapi.TaskRun) (reconcile.Result, error) {
