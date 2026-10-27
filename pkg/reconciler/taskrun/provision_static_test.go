@@ -506,6 +506,34 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(k8serrors.IsNotFound(err)).Should(BeTrue())
 		})
 
+		It("should return a ConfigMap creation error for a named snapshot", func(ctx SpecContext) {
+			createErr := errors.New("create snapshot failed")
+			snapshotName := sshConfigSnapshotName(userNamespace, "test-named-create-failure")
+			wrapped := failConfigMapCreate{Client: client, err: createErr}
+			created, err := createNamedSSHConfigMap(
+				ctx, wrapped, client, systemNamespace, snapshotName, sshConfigText, userNamespace+"/test-named-create-failure",
+			)
+			Expect(err).Should(Equal(createErr))
+			Expect(created).Should(BeNil())
+
+			stored := &v1.ConfigMap{}
+			err = client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: snapshotName}, stored)
+			Expect(k8serrors.IsNotFound(err)).Should(BeTrue())
+		})
+
+		It("should return a ConfigMap creation error for a generated snapshot", func(ctx SpecContext) {
+			createErr := errors.New("create snapshot failed")
+			wrapped := failConfigMapCreate{Client: client, err: createErr}
+			cm, binding, err := snapshotSSHConfig(ctx, wrapped, systemNamespace, sshConfigText)
+			Expect(err).Should(Equal(createErr))
+			Expect(cm).Should(BeNil())
+			Expect(binding).Should(Equal(pipelinev1.WorkspaceBinding{}))
+
+			stored := &v1.ConfigMapList{}
+			Expect(client.List(ctx, stored, runtimeclient.InNamespace(systemNamespace))).Should(Succeed())
+			Expect(stored.Items).ShouldNot(ContainElement(HaveField("GenerateName", "ssh-config-")))
+		})
+
 		It("should not replace a snapshot recorded for another TaskRun", func(ctx SpecContext) {
 			snapshotName := sshConfigSnapshotName(userNamespace, "test-other-snapshot")
 			stale := &v1.ConfigMap{}
@@ -869,6 +897,18 @@ func (f failTaskRunUpdate) Update(ctx context.Context, obj runtimeclient.Object,
 		return errors.New("induced update failure")
 	}
 	return f.Client.Update(ctx, obj, opts...)
+}
+
+type failConfigMapCreate struct {
+	runtimeclient.Client
+	err error
+}
+
+func (f failConfigMapCreate) Create(ctx context.Context, obj runtimeclient.Object, opts ...runtimeclient.CreateOption) error {
+	if _, ok := obj.(*v1.ConfigMap); ok {
+		return f.err
+	}
+	return f.Client.Create(ctx, obj, opts...)
 }
 
 type failSnapshotDelete struct {
