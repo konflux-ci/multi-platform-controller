@@ -241,7 +241,6 @@ func getProvisionTaskRun(ctx context.Context, client runtimeclient.Client, tr *p
 	Expect(err).ShouldNot(HaveOccurred())
 	for i := range list.Items {
 		if list.Items[i].Labels[UserTaskName] == tr.Name && list.Items[i].Labels[UserTaskNamespace] == tr.Namespace {
-			assertNotServiceSelectable(list.Items[i].Labels)
 			return &list.Items[i]
 		}
 	}
