@@ -1185,7 +1185,7 @@ func recordedSSHConfigSnapshotName(operatorNamespace string, tr *tektonapi.TaskR
 func (r *ReconcileTaskRun) ensureUserSSHConfigSnapshot(ctx context.Context, tr *tektonapi.TaskRun, sshConfig string) error {
 	name := sshConfigSnapshotName(tr.Namespace, tr.Name)
 	source := tr.Namespace + "/" + tr.Name
-	if _, err := createSSHConfigMap(ctx, r.client, r.apiReader, r.operatorNamespace, name, sshConfig, source); err != nil {
+	if _, err := createNamedSSHConfigMap(ctx, r.client, r.apiReader, r.operatorNamespace, name, sshConfig, source); err != nil {
 		return err
 	}
 	if tr.Annotations == nil {
@@ -1212,34 +1212,30 @@ func (r *ReconcileTaskRun) deleteNamedSSHConfigSnapshot(ctx context.Context, nam
 }
 
 // snapshotSSHConfig stores sshConfig in an immutable ConfigMap with a generated name.
-// Host updates use this; provision and cleanup share the snapshot recorded on the user TaskRun.
+// Periodic host updates use this. Provision and cleanup use the named snapshot recorded on the user TaskRun.
 func snapshotSSHConfig(ctx context.Context, c client.Client, namespace, sshConfig string) (*kubecore.ConfigMap, tektonapi.WorkspaceBinding, error) {
-	cm, err := createSSHConfigMap(ctx, c, c, namespace, "", sshConfig, "")
+	cm, err := newSSHConfigMap(ctx, c, namespace, sshConfig)
 	if err != nil {
 		return nil, tektonapi.WorkspaceBinding{}, err
 	}
 	return cm, sshConfigWorkspaceBinding(cm.Name), nil
 }
 
-func createSSHConfigMap(ctx context.Context, c client.Client, reader client.Reader, namespace, name, sshConfig, source string) (*kubecore.ConfigMap, error) {
+func createNamedSSHConfigMap(ctx context.Context, c client.Client, reader client.Reader, namespace, name, sshConfig, source string) (*kubecore.ConfigMap, error) {
 	for attempt := 0; ; attempt++ {
 		cm := &kubecore.ConfigMap{}
 		cm.Namespace = namespace
 		cm.Immutable = ptr.To(true)
 		cm.Data = map[string]string{sshConfigFileName: sshConfig}
+		cm.Name = name
 		if source != "" {
 			cm.Annotations = map[string]string{sshConfigSourceAnnotation: source}
-		}
-		if name == "" {
-			cm.GenerateName = "ssh-config-"
-		} else {
-			cm.Name = name
 		}
 		err := c.Create(ctx, cm)
 		if err == nil {
 			return cm, nil
 		}
-		if name == "" || !k8serrors.IsAlreadyExists(err) {
+		if !k8serrors.IsAlreadyExists(err) {
 			return nil, err
 		}
 		existing := &kubecore.ConfigMap{}
@@ -1270,6 +1266,18 @@ func createSSHConfigMap(ctx context.Context, c client.Client, reader client.Read
 			return nil, delErr
 		}
 	}
+}
+
+func newSSHConfigMap(ctx context.Context, c client.Client, namespace, sshConfig string) (*kubecore.ConfigMap, error) {
+	cm := &kubecore.ConfigMap{}
+	cm.Namespace = namespace
+	cm.Immutable = ptr.To(true)
+	cm.Data = map[string]string{sshConfigFileName: sshConfig}
+	cm.GenerateName = "ssh-config-"
+	if err := c.Create(ctx, cm); err != nil {
+		return nil, err
+	}
+	return cm, nil
 }
 
 func setSSHConfigMapOwner(ctx context.Context, c client.Client, scheme *k8sRuntime.Scheme, owner client.Object, cm *kubecore.ConfigMap) error {

@@ -407,7 +407,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			stale.Data = map[string]string{sshConfigFileName: "Host *\n  ProxyJump old.example.com"}
 			Expect(client.Create(ctx, stale)).Should(Succeed())
 
-			created, err := createSSHConfigMap(ctx, client, client, systemNamespace, snapshotName, sshConfigText, "")
+			created, err := createNamedSSHConfigMap(ctx, client, client, systemNamespace, snapshotName, sshConfigText, "")
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(created.Data).Should(HaveKeyWithValue(sshConfigFileName, sshConfigText))
 
@@ -429,7 +429,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(client.Create(ctx, stale)).Should(Succeed())
 
 			wrapped := failSnapshotDelete{failTaskRunUpdate: failTaskRunUpdate{Client: client}, snapshotName: snapshotName}
-			_, err := createSSHConfigMap(ctx, wrapped, client, systemNamespace, snapshotName, sshConfigText, "")
+			_, err := createNamedSSHConfigMap(ctx, wrapped, client, systemNamespace, snapshotName, sshConfigText, "")
 			Expect(err).Should(MatchError(ContainSubstring("delete snapshot failed")))
 
 			stored := &v1.ConfigMap{}
@@ -447,7 +447,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			existing.Data = map[string]string{sshConfigFileName: sshConfigText}
 			Expect(client.Create(ctx, existing)).Should(Succeed())
 
-			created, err := createSSHConfigMap(ctx, client, client, systemNamespace, snapshotName, sshConfigText, userNamespace+"/test-matching-snapshot")
+			created, err := createNamedSSHConfigMap(ctx, client, client, systemNamespace, snapshotName, sshConfigText, userNamespace+"/test-matching-snapshot")
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(created.UID).Should(Equal(existing.UID))
 			Expect(created.Data).Should(HaveKeyWithValue(sshConfigFileName, sshConfigText))
@@ -469,10 +469,10 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			}}
 			Expect(client.Create(ctx, existing)).Should(Succeed())
 
-			_, err := createSSHConfigMap(ctx, client, client, systemNamespace, snapshotName, sshConfigText, userNamespace+"/test-owned-snapshot")
+			_, err := createNamedSSHConfigMap(ctx, client, client, systemNamespace, snapshotName, sshConfigText, userNamespace+"/test-owned-snapshot")
 			Expect(err).Should(MatchError(ContainSubstring("is still in use")))
 
-			_, err = createSSHConfigMap(ctx, client, client, systemNamespace, snapshotName, "Host *\n  ProxyJump other.example.com", userNamespace+"/test-owned-snapshot")
+			_, err = createNamedSSHConfigMap(ctx, client, client, systemNamespace, snapshotName, "Host *\n  ProxyJump other.example.com", userNamespace+"/test-owned-snapshot")
 			Expect(err).Should(MatchError(ContainSubstring("is still in use")))
 
 			stored := &v1.ConfigMap{}
@@ -502,7 +502,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 
 		It("should return a lookup error when an existing snapshot cannot be read", func(ctx SpecContext) {
 			wrapped := alreadyExistsMissing{Client: client}
-			_, err := createSSHConfigMap(ctx, wrapped, wrapped, systemNamespace, "ssh-config-missing", sshConfigText, "")
+			_, err := createNamedSSHConfigMap(ctx, wrapped, wrapped, systemNamespace, "ssh-config-missing", sshConfigText, "")
 			Expect(k8serrors.IsNotFound(err)).Should(BeTrue())
 		})
 
@@ -517,7 +517,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			stale.Annotations = map[string]string{sshConfigSourceAnnotation: "other-ns/test-other-snapshot"}
 			Expect(client.Create(ctx, stale)).Should(Succeed())
 
-			_, err := createSSHConfigMap(ctx, client, client, systemNamespace, snapshotName, sshConfigText, userNamespace+"/test-other-snapshot")
+			_, err := createNamedSSHConfigMap(ctx, client, client, systemNamespace, snapshotName, sshConfigText, userNamespace+"/test-other-snapshot")
 			Expect(err).Should(MatchError(ContainSubstring("already exists with different contents")))
 
 			stored := &v1.ConfigMap{}
@@ -528,7 +528,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		It("should return an error when a replaced snapshot still has different content", func(ctx SpecContext) {
 			snapshotName := sshConfigSnapshotName(userNamespace, "test-stale-snapshot-again")
 			wrapped := mismatchAfterReplace{Client: client}
-			_, err := createSSHConfigMap(ctx, wrapped, wrapped, systemNamespace, snapshotName, sshConfigText, "")
+			_, err := createNamedSSHConfigMap(ctx, wrapped, wrapped, systemNamespace, snapshotName, sshConfigText, "")
 			Expect(err).Should(MatchError(ContainSubstring("already exists with different contents")))
 		})
 
