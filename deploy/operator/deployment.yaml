@@ -12,6 +12,7 @@ spec:
     metadata:
       labels:
         app: multi-platform-controller
+        app.kubernetes.io/instance: multi-platform-controller
     spec:
       containers:
         - name: manager

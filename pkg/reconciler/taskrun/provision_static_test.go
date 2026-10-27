@@ -244,6 +244,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			for idx := range list.Items {
 				i := list.Items[idx]
 				if i.Labels[TaskTypeLabel] != "" {
+					assertNotServiceSelectable(i.Labels)
 					if i.Status.CompletionTime == nil {
 						endTime := time.Now().Add(time.Hour * -2)
 						i.Status.CompletionTime = &metav1.Time{Time: endTime}

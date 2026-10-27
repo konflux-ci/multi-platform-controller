@@ -10,6 +10,6 @@ spec:
       protocol: TCP
       targetPort: 8443
   selector:
-    app: multi-platform-otp-server
+    app.kubernetes.io/instance: multi-platform-otp-server
   sessionAffinity: None
   type: ClusterIP
