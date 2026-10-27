@@ -17,7 +17,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
 	"knative.dev/pkg/apis"
 	runtimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -130,15 +129,12 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 			cm := objs[0].(*corev1.ConfigMap)
 			cm.Data["host.host1.ssh-config"] = "LocalForward 8080 localhost:8080"
 			_, reconciler := setupClientAndReconciler(objs)
-			recorder := record.NewFakeRecorder(2)
-			reconciler.eventRecorder = recorder
 
 			configIface, err := reconciler.getPlatformConfig(ctx, "linux/arm64", userNamespace)
 			Expect(err).ShouldNot(HaveOccurred())
 			pool := configIface.(HostPool)
 			Expect(pool.hosts).Should(HaveLen(1))
 			Expect(pool.hosts).Should(HaveKey("host2"))
-			Expect(recorder.Events).Should(Receive(ContainSubstring("SSHConfigRejected")))
 		})
 
 		It("should fail when a static host has an invalid address", func(ctx SpecContext) {

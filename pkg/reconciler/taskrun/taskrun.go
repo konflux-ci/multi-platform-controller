@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
+	"k8s.io/utils/ptr"
 	"k8s.io/utils/strings/slices"
 	"knative.dev/pkg/apis"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -919,9 +920,6 @@ func (r *ReconcileTaskRun) getPlatformConfig(ctx context.Context, targetPlatform
 		if err != nil {
 			if errors.Is(err, config.ErrInvalidSSHConfig) {
 				log.Error(err, "skipping static host with invalid ssh-config", "host", hostName)
-				if r.eventRecorder != nil {
-					r.eventRecorder.Eventf(&cm, kubecore.EventTypeWarning, "SSHConfigRejected", "skipping static host %s: %v", hostName, err)
-				}
 				continue
 			}
 			return nil, fmt.Errorf("failed to parse static host '%s': %w", hostName, err)
@@ -1217,16 +1215,10 @@ func (r *ReconcileTaskRun) deleteSSHConfigSnapshot(ctx context.Context, tr *tekt
 }
 
 func (r *ReconcileTaskRun) deleteNamedSSHConfigSnapshot(ctx context.Context, name string) error {
-	if name == "" {
-		return nil
-	}
 	cm := &kubecore.ConfigMap{}
 	cm.Name = name
 	cm.Namespace = r.operatorNamespace
-	if err := r.client.Delete(ctx, cm); err != nil && !k8serrors.IsNotFound(err) {
-		return err
-	}
-	return nil
+	return client.IgnoreNotFound(r.client.Delete(ctx, cm))
 }
 
 // snapshotSSHConfig stores sshConfig in an immutable ConfigMap with a generated name.
@@ -1243,8 +1235,7 @@ func createSSHConfigMap(ctx context.Context, c client.Client, reader client.Read
 	for attempt := 0; ; attempt++ {
 		cm := &kubecore.ConfigMap{}
 		cm.Namespace = namespace
-		immutable := true
-		cm.Immutable = &immutable
+		cm.Immutable = ptr.To(true)
 		cm.Data = map[string]string{sshConfigFileName: sshConfig}
 		if source != "" {
 			cm.Annotations = map[string]string{sshConfigSourceAnnotation: source}
