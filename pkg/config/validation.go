@@ -18,6 +18,31 @@ var (
 	ErrInvalidIPFormat          = errors.New("value must be a valid IP address in dotted decimal notation")
 
 	errIBMHostSecretPlatformMismatch = errors.New("host secret key and value must contain matching platform substring")
+
+	// ErrInvalidSSHConfig is returned when host ssh-config contains a directive that is not allowed.
+	ErrInvalidSSHConfig = errors.New("invalid ssh-config")
+
+	// allowedSSHConfigDirectives is the jumphost client config this controller will mount.
+	// Anything else is rejected, including directives that execute local commands.
+	allowedSSHConfigDirectives = map[string]struct{}{
+		"batchmode":                {},
+		"connecttimeout":           {},
+		"connectionattempts":       {},
+		"globalknownhostsfile":     {},
+		"host":                     {},
+		"hostname":                 {},
+		"identitiesonly":           {},
+		"identityfile":             {},
+		"port":                     {},
+		"preferredauthentications": {},
+		"proxyjump":                {},
+		"pubkeyauthentication":     {},
+		"serveralivecountmax":      {},
+		"serveraliveinterval":      {},
+		"stricthostkeychecking":    {},
+		"user":                     {},
+		"userknownhostsfile":       {},
+	}
 )
 
 const (
@@ -152,6 +177,59 @@ func validateNonZeroPositiveNumberWithMax(value string, maxValue int) (int, erro
 		return -1, fmt.Errorf("invalid value '%s': must be between 1 and %d", value, maxValue)
 	}
 	return num, nil
+}
+
+// ValidateSSHClientConfig accepts only the SSH client directives needed to reach a host through a jumphost.
+// Validation rules:
+// - Blank lines and lines starting with # are ignored
+// - Directive names are case-insensitive and may use keyword=value form
+// - A keyword wrapped in matching single or double quotes is unwrapped, because OpenSSH does the same
+// - A keyword that still contains a quote or backslash is rejected
+// - Any directive outside allowedSSHConfigDirectives is rejected
+//
+// Parameters:
+// - sshConfig: SSH client configuration text
+//
+// Returns:
+// - nil if every directive is allowed
+// - error if a directive is not allowed or cannot be tokenized
+func ValidateSSHClientConfig(sshConfig string) error {
+	for _, line := range strings.Split(sshConfig, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		directive, err := sshConfigDirective(strings.Fields(line)[0])
+		if err != nil {
+			return err
+		}
+		if _, allowed := allowedSSHConfigDirectives[directive]; !allowed {
+			return fmt.Errorf("ssh-config directive %q is not allowed", directive)
+		}
+	}
+	return nil
+}
+
+// sshConfigDirective returns the lowercase directive from one config field.
+// A matching pair of quotes is removed, and keyword=value keeps only the keyword.
+// A backslash or a leftover quote is rejected.
+func sshConfigDirective(field string) (string, error) {
+	if strings.Contains(field, `\`) {
+		return "", fmt.Errorf("ssh-config directive %q is not allowed", field)
+	}
+	if len(field) >= 2 {
+		quote := field[0]
+		if (quote == '"' || quote == '\'') && field[len(field)-1] == quote {
+			field = field[1 : len(field)-1]
+		}
+	}
+	if strings.ContainsAny(field, `"'`) {
+		return "", fmt.Errorf("ssh-config directive %q is not allowed", field)
+	}
+	if i := strings.IndexByte(field, '='); i >= 0 {
+		field = field[:i]
+	}
+	return strings.ToLower(field), nil
 }
 
 // ValidateIPFormat validates that a string represents a valid IP address format.

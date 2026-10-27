@@ -23,6 +23,9 @@ chmod 0400 /tmp/master_key
 export SSH_HOST="$USER@$HOST"
 SSH_MULTIPLEX_OPTS=(-o ControlMaster=auto -o ControlPath=/tmp/ssh-%r@%h:%p)
 SSH_OPTS=(-i /tmp/master_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SSH_MULTIPLEX_OPTS[@]}")
+if [[ -f /root/.ssh/config ]]; then
+  SSH_OPTS=(-F /root/.ssh/config "${SSH_OPTS[@]}")
+fi
 
 USERNAME=u-$(echo "$TASKRUN_NAME$NAMESPACE" | md5sum | cut -b-28)
 export USERNAME
