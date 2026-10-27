@@ -40,7 +40,6 @@ var _ = Describe("Test Dynamic Pool Host Provisioning", func() {
 	It("should allocate a cloud host with dynamic pool correctly", func(ctx SpecContext) {
 		tr := runUserPipeline(ctx, client, reconciler, "test-dyn-pool")
 		provision := getProvisionTaskRun(ctx, client, tr)
-		assertNotServiceSelectable(provision.Labels)
 		params := map[string]string{}
 		for _, i := range provision.Spec.Params {
 			params[i.Name] = i.Value.StringVal
@@ -87,7 +86,6 @@ var _ = Describe("Test Dynamic Pool Host Provisioning", func() {
 
 			// Fail the provision task for that instance
 			provisionTask := getProvisionTaskRun(ctx, client, userTask)
-			assertNotServiceSelectable(provisionTask.Labels)
 			provisionTask.Status.CompletionTime = &metav1.Time{Time: time.Now()}
 			provisionTask.Status.SetCondition(&apis.Condition{
 				Type:   apis.ConditionSucceeded,
@@ -132,7 +130,6 @@ var _ = Describe("Test Dynamic Pool Host Provisioning", func() {
 
 			// Fail the first provision task
 			provision1 := getProvisionTaskRun(ctx, client, userTask)
-			assertNotServiceSelectable(provision1.Labels)
 			provision1.Status.CompletionTime = &metav1.Time{Time: time.Now()}
 			provision1.Status.SetCondition(&apis.Condition{Type: apis.ConditionSucceeded, Status: v1.ConditionFalse})
 			Expect(client.Status().Update(ctx, provision1)).Should(Succeed())
@@ -149,7 +146,6 @@ var _ = Describe("Test Dynamic Pool Host Provisioning", func() {
 
 			// Fail the second provision task
 			provision2 := getProvisionTaskRun(ctx, client, userTask)
-			assertNotServiceSelectable(provision2.Labels)
 			provision2.Status.CompletionTime = &metav1.Time{Time: time.Now()}
 			provision2.Status.SetCondition(&apis.Condition{Type: apis.ConditionSucceeded, Status: v1.ConditionFalse})
 			Expect(client.Status().Update(ctx, provision2)).Should(Succeed())

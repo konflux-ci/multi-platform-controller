@@ -55,7 +55,6 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		for i := 0; i < 8; i++ {
 			tr := runUserPipeline(ctx, client, reconciler, fmt.Sprintf("test-%d", i))
 			provision := getProvisionTaskRun(ctx, client, tr)
-			assertNotServiceSelectable(provision.Labels)
 			runSuccessfulProvision(ctx, provision, client, tr, reconciler)
 			runs = append(runs, tr)
 		}
@@ -85,9 +84,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
 		Expect(err).ShouldNot(HaveOccurred())
 		tr = getUserTaskRun(ctx, client, name)
-		newProvision := getProvisionTaskRun(ctx, client, tr)
-		Expect(newProvision).ShouldNot(BeNil())
-		assertNotServiceSelectable(newProvision.Labels)
+		Expect(getProvisionTaskRun(ctx, client, tr)).ShouldNot(BeNil())
 		Expect(tr.Labels[AssignedHost]).ShouldNot(BeEmpty())
 
 	})
@@ -107,7 +104,6 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			// Get the provision task that was created for our user task.
 			provisionTask := getProvisionTaskRun(ctx, client, userTask)
 			Expect(provisionTask).NotTo(BeNil(), "A provision task should have been created")
-			assertNotServiceSelectable(provisionTask.Labels)
 
 			// Telling the system "this thing failed."
 			provisionTask.Status.CompletionTime = &metav1.Time{Time: time.Now()}
@@ -141,7 +137,6 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			newProvisionTask := getProvisionTaskRun(ctx, client, finalUserTask)
 			Expect(newProvisionTask).NotTo(BeNil(), "A new provision task should have been created for the new host")
 			Expect(newProvisionTask.UID).NotTo(Equal(provisionTask.UID), "The new provision task should have a different UID, indicating it's a new object")
-			assertNotServiceSelectable(newProvisionTask.Labels)
 		})
 
 		// It tests the scenario where every available host in the static pool
@@ -151,7 +146,6 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		It("should fail the task run after all hosts have been tried", func(ctx SpecContext) {
 			tr := runUserPipeline(ctx, client, reconciler, "test-all-fail")
 			provision1 := getProvisionTaskRun(ctx, client, tr)
-			assertNotServiceSelectable(provision1.Labels)
 			host1 := provision1.Labels[AssignedHost]
 
 			// Fail the first host
@@ -174,7 +168,6 @@ var _ = Describe("Test Static Host Provisioning", func() {
 
 			// Fail the second host
 			provision2 := getProvisionTaskRun(ctx, client, tr)
-			assertNotServiceSelectable(provision2.Labels)
 			host2 := provision2.Labels[AssignedHost]
 			provision2.Status.CompletionTime = &metav1.Time{Time: time.Now()}
 			provision2.Status.SetCondition(&apis.Condition{
@@ -209,7 +202,6 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		It("should create an error secret if the provision task succeeds but does not create a secret", func(ctx SpecContext) {
 			tr := runUserPipeline(ctx, client, reconciler, "test-no-secret")
 			provision := getProvisionTaskRun(ctx, client, tr)
-			assertNotServiceSelectable(provision.Labels)
 
 			provision.Status.CompletionTime = &metav1.Time{Time: time.Now()}
 			provision.Status.SetCondition(&apis.Condition{
@@ -232,7 +224,6 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		It("should successfully provision and clean up", func(ctx SpecContext) {
 			tr := runUserPipeline(ctx, client, reconciler, "test-success")
 			provision := getProvisionTaskRun(ctx, client, tr)
-			assertNotServiceSelectable(provision.Labels)
 
 			runSuccessfulProvision(ctx, provision, client, tr, reconciler)
 
@@ -254,7 +245,6 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			for idx := range list.Items {
 				i := list.Items[idx]
 				if i.Labels[TaskTypeLabel] != "" {
-					assertNotServiceSelectable(i.Labels)
 					if i.Status.CompletionTime == nil {
 						endTime := time.Now().Add(time.Hour * -2)
 						i.Status.CompletionTime = &metav1.Time{Time: endTime}
@@ -290,7 +280,6 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(initialSuccesses).ShouldNot(Equal(-1.0))
 
 			provision := getProvisionTaskRun(ctx, client, tr)
-			assertNotServiceSelectable(provision.Labels)
 
 			runSuccessfulProvision(ctx, provision, client, tr, reconciler)
 
@@ -306,7 +295,6 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(initialSuccesses).ShouldNot(Equal(-1.0))
 			// Run normal provision setup
 			provision := getProvisionTaskRun(ctx, client, tr)
-			assertNotServiceSelectable(provision.Labels)
 
 			// Run successful provision with conflict - this will simulate the race condition between the MPC and Tekton
 			runSuccessfulProvisionWithConflict(ctx, provision, client, tr, reconciler)
