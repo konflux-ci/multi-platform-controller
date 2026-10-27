@@ -916,16 +916,14 @@ func (r *ReconcileTaskRun) getPlatformConfig(ctx context.Context, targetPlatform
 			}
 			return nil, fmt.Errorf("failed to parse static host '%s': %w", hostName, err)
 		}
-		if hostConfig.Platform == targetPlatform {
-			ret.hosts[hostName] = &Host{
-				Name:        hostName,
-				Address:     hostConfig.Address,
-				User:        hostConfig.User,
-				Platform:    hostConfig.Platform,
-				Secret:      hostConfig.Secret,
-				Concurrency: hostConfig.Concurrency,
-				SSHConfig:   hostConfig.SSHConfig,
-			}
+		ret.hosts[hostName] = &Host{
+			Name:        hostName,
+			Address:     hostConfig.Address,
+			User:        hostConfig.User,
+			Platform:    hostConfig.Platform,
+			Secret:      hostConfig.Secret,
+			Concurrency: hostConfig.Concurrency,
+			SSHConfig:   hostConfig.SSHConfig,
 		}
 	}
 
