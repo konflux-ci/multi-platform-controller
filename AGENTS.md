@@ -46,6 +46,12 @@ Watches TaskRuns, provisions hosts via AWS/IBM Cloud, and manages SSH credential
 
 - **OTP server is stateless on restart** — all in-memory password-to-key mappings are lost,
   causing in-flight SSH handshakes to fail. Check pod restarts when debugging auth failures.
+- **OTP self-signed cert is also the CA** — the OTP server's TLS cert (from cert-manager
+  or service-ca) is self-signed and doubles as the CA trust anchor. Provisioning scripts
+  embed it as `otp-ca` in per-host secrets. Consumer TaskRuns use `curl --cacert /ssh/otp-ca`
+  to verify the server. Rotating or replacing the cert breaks all in-flight secrets that
+  embed the old cert. TLS changes require maintenance-window rollouts or a migration to
+  a stable CA trust anchor.
 - **E2E tests skip silently for unrecognized authors** — e2e only runs if the PR author is
   OWNER/MEMBER/COLLABORATOR in konflux-ci, or the branch is on the repo (not a fork). Agents
   operating from forks with unrecognized identities will never see e2e results on their PRs.
