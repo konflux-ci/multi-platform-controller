@@ -260,6 +260,33 @@ var _ = Describe("Host Configuration Validation Tests", func() {
 
 	})
 
+	// This section tests AMI format validation for dynamic AWS platforms.
+	Describe("The validateAMI function", func() {
+
+		When("validating valid AMI values", func() {
+			DescribeTable("it should not return an error",
+				func(ami string) {
+					Expect(validateAMI(ami)).ShouldNot(HaveOccurred())
+				},
+				Entry("with an AMI ID", "ami-0b3cc04e917ae5753"),
+				Entry("with an SSM parameter", "resolve:ssm:/aws/service/x"),
+			)
+		})
+
+		When("validating invalid AMI values", func() {
+			DescribeTable("it should return errInvalidAMI",
+				func(ami string) {
+					Expect(validateAMI(ami)).Should(MatchError(errInvalidAMI))
+				},
+				Entry("with an empty string", ""),
+				Entry("with no hex after the prefix", "ami-"),
+				Entry("with non-hex characters", "ami-ZZZZ"),
+				Entry("with a leading character before the prefix", "xami-abc"),
+				Entry("with an SSM prefix and no parameter", "resolve:ssm:"),
+			)
+		})
+	})
+
 	// This section tests validation of IBM host secret configurations for s390x and ppc64le platforms.
 	Describe("The validateIBMHostSecret function", func() {
 

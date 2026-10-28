@@ -158,6 +158,40 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 		})
 	})
 
+	// This section tests the validateDynamicAMIField helper function
+	Describe("The validateDynamicAMIField helper function", func() {
+
+		When("the platform is AWS", func() {
+			DescribeTable("it should accept valid or absent ami values",
+				func(data map[string]string) {
+					Expect(validateDynamicAMIField(data, "dynamic.linux-amd64.", "linux/amd64", "dynamic platform", "aws")).ShouldNot(HaveOccurred())
+				},
+				Entry("with an AMI ID", map[string]string{"dynamic.linux-amd64.ami": "ami-0b3cc04e917ae5753"}),
+				Entry("with an SSM parameter", map[string]string{"dynamic.linux-amd64.ami": "resolve:ssm:/aws/service/x"}),
+				Entry("with no ami key", map[string]string{}),
+			)
+
+			It("should return a descriptive error for an invalid ami", func() {
+				data := map[string]string{"dynamic.linux-amd64.ami": "ami-ZZZZ"}
+				err := validateDynamicAMIField(data, "dynamic.linux-amd64.", "linux/amd64", "dynamic platform", "aws")
+				Expect(err).Should(MatchError(errInvalidAMI))
+				Expect(err.Error()).Should(ContainSubstring("dynamic platform 'linux/amd64': invalid ami 'ami-ZZZZ'"))
+			})
+
+			It("should return an error for an empty ami", func() {
+				data := map[string]string{"dynamic.linux-amd64.ami": ""}
+				Expect(validateDynamicAMIField(data, "dynamic.linux-amd64.", "linux/amd64", "dynamic platform", "aws")).Should(MatchError(errInvalidAMI))
+			})
+		})
+
+		When("the platform is not AWS", func() {
+			It("should ignore the ami value", func() {
+				data := map[string]string{"dynamic.linux-s390x.ami": "garbage"}
+				Expect(validateDynamicAMIField(data, "dynamic.linux-s390x.", "linux/s390x", "dynamic platform", "ibmz")).ShouldNot(HaveOccurred())
+			})
+		})
+	})
+
 	// This section tests the parseRequiredSSHSecretField helper function
 	Describe("The parseRequiredSSHSecretField helper function", func() {
 
@@ -348,6 +382,19 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 				),
 			)
 		})
+
+		When("the AWS ami value is invalid", func() {
+			It("should return an invalid ami error", func(ctx SpecContext) {
+				data := map[string]string{
+					"dynamic.linux-amd64.type":          "aws",
+					"dynamic.linux-amd64.max-instances": "10",
+					"dynamic.linux-amd64.ssh-secret":    "aws-secret",
+					"dynamic.linux-amd64.ami":           "ami-ZZZZ",
+				}
+				_, err := ParseDynamicPlatformConfig(data, "linux/amd64")
+				Expect(err).Should(MatchError(errInvalidAMI))
+			})
+		})
 	})
 
 	// This section tests the parseDynamicPoolPlatformConfig function
@@ -500,6 +547,21 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 					"invalid max-age '0'",
 				),
 			)
+		})
+
+		When("the AWS ami value is invalid", func() {
+			It("should return an invalid ami error", func(ctx SpecContext) {
+				data := map[string]string{
+					"dynamic.linux-amd64.type":          "aws",
+					"dynamic.linux-amd64.max-instances": "10",
+					"dynamic.linux-amd64.concurrency":   "4",
+					"dynamic.linux-amd64.max-age":       "60",
+					"dynamic.linux-amd64.ssh-secret":    "aws-secret",
+					"dynamic.linux-amd64.ami":           "ami-ZZZZ",
+				}
+				_, err := ParseDynamicPoolPlatformConfig(data, "linux/amd64")
+				Expect(err).Should(MatchError(errInvalidAMI))
+			})
 		})
 	})
 
