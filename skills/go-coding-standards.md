@@ -31,7 +31,7 @@ return result, nil
 Use `string`, `int`, `bool` instead of `*string`, `*int`, `*bool` unless you need to distinguish zero-value from absent (e.g., an API where `nil` means "don't update" vs `""` means "clear"). When the consumer treats nil and zero-value identically, the pointer adds nil-check complexity for no benefit.
 
 ```go
-// Prefer — when empty and absent are equivalent
+// Prefer
 type Config struct {
     User string
 }
@@ -39,7 +39,7 @@ func (c Config) EffectiveUser() string {
     return cmp.Or(c.User, "default")
 }
 
-// Avoid — unless nil vs "" has distinct meaning
+// Avoid
 type Config struct {
     User *string
 }
