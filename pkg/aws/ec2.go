@@ -6,6 +6,7 @@
 package aws
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -56,6 +57,11 @@ func CreateEc2CloudConfig(platformName string, config map[string]string, systemN
 		userDataPtr = &base64val
 	}
 
+	var provisioningUser *string
+	if u, ok := config["dynamic."+platformName+".provisioning-user"]; ok {
+		provisioningUser = &u
+	}
+
 	return AWSEc2DynamicConfig{Region: config["dynamic."+platformName+".region"],
 		Ami:                     config["dynamic."+platformName+".ami"],
 		InstanceType:            config["dynamic."+platformName+".instance-type"],
@@ -75,6 +81,7 @@ func CreateEc2CloudConfig(platformName string, config map[string]string, systemN
 		Tenancy:                 config["dynamic."+platformName+".tenancy"],
 		HostResourceGroupArn:    config["dynamic."+platformName+".host-resource-group-arn"],
 		LicenseConfigurationArn: config["dynamic."+platformName+".license-configuration-arn"],
+		ProvisioningUser:        provisioningUser,
 	}
 }
 
@@ -262,8 +269,18 @@ func (ec AWSEc2DynamicConfig) ListInstances(kubeClient client.Client, ctx contex
 	return vmInstances, nil
 }
 
+// SshUser returns the sanitized "provisioning-user" from configuration
+// or the default "ec2-user" value.
 func (r AWSEc2DynamicConfig) SshUser() string {
-	return "ec2-user"
+	defaultUser := "ec2-user"
+
+	if r.ProvisioningUser == nil {
+		return defaultUser
+	}
+
+	return cmp.Or(
+		strings.TrimSpace(*r.ProvisioningUser),
+		defaultUser)
 }
 
 // GetState returns instanceID's VM state from the ec cloud in AWS. See
@@ -388,4 +405,7 @@ type AWSEc2DynamicConfig struct {
 	// pingFunc allows tests to inject a mock for SSH connectivity checks.
 	// When nil, the real pingIPAddress (TCP dial to port 22) is used.
 	pingFunc func(ip string) error
+
+	// ProvisioningUser is the user used to provision the VM
+	ProvisioningUser *string
 }
