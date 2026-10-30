@@ -101,12 +101,77 @@ var _ = Describe("Ec2 Unit Test Suit", func() {
 		)
 	})
 
-	Describe("Testing SshUser", func() {
-		It("The simplest damn test", func() {
-			var awsTestInstance AWSEc2DynamicConfig
-			sshUser := awsTestInstance.SshUser()
+	Describe("SshUser", func() {
+		DescribeTable("provisioning user resolution",
+			func(provisioningUser string, expected string) {
+				config := AWSEc2DynamicConfig{ProvisioningUser: provisioningUser}
+				Expect(config.SshUser()).Should(Equal(expected))
+			},
+			Entry("empty string should fall back to ec2-user", "", "ec2-user"),
+			Entry("whitespace should fall back to ec2-user", "   ", "ec2-user"),
+			Entry("configured user should be returned", "cloud-user", "cloud-user"),
+			Entry("spaces are trimmed", " cloud-user ", "cloud-user"),
+			Entry("dash prefix is removed (empty string)", "-", "ec2-user"),
+			Entry("dash prefix is removed (non empty string)", "-cloud-user", "cloud-user"),
+			Entry("dash and space prefixes are removed (empty string)", " -", "ec2-user"),
+			Entry("space and dash prefixes are removed (empty string)", "- ", "ec2-user"),
+			Entry("dash and space prefixes are removed (non empty string)", "- cloud-user", "cloud-user"),
+			Entry("space and dash prefixes are removed (non empty string)", " -cloud-user", "cloud-user"),
+		)
+	})
 
-			Expect(sshUser).Should(Equal("ec2-user"))
+	Describe("CreateEc2CloudConfig provisioning-user", func() {
+		When("provisioning-user is present in the config", func() {
+			It("should set ProvisioningUser on the provider", func() {
+				platformName := "linux-largecpu-x86_64"
+				config := map[string]string{
+					"dynamic." + platformName + ".region":            "test-region",
+					"dynamic." + platformName + ".ami":               "test-ami",
+					"dynamic." + platformName + ".instance-type":     "test-instance-type",
+					"dynamic." + platformName + ".provisioning-user": "cloud-user",
+				}
+
+				provider := CreateEc2CloudConfig(platformName, config, systemNamespace)
+				providerConfig := provider.(AWSEc2DynamicConfig)
+
+				Expect(providerConfig.ProvisioningUser).ShouldNot(BeEmpty())
+				Expect(providerConfig.ProvisioningUser).Should(Equal("cloud-user"))
+				Expect(providerConfig.SshUser()).Should(Equal("cloud-user"))
+			})
+		})
+
+		When("provisioning-user is absent from the config", func() {
+			It("should leave ProvisioningUser empty and fall back to ec2-user", func() {
+				platformName := "linux-largecpu-x86_64"
+				config := map[string]string{
+					"dynamic." + platformName + ".region":        "test-region",
+					"dynamic." + platformName + ".ami":           "test-ami",
+					"dynamic." + platformName + ".instance-type": "test-instance-type",
+				}
+
+				provider := CreateEc2CloudConfig(platformName, config, systemNamespace)
+				providerConfig := provider.(AWSEc2DynamicConfig)
+
+				Expect(providerConfig.ProvisioningUser).Should(BeEmpty())
+				Expect(providerConfig.SshUser()).Should(Equal("ec2-user"))
+			})
+		})
+
+		When("provisioning-user is empty in the config", func() {
+			It("should fall back to ec2-user", func() {
+				platformName := "linux-largecpu-x86_64"
+				config := map[string]string{
+					"dynamic." + platformName + ".region":            "test-region",
+					"dynamic." + platformName + ".ami":               "test-ami",
+					"dynamic." + platformName + ".instance-type":     "test-instance-type",
+					"dynamic." + platformName + ".provisioning-user": "",
+				}
+
+				provider := CreateEc2CloudConfig(platformName, config, systemNamespace)
+				providerConfig := provider.(AWSEc2DynamicConfig)
+
+				Expect(providerConfig.SshUser()).Should(Equal("ec2-user"))
+			})
 		})
 	})
 
