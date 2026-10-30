@@ -28,7 +28,8 @@ return result, nil
 
 ### 2. Prefer Value Types Over Pointers
 
-Use `string`, `int`, `bool` instead of `*string`, `*int`, `*bool` unless you need to distinguish zero-value from absent (e.g., an API where `nil` means "don't update" vs `""` means "clear"). When the consumer treats nil and zero-value identically, the pointer adds nil-check complexity for no benefit.
+Use `string`, `int`, `bool` instead of `*string`, `*int`, `*bool` unless you need to distinguish zero-value from absent (e.g., an API where `nil` means "don't update" vs `""` means "clear").
+When the consumer treats nil and zero-value identically, the pointer adds nil-check complexity for no benefit.
 
 ```go
 // Prefer
