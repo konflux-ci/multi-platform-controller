@@ -49,6 +49,7 @@ data:
   dynamic.windows-c4xlarge-amd64.subnet-id: subnet-02b7d6698c619e5a2
   dynamic.windows-c4xlarge-amd64.allocation-timeout: "1200"
   dynamic.windows-c4xlarge-amd64.strict-public-address: "true"
+  dynamic.windows-c4xlarge-amd64.provisioning-user: "Administrator"
   dynamic.windows-c4xlarge-amd64.user-data: |-
       <powershell>
       function Wait-Folder {
