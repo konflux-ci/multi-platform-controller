@@ -134,6 +134,20 @@ func parseDynamicOptionalInstanceTagField(data map[string]string, prefix, platfo
 	return "", nil
 }
 
+func validateDynamicAMIField(data map[string]string, prefix, platform, platformType, cloudProviderType string) error {
+	if cloudProviderType != "aws" {
+		return nil
+	}
+	ami, ok := data[prefix+"ami"]
+	if !ok {
+		return nil
+	}
+	if err := validateAMI(ami); err != nil {
+		return fmt.Errorf("%s '%s': invalid ami '%s': %w", platformType, platform, ami, err)
+	}
+	return nil
+}
+
 // parseRequiredSSHSecretField extracts and validates the required ssh-secret field from platform configuration
 // This helper function validates SSH secret configuration for cloud instances across all platform types.
 // It receives the already-validated cloud provider type from the config struct being built.
@@ -185,6 +199,7 @@ func parseRequiredSSHSecretField(data map[string]string, prefix, platform, platf
 // - dynamic.<platform-config-name>.instance-tag (optional): Instance tag for cost control must pass validateDynamicInstanceTag if provided
 // - dynamic.<platform-config-name>.allocation-timeout (optional): Timeout in seconds - must be >= 1 (no upper limit, defaults to 600)
 // - dynamic.<platform-config-name>.ssh-secret (required): non-empty SSH secret name (AWS platforms) or pass validateIBMHostSecret (IBM platforms)
+// - dynamic.<platform-config-name>.ami (optional, AWS only): must be an AMI ID (ami-<hex>) or a resolve:ssm: parameter when set
 // - dynamic.<platform-config-name>.sudo-commands (optional): Sudo commands to execute
 //
 // Parameters:
@@ -257,6 +272,9 @@ func ParseDynamicPlatformConfig(data map[string]string, platform string) (Dynami
 		dynamicConfig.SudoCommands = sudoCommands
 	}
 
+	if err := validateDynamicAMIField(data, prefix, platform, "dynamic platform", dynamicConfig.Type); err != nil {
+		return DynamicPlatformConfig{}, err
+	}
 	return dynamicConfig, nil
 }
 
@@ -272,6 +290,7 @@ func ParseDynamicPlatformConfig(data map[string]string, platform string) (Dynami
 // - dynamic.<platform-config-name>.max-age (required): Host maximum age in minutes (1-1440)
 // - dynamic.<platform-config-name>.instance-tag (optional): Instance tag for cost control must pass validateDynamicInstanceTag if provided
 // - dynamic.<platform-config-name>.ssh-secret (required): non-empty SSH secret name (AWS platforms) or pass validateIBMHostSecret (IBM platforms)
+// - dynamic.<platform-config-name>.ami (optional, AWS only): must be an AMI ID (ami-<hex>) or a resolve:ssm: parameter when set
 //
 // Parameters:
 // - data: The ConfigMap data map containing platform configuration
@@ -336,6 +355,9 @@ func ParseDynamicPoolPlatformConfig(data map[string]string, platform string) (Dy
 	}
 	poolConfig.SSHSecret = sshSecret
 
+	if err := validateDynamicAMIField(data, prefix, platform, "dynamic pool platform", poolConfig.Type); err != nil {
+		return DynamicPoolPlatformConfig{}, err
+	}
 	return poolConfig, nil
 }
 

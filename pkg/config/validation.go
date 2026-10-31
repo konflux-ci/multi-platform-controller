@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -168,6 +169,21 @@ func ValidateIPFormat(value string) error {
 		return ErrInvalidIPFormat
 	}
 	return nil
+}
+
+const ssmAMIPrefix = "resolve:ssm:"
+
+var amiIDPattern = regexp.MustCompile(`^ami-[0-9a-f]+$`)
+var errInvalidAMI = errors.New("value must be an AMI ID (ami-<hex>) or a resolve:ssm: parameter")
+
+func validateAMI(ami string) error {
+	if amiIDPattern.MatchString(ami) {
+		return nil
+	}
+	if strings.HasPrefix(ami, ssmAMIPrefix) && len(ami) > len(ssmAMIPrefix) {
+		return nil
+	}
+	return errInvalidAMI
 }
 
 // validateIBMHostSecret validates IBM host secret configuration key-value pairs
