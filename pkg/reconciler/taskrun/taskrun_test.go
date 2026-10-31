@@ -379,6 +379,7 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 			})
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(cleanupTasks.Items).Should(HaveLen(1))
+			assertNotServiceSelectable(cleanupTasks.Items[0].Labels)
 
 			cleanupTask := &cleanupTasks.Items[0]
 			cleanupTask.Status.CompletionTime = &metav1.Time{Time: time.Now()}
