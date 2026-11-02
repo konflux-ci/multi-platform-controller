@@ -42,6 +42,12 @@ Note that there is room to improve here, as if the server is restarted then all 
 
 Finalizers are used to ensure all resources that were allocated can be cleaned up.
 
+== Contributing
+
+We welcome contributions! Please read link:CONTRIBUTING.md[CONTRIBUTING.md] for
+guidelines on submitting pull requests, coding conventions, CI expectations for
+fork PRs, and the review process.
+
 
 
 
