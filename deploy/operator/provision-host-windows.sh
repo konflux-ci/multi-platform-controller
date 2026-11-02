@@ -20,10 +20,10 @@ cd /tmp
 mkdir -p /root/.ssh
 cp "$SSH_WORKSPACE_PATH/id_rsa" /tmp/master_key
 chmod 0400 /tmp/master_key
-# We default user to Administrator but provide to overwrite it
-# from configuration.
-USER=${USER:-Administrator}
-export SSH_HOST="${USER}@${HOST}"
+## TODO(filariow): we should use USER here instead,
+# but we need to update MPC's code as today its value
+# is hardcoded to `ec2-user`
+export SSH_HOST="Administrator@${HOST}"
 SSH_OPTS=(-i /tmp/master_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null)
 
 export USERNAME=konflux-builder
