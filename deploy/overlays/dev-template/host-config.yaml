@@ -251,7 +251,7 @@ data:
       # and provisioning the host until it is fully ready. sshd itself is started
       # and configured earlier, but the port stays closed until now.
       Remove-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' | Out-Null
-      New-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -DisplayName 'OpenSSH Server (sshd)' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 -RemoteAddress any
+      New-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -DisplayName 'OpenSSH Server (sshd)' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 -RemoteAddress any -Profile Any
       Write-Output "Firewall Rule 'OpenSSH-Server-In-TCP' updated"
       </powershell>
       <persist>true</persist>
