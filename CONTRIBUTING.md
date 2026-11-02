@@ -36,8 +36,8 @@ make test   # run unit tests (includes fmt and vet)
 ### 1. Open Your PR
 
 Fill out the [PR template](.github/PULL_REQUEST_TEMPLATE.md) completely:
-Summary, Changes, Testing checklist, Coverage notes, and any caveats in
-the Notes section.
+Summary, Changes, Testing, Coverage, and any caveats in the Notes
+section.
 
 ### 2. CI on Fork PRs
 
@@ -49,10 +49,10 @@ organization. This is a security constraint, not a bug.
 
 **What to do:**
 
-- After opening your PR, comment and ask a maintainer to review and
-  trigger any additional CI checks that did not run automatically.
-- You can tag maintainers by commenting on the PR with a message like:
-  `@konflux-ci/multi-platform-controller-maintainers please trigger CI`.
+- After opening your PR, leave a comment asking a maintainer to review
+  and trigger any additional CI checks that did not run automatically.
+  You can find maintainers listed in recent merged PRs or in the
+  repository's contributor list.
 - Do **not** wait silently. If you have not received any response within
   a few business days, leave a follow-up comment on the PR.
 
@@ -99,7 +99,8 @@ with someone.
 
 After your PR is merged, the change follows a staged deployment process:
 
-1. **Staging** — deployed automatically.
+1. **Staging** — a maintainer approves the automated PR from the
+   deployment bot.
 2. **Private production** — deployed manually alongside staging.
 3. **~24-hour soak** — monitored for issues.
 4. **Public production** — rolled out per cluster.
