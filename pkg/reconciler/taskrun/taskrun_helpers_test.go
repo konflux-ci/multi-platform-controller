@@ -39,6 +39,23 @@ const (
 	userNamespace   = "default"
 )
 
+// serviceSelectorLabelKeys mirrors the label keys used by the controller-manager-metrics-service
+// and multi-platform-otp-server Service selectors (see deploy/operator/metrics_service.yaml and
+// deploy/otp/service.yaml). Tekton copies a TaskRun's labels verbatim onto the Pod it creates to
+// run that TaskRun, so provision/cleanup/update TaskRuns created by the reconciler must never
+// carry these labels. Otherwise their (non metrics-providing) execution pods would be picked up
+// as Service endpoints and scraped by Prometheus.
+var serviceSelectorLabelKeys = []string{"app", "app.kubernetes.io/instance"}
+
+// assertNotServiceSelectable asserts that a TaskRun's labels don't contain any of the label keys
+// used by the controller/otp-server metrics Service selectors, so that the Pod Tekton creates to
+// run it is never mistaken for a controller-manager or otp-server metrics endpoint.
+func assertNotServiceSelectable(labels map[string]string) {
+	for _, key := range serviceSelectorLabelKeys {
+		Expect(labels).ShouldNot(HaveKey(key))
+	}
+}
+
 // setupClientAndReconciler initializes a new fake Kubernetes client and a
 // ReconcileTaskRun instance for use in tests. It pre-populates the client
 // with the provided runtime objects.

@@ -164,6 +164,7 @@ var _ = Describe("HostUpdateTaskRunTest", func() {
 
 		// set label field filled correctly
 		Expect(createdList.Items[0].Labels).To(HaveKeyWithValue(TaskTypeLabel, TaskTypeUpdate))
+		assertNotServiceSelectable(createdList.Items[0].Labels)
 
 		// extract TaskRun data to begin testing individual fields were correctly filled
 		updatedHostData := hostDataFromTRSpec(createdList.Items[0])
