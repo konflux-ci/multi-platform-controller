@@ -113,6 +113,16 @@ echo "Platform verification successful: $OS/$ARCH"
 `
 }
 
+// taskRunWaitTimeout bounds how long a test waits for a TaskRun to finish.
+//
+// It must stay above the controller's dynamic.<platform>.allocation-timeout,
+// which is 1200s for windows/c4xlarge-amd64 in
+// deploy/overlays/dev-template/host-config.yaml. When the test gives up first,
+// the failure can only report that completionTime is nil; waiting past the
+// controller's own deadline lets the TaskRun carry the real error (for example
+// "timed out waiting for instance address"), which the failure message prints.
+const taskRunWaitTimeout = 25 * time.Minute
+
 var _ = Describe("TaskRun execution", func() {
 	var k8sClient client.Client
 	testNamespace := ""
@@ -213,12 +223,16 @@ var _ = Describe("TaskRun execution", func() {
 		Expect(k8sClient.Create(ctx, taskRun)).To(Succeed())
 
 		By("waiting for the TaskRun to complete")
+		var lastSeen *tekv1.TaskRun
 		Eventually(func(g Gomega) {
 			key := client.ObjectKeyFromObject(taskRun)
 			tr := &tekv1.TaskRun{}
 			g.Expect(k8sClient.Get(ctx, key, tr)).To(Succeed())
+			lastSeen = tr
 			g.Expect(tr.Status.CompletionTime).ToNot(BeNil(), "TaskRun should have a completionTime")
-		}, 20*time.Minute, 10*time.Second).Should(Succeed())
+		}, taskRunWaitTimeout, 10*time.Second).Should(Succeed(), func() string {
+			return common.DescribeTaskRunState(lastSeen)
+		})
 
 		By("verifying the TaskRun completed successfully")
 		key := client.ObjectKeyFromObject(taskRun)
@@ -226,7 +240,7 @@ var _ = Describe("TaskRun execution", func() {
 		Expect(k8sClient.Get(ctx, key, tr)).To(Succeed())
 		condition := tr.Status.GetCondition(kapi.ConditionSucceeded)
 		Expect(condition).ToNot(BeNil())
-		Expect(condition.Status).To(Equal(corev1.ConditionTrue), "TaskRun should succeed")
+		Expect(condition.Status).To(Equal(corev1.ConditionTrue), "TaskRun should succeed: %s", common.DescribeTaskRunState(tr))
 		Expect(tr.Status.CompletionTime).ToNot(BeNil())
 	}
 
