@@ -115,7 +115,8 @@ func DescribeFailureDiagnostics(ctx context.Context, c client.Client, tr *tekv1.
 	return fmt.Sprintf("%s; ssh-secret-error=%q", state, truncate(message, maxSecretMessageLength))
 }
 
-// truncate shortens s to at most limit bytes, marking the cut with an ellipsis.
+// truncate caps the body of s at limit bytes and marks the cut with an
+// ellipsis, so the result can exceed limit by the length of that ellipsis.
 // The cut never splits a UTF-8 sequence, so the result stays valid text.
 func truncate(s string, limit int) string {
 	if len(s) <= limit {

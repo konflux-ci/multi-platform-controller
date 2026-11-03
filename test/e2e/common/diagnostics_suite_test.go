@@ -17,6 +17,7 @@ limitations under the License.
 package common
 
 import (
+	"fmt"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -28,5 +29,6 @@ import (
 // controller's error secret in memory.
 func TestDiagnostics(t *testing.T) {
 	RegisterFailHandler(Fail)
+	_, _ = fmt.Fprintf(GinkgoWriter, "Starting diagnostics test suite\n")
 	RunSpecs(t, "diagnostics suite")
 }
