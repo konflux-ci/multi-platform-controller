@@ -33,7 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	mpctaskrun "github.com/konflux-ci/multi-platform-controller/pkg/reconciler/taskrun"
+	"github.com/konflux-ci/multi-platform-controller/pkg/reconciler/taskrun"
 )
 
 const (
@@ -74,7 +74,7 @@ func clientWithErrorSecret(tr *tekv1.TaskRun, message string) client.Client {
 	return fake.NewClientBuilder().WithScheme(scheme).WithObjects(&corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: tr.Namespace,
-			Name:      mpctaskrun.SecretPrefix + tr.Name,
+			Name:      taskrun.SecretPrefix + tr.Name,
 		},
 		Data: map[string][]byte{errorSecretKey: []byte(message)},
 	}).Build()
@@ -114,8 +114,8 @@ var _ = Describe("TaskRun failure diagnostics", func() {
 		BeforeEach(func() {
 			failedTaskRun = withSucceededCondition(
 				observedTaskRun(map[string]string{
-					mpctaskrun.CloudInstanceId:               "i-0bf081f8b45efd606",
-					mpctaskrun.AllocationStartTimeAnnotation: "1793643701",
+					taskrun.CloudInstanceId:               "i-0bf081f8b45efd606",
+					taskrun.AllocationStartTimeAnnotation: "1793643701",
 				}),
 				corev1.ConditionFalse,
 				"Failed",

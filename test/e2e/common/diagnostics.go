@@ -27,7 +27,7 @@ import (
 	kapi "knative.dev/pkg/apis"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	mpctaskrun "github.com/konflux-ci/multi-platform-controller/pkg/reconciler/taskrun"
+	"github.com/konflux-ci/multi-platform-controller/pkg/reconciler/taskrun"
 )
 
 const (
@@ -75,10 +75,10 @@ func DescribeTaskRunState(tr *tekv1.TaskRun) string {
 	if tr.Status.PodName != "" {
 		fmt.Fprintf(&b, " pod=%s", tr.Status.PodName)
 	}
-	if instanceID := tr.Annotations[mpctaskrun.CloudInstanceId]; instanceID != "" {
+	if instanceID := tr.Annotations[taskrun.CloudInstanceId]; instanceID != "" {
 		fmt.Fprintf(&b, " cloud-instance-id=%s", instanceID)
 	}
-	if allocationStart := tr.Annotations[mpctaskrun.AllocationStartTimeAnnotation]; allocationStart != "" {
+	if allocationStart := tr.Annotations[taskrun.AllocationStartTimeAnnotation]; allocationStart != "" {
 		fmt.Fprintf(&b, " allocation-start-time=%s", allocationStart)
 	}
 
@@ -103,7 +103,7 @@ func DescribeFailureDiagnostics(ctx context.Context, c client.Client, tr *tekv1.
 	}
 
 	secret := &corev1.Secret{}
-	key := client.ObjectKey{Namespace: tr.Namespace, Name: mpctaskrun.SecretPrefix + tr.Name}
+	key := client.ObjectKey{Namespace: tr.Namespace, Name: taskrun.SecretPrefix + tr.Name}
 	if err := c.Get(ctx, key, secret); err != nil {
 		return state
 	}
