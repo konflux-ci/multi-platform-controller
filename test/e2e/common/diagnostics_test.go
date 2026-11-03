@@ -17,9 +17,9 @@ limitations under the License.
 package common
 
 import (
-	"context"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -94,8 +94,8 @@ var _ = Describe("TaskRun failure diagnostics", func() {
 			Expect(DescribeTaskRunState(nil)).Should(ContainSubstring("no object was observed"))
 		})
 
-		It("should not look for an error secret", func() {
-			Expect(DescribeFailureDiagnostics(context.Background(), nil, nil)).Should(ContainSubstring("no object was observed"))
+		It("should not look for an error secret", func(ctx SpecContext) {
+			Expect(DescribeFailureDiagnostics(ctx, nil, nil)).Should(ContainSubstring("no object was observed"))
 		})
 	})
 
@@ -133,24 +133,32 @@ var _ = Describe("TaskRun failure diagnostics", func() {
 			Expect(diagnostics).Should(ContainSubstring(`Succeeded=False reason="Failed" message="` + allocationTimeoutMessage + `"`))
 		})
 
-		It("should append the controller's error secret message", func() {
-			diagnostics := DescribeFailureDiagnostics(context.Background(), clientWithErrorSecret(failedTaskRun, "Error allocating host: "+allocationTimeoutMessage), failedTaskRun)
+		It("should append the controller's error secret message", func(ctx SpecContext) {
+			diagnostics := DescribeFailureDiagnostics(ctx, clientWithErrorSecret(failedTaskRun, "Error allocating host: "+allocationTimeoutMessage), failedTaskRun)
 
 			Expect(diagnostics).Should(ContainSubstring("ssh-secret-error="))
 			Expect(diagnostics).Should(ContainSubstring(allocationTimeoutMessage))
 		})
 
-		It("should keep the TaskRun state when the controller wrote no secret", func() {
-			Expect(DescribeFailureDiagnostics(context.Background(), clientWithoutSecrets(), failedTaskRun)).Should(Equal(DescribeTaskRunState(failedTaskRun)))
+		It("should keep the TaskRun state when the controller wrote no secret", func(ctx SpecContext) {
+			Expect(DescribeFailureDiagnostics(ctx, clientWithoutSecrets(), failedTaskRun)).Should(Equal(DescribeTaskRunState(failedTaskRun)))
 		})
 
-		It("should truncate a verbose error secret message", func() {
+		It("should truncate a verbose error secret message", func(ctx SpecContext) {
 			verbose := strings.Repeat("x", maxSecretMessageLength+64)
 
-			diagnostics := DescribeFailureDiagnostics(context.Background(), clientWithErrorSecret(failedTaskRun, verbose), failedTaskRun)
+			diagnostics := DescribeFailureDiagnostics(ctx, clientWithErrorSecret(failedTaskRun, verbose), failedTaskRun)
 
 			Expect(diagnostics).Should(ContainSubstring("…"))
 			Expect(diagnostics).ShouldNot(ContainSubstring(verbose))
+		})
+
+		It("should not split a multi-byte character when truncating", func() {
+			clipped := truncate("x"+strings.Repeat("é", 400), maxSecretMessageLength)
+
+			Expect(utf8.ValidString(clipped)).Should(BeTrue())
+			Expect(clipped).Should(HaveSuffix("…"))
+			Expect(len(strings.TrimSuffix(clipped, "…"))).Should(BeNumerically("<=", maxSecretMessageLength))
 		})
 	})
 

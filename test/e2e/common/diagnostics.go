@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	tekv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -115,9 +116,15 @@ func DescribeFailureDiagnostics(ctx context.Context, c client.Client, tr *tekv1.
 }
 
 // truncate shortens s to at most limit bytes, marking the cut with an ellipsis.
+// The cut never splits a UTF-8 sequence, so the result stays valid text.
 func truncate(s string, limit int) string {
 	if len(s) <= limit {
 		return s
 	}
-	return s[:limit] + "…"
+
+	cut := limit
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "…"
 }

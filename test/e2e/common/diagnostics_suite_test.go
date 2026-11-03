@@ -28,5 +28,5 @@ import (
 // controller's error secret in memory.
 func TestDiagnostics(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "e2e common diagnostics suite")
+	RunSpecs(t, "diagnostics suite")
 }
