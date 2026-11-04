@@ -50,6 +50,13 @@ Watches TaskRuns, provisions hosts via AWS/IBM Cloud, and manages SSH credential
   OWNER/MEMBER/COLLABORATOR in konflux-ci, or the branch is on the repo (not a fork). Agents
   operating from forks with unrecognized identities will never see e2e results on their PRs.
   If e2e was skipped on the PR but fails after merge, fix immediately — main must stay green.
+- **SSM-based AMI configs require IAM policy updates** — deploy overlay configs can use
+  `resolve:ssm:` prefixed values in the `ami` field (e.g.,
+  `resolve:ssm:/aws/service/ami-windows-latest/Windows_Server-2025-English-Core-Base`).
+  EC2 resolves these at launch time via SSM Parameter Store, but the launching IAM role
+  must have `ssm:GetParameters` permission. When reviewing config changes that introduce
+  SSM parameters, verify IAM policies before merging — missing permissions cause E2E
+  failures. See `skills/developer-guide.md` (SSM Parameter Resolution) for details.
 - **Constants are split across two files** — `pkg/reconciler/taskrun/taskrun.go` has `SecretPrefix`,
   `ConfigMapLabel`, `MultiPlatformSecretLabel`, `FailedHosts`, `CloudInstanceId`;
   `pkg/constant/constant.go` has `AssignedHost`, `TargetPlatformLabel`, `WaitingForPlatformLabel`.
