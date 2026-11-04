@@ -109,7 +109,11 @@ func (a DynamicHostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *
 	if len(hostPool.hosts) > 0 {
 		_, allocationErr = hostPool.Allocate(r, ctx, tr, secretName)
 		if allocationErr != nil && !errors.Is(allocationErr, ErrAllHostsFailed) {
-			log.Error(allocationErr, "could not allocate host from pool")
+			log.Error(allocationErr, "could not allocate host from pool",
+				"instanceTag", a.instanceTag,
+				"platform", a.platform,
+				"poolSize", len(hostPool.hosts),
+			)
 			return reconcile.Result{}, allocationErr
 		}
 		if allocationErr == nil && (tr.Labels == nil || tr.Labels[constant.WaitingForPlatformLabel] == "") {
@@ -143,7 +147,11 @@ func (a DynamicHostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *
 	taskRunID := fmt.Sprintf("%s:%s", tr.Namespace, tr.Name)
 	inst, err := a.cloudProvider.LaunchInstance(r.client, ctx, taskRunID, a.instanceTag, a.additionalInstanceTags)
 	if err != nil {
-		return reconcile.Result{}, err
+		log.Error(err, "failed to launch new instance for dynamic pool",
+			"instanceTag", a.instanceTag,
+			"platform", a.platform,
+		)
+		return reconcile.Result{}, fmt.Errorf("failed to launch instance for dynamic pool (instanceTag: %s, platform: %s): %w", a.instanceTag, a.platform, err)
 	}
 
 	log.Info("allocated instance", "instance", inst)
