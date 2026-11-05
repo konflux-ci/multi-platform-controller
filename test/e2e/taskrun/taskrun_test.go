@@ -114,14 +114,9 @@ echo "Platform verification successful: $OS/$ARCH"
 }
 
 // taskRunWaitTimeout bounds how long a test waits for a TaskRun to reach a
-// terminal state.
-//
-// It must stay above the controller's dynamic.<platform>.allocation-timeout,
-// which is 1200s for windows/c4xlarge-amd64 in
-// deploy/overlays/dev-template/host-config.yaml. When the test gives up first,
-// the failure can only report that no terminal state was observed; waiting past
-// the controller's own deadline lets it fail the TaskRun (for example with
-// "timed out waiting for instance address"), which the failure message prints.
+// terminal state. It must exceed the longest dynamic.<platform>.allocation-timeout
+// configured in deploy/overlays/dev-template/host-config.yaml, otherwise the test
+// can give up before the controller reports why the allocation failed.
 const taskRunWaitTimeout = 25 * time.Minute
 
 var _ = Describe("TaskRun execution", func() {
@@ -232,7 +227,7 @@ var _ = Describe("TaskRun execution", func() {
 			lastSeen = tr
 			g.Expect(common.IsTaskRunTerminal(tr)).Should(BeTrue(), "TaskRun should reach a terminal state")
 		}, taskRunWaitTimeout, 10*time.Second).Should(Succeed(), func() string {
-			return common.DescribeFailureDiagnostics(ctx, k8sClient, lastSeen)
+			return common.DescribeTaskRunState(lastSeen)
 		})
 
 		By("verifying the TaskRun completed successfully")
@@ -241,7 +236,7 @@ var _ = Describe("TaskRun execution", func() {
 		Expect(k8sClient.Get(ctx, key, tr)).Should(Succeed())
 		condition := tr.Status.GetCondition(kapi.ConditionSucceeded)
 		Expect(condition).ShouldNot(BeNil())
-		Expect(condition.Status).Should(Equal(corev1.ConditionTrue), "TaskRun should succeed: %s", common.DescribeFailureDiagnostics(ctx, k8sClient, tr))
+		Expect(condition.Status).Should(Equal(corev1.ConditionTrue), "TaskRun should succeed: %s", common.DescribeTaskRunState(tr))
 		Expect(tr.Status.CompletionTime).ShouldNot(BeNil())
 	}
 
