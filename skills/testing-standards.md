@@ -153,3 +153,15 @@ but they must exist during development to catch pitfalls early.
 - **Reconciler tests**: Simulate full workflows with fake K8s clients in `pkg/reconciler/taskrun/`.
 - **Allocation coverage**: New strategies need tests in `provision_*_test.go`.
 - **Run tests**: `make test` or target a package with `ginkgo ./pkg/aws/`.
+
+## Security in Test Diagnostics
+
+- **Never read Kubernetes Secrets for failure messages.** Test failures print
+  to CI logs. A bug in the controller or test code could expose sensitive data
+  (SSH keys, cloud credentials) to anyone with log access.
+- **Use controller logs instead.** The controller logs allocation failures when
+  it creates error secrets (see `pkg/reconciler/taskrun/taskrun.go`).
+  `CollectDebugInfo` captures those logs for post-failure analysis.
+- **TaskRun status is safe to surface.** The `Succeeded` condition, pod name,
+  and annotations (cloud-instance-id, allocation-start-time) carry diagnostic
+  value without exposing secrets.
