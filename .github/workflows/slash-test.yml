@@ -126,11 +126,12 @@ jobs:
     if: needs.test.outputs.suites == 'unit' || needs.test.outputs.suites == 'all'
     # Deliberately minimal: PR-controlled code runs inside (make build/test),
     # so the unit job gets contents: read only — no id-token, no issues write.
+    # Only CODECOV_TOKEN is forwarded (the sole secret mpc-test.yaml uses);
+    # secrets: inherit would expose every repository secret to PR code.
     permissions:
       contents: read
-    # Called workflows see no caller secrets unless forwarded; CODECOV_TOKEN
-    # is needed by mpc-test.yaml's upload step.
-    secrets: inherit
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     uses: ./.github/workflows/mpc-test.yaml
     with:
       # PR head, valid for same-repo and fork PRs alike, whatever their state.
@@ -142,10 +143,11 @@ jobs:
     if: needs.test.outputs.suites == 'e2e' || needs.test.outputs.suites == 'all'
     # Needs the AWS/Codecov OIDC token, hence id-token: write. See the trust
     # caveat in this file's header for the deliberate residual exposure.
+    # No secrets are forwarded: test-e2e.yml needs none (AWS and Codecov
+    # both authenticate via OIDC role assumption).
     permissions:
       contents: read
       id-token: write
-    secrets: inherit
     uses: ./.github/workflows/test-e2e.yml
     with:
       ref: refs/pull/${{ github.event.issue.number }}/head
@@ -154,16 +156,22 @@ jobs:
     name: Report result
     needs: [test, unit, e2e]
     # Report even when a suite was skipped, but stay silent when the command
-    # was a no-op (unauthorized user, unknown args, or a "/test…" lookalike):
-    # 'test' then exited 0 with empty suites, so nothing should be posted.
+    # was a deliberate no-op (unauthorized user, unknown args, or a "/test…"
+    # lookalike): 'test' then exited 0 with empty suites.
+    # When 'test' itself FAILED (e.g. the permission API call errored), the
+    # suites output is also empty — distinguish via needs.test.result so the
+    # commenter still gets feedback instead of silence.
     if: >-
       always()
-        && needs.test.outputs.suites != ''
+        && (needs.test.outputs.suites != '' || needs.test.result == 'failure')
     runs-on: ubuntu-latest
     permissions:
       issues: write
     steps:
       - name: Comment on PR
+        # Only when suites were selected — otherwise the command was a
+        # no-op or failed before parsing (handled by the next step).
+        if: needs.test.outputs.suites != ''
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -188,3 +196,16 @@ jobs:
           body="$body
           - e2e: $(verdict "$E2E_RESULT")"
           gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$body"
+
+      - name: Report command failure
+        # When the 'test' job itself failed (e.g. the permission API call
+        # errored), suites is empty — the commenter still needs feedback.
+        if: needs.test.result == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body \
+            "⚠️ \`/test\` command failed before any suite ran — see the [run log](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."

@@ -61,8 +61,10 @@ jobs:
         # When called via workflow_call (e.g. the /test command), test the
         # caller-provided ref instead of the default context. Empty for
         # standalone triggers, which keeps the default checkout.
-        # persist-credentials: false — the checkout token must not linger in
-        # the repo config while PR-controlled make targets execute.
+        # persist-credentials: false applies on EVERY trigger path, not just
+        # workflow_call: it is deliberate hardening so the checkout token
+        # never lingers in the repo config while PR-controlled make targets
+        # execute. No step after checkout needs git push/fetch credentials.
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
