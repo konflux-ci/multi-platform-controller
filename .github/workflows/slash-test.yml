@@ -20,6 +20,14 @@
 # - Fork PRs are fully supported: the PR head is addressed via
 #   refs/pull/<n>/head, which lives in THIS repo for every PR (fork
 #   included, open or closed), so no fork remote is ever contacted.
+# - TRUST CAVEAT (deliberate decision): /test e2e builds and deploys the
+#   PR revision inside a job that holds AWS credentials and the OIDC
+#   token — the same exposure a same-repo PR gets from the regular
+#   test-e2e workflow today. The /test gate (commenter needs write
+#   access) matches that trust: a fork author cannot self-trigger;
+#   someone with write access must choose to expose credentials to the
+#   PR's code. Checkouts that feed PR code do not persist credentials,
+#   and every job's permissions are scoped to what it needs.
 #
 # Portability: to reuse in another repo, point the two `uses:` paths at
 # that repo's test workflows and keep their `workflow_call` `ref` input.
@@ -29,19 +37,14 @@ on:
   issue_comment:
     types: [created]
 
-permissions:
-  # Granted at workflow level so the called reusable workflows inherit them:
-  # e2e needs id-token: write (AWS + Codecov OIDC), both need contents: read
-  # for checkout. The /test and result jobs only use issues/pull-requests.
-  contents: read
-  id-token: write
-  issues: write
-  pull-requests: read
+permissions: {}
+# All grants are job-scoped so they never leak into the called workflows.
 
 concurrency:
-  # One /test run per PR at a time; a new command queues behind the previous.
+  # One /test run per PR at a time; additional commands queue (up to 100)
+  # rather than replacing an earlier pending one.
   group: slash-test-${{ github.event.issue.number }}
-  cancel-in-progress: false
+  queue: max
 
 jobs:
   test:
@@ -54,6 +57,10 @@ jobs:
         && github.event.comment.user.type != 'Bot'
         && (startsWith(github.event.comment.body, '/test ') || github.event.comment.body == '/test')
     runs-on: ubuntu-latest
+    permissions:
+      # Collaborator permission lookup + posting the argument-error comment.
+      issues: write
+      pull-requests: read
     outputs:
       suites: ${{ steps.parse.outputs.suites }}
     steps:
@@ -117,8 +124,12 @@ jobs:
     name: Unit tests (/test)
     needs: test
     if: needs.test.outputs.suites == 'unit' || needs.test.outputs.suites == 'all'
-    # secrets: inherit — called workflows see no secrets unless forwarded
-    # (mpc-test.yaml uploads to Codecov with CODECOV_TOKEN).
+    # Deliberately minimal: PR-controlled code runs inside (make build/test),
+    # so the unit job gets contents: read only — no id-token, no issues write.
+    permissions:
+      contents: read
+    # Called workflows see no caller secrets unless forwarded; CODECOV_TOKEN
+    # is needed by mpc-test.yaml's upload step.
     secrets: inherit
     uses: ./.github/workflows/mpc-test.yaml
     with:
@@ -129,6 +140,11 @@ jobs:
     name: E2E tests (/test)
     needs: test
     if: needs.test.outputs.suites == 'e2e' || needs.test.outputs.suites == 'all'
+    # Needs the AWS/Codecov OIDC token, hence id-token: write. See the trust
+    # caveat in this file's header for the deliberate residual exposure.
+    permissions:
+      contents: read
+      id-token: write
     secrets: inherit
     uses: ./.github/workflows/test-e2e.yml
     with:
@@ -144,6 +160,8 @@ jobs:
       always()
         && needs.test.outputs.suites != ''
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
     steps:
       - name: Comment on PR
         env:

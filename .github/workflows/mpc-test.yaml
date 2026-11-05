@@ -45,8 +45,11 @@ jobs:
         # When called via workflow_call (e.g. the /test command), test the
         # caller-provided ref instead of the default context. Empty for
         # standalone triggers, which keeps the default checkout.
+        # persist-credentials: false — the checkout token must not linger in
+        # the repo config while PR-controlled make targets execute.
         with:
           ref: ${{ inputs.ref }}
+          persist-credentials: false
       - name: Install Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:

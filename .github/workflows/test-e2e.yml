@@ -61,8 +61,11 @@ jobs:
         # When called via workflow_call (e.g. the /test command), test the
         # caller-provided ref instead of the default context. Empty for
         # standalone triggers, which keeps the default checkout.
+        # persist-credentials: false — the checkout token must not linger in
+        # the repo config while PR-controlled make targets execute.
         with:
           ref: ${{ inputs.ref }}
+          persist-credentials: false
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
