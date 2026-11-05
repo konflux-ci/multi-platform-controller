@@ -1,0 +1,211 @@
+# /test slash command: manually run unit tests, e2e tests, or both on any PR,
+# regardless of PR state (open/closed, fork or same-repo), by any user with
+# write access or above.
+#
+# Usage (as a PR comment):
+#   /test        - run both suites on the PR head
+#   /test unit   - run the unit-test workflow on the PR head
+#   /test e2e    - run the e2e workflow on the PR head
+#   /test all    - same as /test
+#
+# Security model (mirrors fullsend's ADR 0054 in fullsend.yaml):
+# - issue_comment events fire in this repo's context with access to repo
+#   secrets and the OIDC token, so the authorization check below is the
+#   gate. It uses the collaborator permission API (admin|maintain|write),
+#   NOT author_association — the latter grants contributor status to
+#   anyone with a single merged PR.
+# - The tested code only runs as *test subject*: the reusable workflows
+#   check out the PR head ref and run the project's own make targets.
+#   The command's own steps never execute code from the PR.
+# - Fork PRs are fully supported: the PR head is addressed via
+#   refs/pull/<n>/head, which lives in THIS repo for every PR (fork
+#   included, open or closed), so no fork remote is ever contacted.
+# - TRUST CAVEAT (deliberate decision): /test e2e builds and deploys the
+#   PR revision inside a job that holds AWS credentials and the OIDC
+#   token — the same exposure a same-repo PR gets from the regular
+#   test-e2e workflow today. The /test gate (commenter needs write
+#   access) matches that trust: a fork author cannot self-trigger;
+#   someone with write access must choose to expose credentials to the
+#   PR's code. Checkouts that feed PR code do not persist credentials,
+#   and every job's permissions are scoped to what it needs.
+#
+# Portability: to reuse in another repo, point the two `uses:` paths at
+# that repo's test workflows and keep their `workflow_call` `ref` input.
+name: test slash command
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+# All grants are job-scoped so they never leak into the called workflows.
+
+concurrency:
+  # One /test run per PR at a time; additional commands queue (up to 100)
+  # rather than replacing an earlier pending one.
+  group: slash-test-${{ github.event.issue.number }}
+  queue: max
+
+jobs:
+  test:
+    name: /test
+    # Only '/test' commands (bare or with args) on pull requests from non-bots.
+    # The authoritative permission check happens inside the job.
+    if: >-
+      github.event_name == 'issue_comment'
+        && github.event.issue.pull_request
+        && github.event.comment.user.type != 'Bot'
+        && (startsWith(github.event.comment.body, '/test ') || github.event.comment.body == '/test')
+    runs-on: ubuntu-latest
+    permissions:
+      # Collaborator permission lookup + posting the argument-error comment.
+      issues: write
+      pull-requests: read
+    outputs:
+      suites: ${{ steps.parse.outputs.suites }}
+    steps:
+      - name: Authorize commenter and parse command
+        id: parse
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          COMMENT_USER_LOGIN: ${{ github.event.comment.user.login }}
+          # Passed through env, never interpolated inline: comment bodies are
+          # user input and must not reach the shell as code.
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          # Authorization via the collaborator permission API (admin|maintain|write),
+          # mirroring has_repo_permission() in fullsend.yaml (ADR 0054):
+          # author_association is too generous (anyone with a merged PR is a
+          # "contributor") and too coarse for org members with private membership.
+          if api_err=$(mktemp); then
+            if role=$(gh api "repos/$REPO/collaborators/$COMMENT_USER_LOGIN/permission" \
+              --jq '.role_name' 2>"$api_err"); then
+              case "$role" in
+                admin|maintain|write) ;;
+                *)
+                  echo "::notice::$COMMENT_USER_LOGIN ($role) is not authorized for /test (requires write access)"
+                  exit 0
+                  ;;
+              esac
+            else
+              echo "::error::Permission API call failed for $COMMENT_USER_LOGIN: $(cat "$api_err")"
+              exit 1
+            fi
+            rm -f "$api_err"
+          else
+            echo "::error::Failed to create temp file for permission check"
+            exit 1
+          fi
+
+          # First word of the FIRST LINE is the command (checked by the
+          # job-level if), the second word is the optional suite argument.
+          # Multi-line bodies ignore everything after line 1.
+          cmd=$(printf '%s' "$COMMENT_BODY" | head -1 | awk '{print $1}')
+          args=$(printf '%s' "$COMMENT_BODY" | head -1 | awk '{print $2}')
+          if [ "$cmd" != "/test" ]; then
+            # Comment merely started with "/test" (e.g. "/testfoo"); no-op.
+            exit 0
+          fi
+          case "$args" in
+            unit|e2e|all) suites="$args" ;;
+            '') suites="all" ;;
+            *)
+              gh pr comment "$PR_NUMBER" --repo "$REPO" --body \
+                "Unrecognized \`/test\` argument: \`$args\`. Use \`/test unit\`, \`/test e2e\`, or \`/test all\`."
+              exit 0
+              ;;
+          esac
+          echo "suites=$suites" >> "$GITHUB_OUTPUT"
+
+  unit:
+    name: Unit tests (/test)
+    needs: test
+    if: needs.test.outputs.suites == 'unit' || needs.test.outputs.suites == 'all'
+    # Deliberately minimal: PR-controlled code runs inside (make build/test),
+    # so the unit job gets contents: read only — no id-token, no issues write.
+    # Only CODECOV_TOKEN is forwarded (the sole secret mpc-test.yaml uses);
+    # secrets: inherit would expose every repository secret to PR code.
+    permissions:
+      contents: read
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    uses: ./.github/workflows/mpc-test.yaml
+    with:
+      # PR head, valid for same-repo and fork PRs alike, whatever their state.
+      ref: refs/pull/${{ github.event.issue.number }}/head
+
+  e2e:
+    name: E2E tests (/test)
+    needs: test
+    if: needs.test.outputs.suites == 'e2e' || needs.test.outputs.suites == 'all'
+    # Needs the AWS/Codecov OIDC token, hence id-token: write. See the trust
+    # caveat in this file's header for the deliberate residual exposure.
+    # No secrets are forwarded: test-e2e.yml needs none (AWS and Codecov
+    # both authenticate via OIDC role assumption).
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/test-e2e.yml
+    with:
+      ref: refs/pull/${{ github.event.issue.number }}/head
+
+  result:
+    name: Report result
+    needs: [test, unit, e2e]
+    # Report even when a suite was skipped, but stay silent when the command
+    # was a deliberate no-op (unauthorized user, unknown args, or a "/test…"
+    # lookalike): 'test' then exited 0 with empty suites.
+    # When 'test' itself FAILED (e.g. the permission API call errored), the
+    # suites output is also empty — distinguish via needs.test.result so the
+    # commenter still gets feedback instead of silence.
+    if: >-
+      always()
+        && (needs.test.outputs.suites != '' || needs.test.result == 'failure')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Comment on PR
+        # Only when suites were selected — otherwise the command was a
+        # no-op or failed before parsing (handled by the next step).
+        if: needs.test.outputs.suites != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          SUITES: ${{ needs.test.outputs.suites }}
+          UNIT_RESULT: ${{ needs.unit.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+        run: |
+          set -euo pipefail
+          verdict() {
+            case "$1" in
+              success) echo "✅ passed" ;;
+              failure) echo "❌ failed" ;;
+              skipped) echo "⏭️ skipped" ;;
+              cancelled) echo "🚫 cancelled" ;;
+              *) echo "⚪ $1" ;;
+            esac
+          }
+          body="**/test $SUITES** on PR #$PR_NUMBER:"
+          body="$body
+          - unit: $(verdict "$UNIT_RESULT")"
+          body="$body
+          - e2e: $(verdict "$E2E_RESULT")"
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$body"
+
+      - name: Report command failure
+        # When the 'test' job itself failed (e.g. the permission API call
+        # errored), suites is empty — the commenter still needs feedback.
+        if: needs.test.result == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body \
+            "⚠️ \`/test\` command failed before any suite ran — see the [run log](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."

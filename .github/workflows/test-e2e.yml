@@ -1,13 +1,19 @@
 name: E2E Tests
 
 on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to test (defaults to the caller's context ref)
+        type: string
+        required: false
+
   pull_request:
     types:
       - opened
       - synchronize
       - reopened
     branches: [ main ]
-
 
   merge_group:
     types: [checks_requested]
@@ -51,6 +57,17 @@ jobs:
 
       - name: Clone the code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+        # When called via workflow_call (e.g. the /test command), test the
+        # caller-provided ref instead of the default context. Empty for
+        # standalone triggers, which keeps the default checkout.
+        # persist-credentials: false applies on EVERY trigger path, not just
+        # workflow_call: it is deliberate hardening so the checkout token
+        # never lingers in the repo config while PR-controlled make targets
+        # execute. No step after checkout needs git push/fetch credentials.
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
