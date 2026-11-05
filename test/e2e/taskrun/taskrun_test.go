@@ -113,6 +113,12 @@ echo "Platform verification successful: $OS/$ARCH"
 `
 }
 
+// taskRunWaitTimeout bounds how long a test waits for a TaskRun to reach a
+// terminal state. It must exceed the longest dynamic.<platform>.allocation-timeout
+// configured in deploy/overlays/dev-template/host-config.yaml, otherwise the test
+// can give up before the controller reports why the allocation failed.
+const taskRunWaitTimeout = 25 * time.Minute
+
 var _ = Describe("TaskRun execution", func() {
 	var k8sClient client.Client
 	testNamespace := ""
@@ -213,21 +219,25 @@ var _ = Describe("TaskRun execution", func() {
 		Expect(k8sClient.Create(ctx, taskRun)).To(Succeed())
 
 		By("waiting for the TaskRun to complete")
+		var lastSeen *tekv1.TaskRun
 		Eventually(func(g Gomega) {
 			key := client.ObjectKeyFromObject(taskRun)
 			tr := &tekv1.TaskRun{}
-			g.Expect(k8sClient.Get(ctx, key, tr)).To(Succeed())
-			g.Expect(tr.Status.CompletionTime).ToNot(BeNil(), "TaskRun should have a completionTime")
-		}, 20*time.Minute, 10*time.Second).Should(Succeed())
+			g.Expect(k8sClient.Get(ctx, key, tr)).Should(Succeed())
+			lastSeen = tr
+			g.Expect(common.IsTaskRunTerminal(tr)).Should(BeTrue(), "TaskRun should reach a terminal state")
+		}, taskRunWaitTimeout, 10*time.Second).Should(Succeed(), func() string {
+			return common.DescribeTaskRunState(lastSeen)
+		})
 
 		By("verifying the TaskRun completed successfully")
 		key := client.ObjectKeyFromObject(taskRun)
 		tr := &tekv1.TaskRun{}
-		Expect(k8sClient.Get(ctx, key, tr)).To(Succeed())
+		Expect(k8sClient.Get(ctx, key, tr)).Should(Succeed())
 		condition := tr.Status.GetCondition(kapi.ConditionSucceeded)
-		Expect(condition).ToNot(BeNil())
-		Expect(condition.Status).To(Equal(corev1.ConditionTrue), "TaskRun should succeed")
-		Expect(tr.Status.CompletionTime).ToNot(BeNil())
+		Expect(condition).ShouldNot(BeNil())
+		Expect(condition.Status).Should(Equal(corev1.ConditionTrue), "TaskRun should succeed: %s", common.DescribeTaskRunState(tr))
+		Expect(tr.Status.CompletionTime).ShouldNot(BeNil())
 	}
 
 	It("should successfully run a TaskRun on linux/amd64 platform", func(ctx context.Context) {
