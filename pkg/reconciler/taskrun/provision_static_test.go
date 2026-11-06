@@ -34,6 +34,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 		tr := runUserPipeline(ctx, client, reconciler, "test-static-alloc")
 		provision := getProvisionTaskRun(ctx, client, tr)
 		assertNotServiceSelectable(provision.Labels)
+		Expect(provision.Spec.ServiceAccountName).Should(Equal(ProvisionerServiceAccountName))
 		params := map[string]string{}
 		for _, i := range provision.Spec.Params {
 			params[i.Name] = i.Value.StringVal

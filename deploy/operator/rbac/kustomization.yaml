@@ -9,6 +9,12 @@ resources:
 - sa.yaml
 - role.yaml
 - role_binding.yaml
+# Scoped SA for provision TaskRuns: secrets/create only (tenant namespaces are dynamic).
+- sa_provisioner.yaml
+- provisioner_role.yaml
+- provisioner_role_binding.yaml
+# Token-less SA for cleanup/update TaskRuns that only SSH and never call the API.
+- sa_task_runner.yaml
 # Comment the following 4 lines if you want to disable
 # the auth proxy (https://github.com/brancz/kube-rbac-proxy)
 # which protects your /metrics endpoint.
