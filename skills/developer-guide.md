@@ -42,6 +42,9 @@ Sets `AssignedHost` to `localhost` and creates a secret with just the host field
 Pre-provisioned static hosts with concurrency limits and load balancing.
 Selects the host with the most free slots, tracks failed hosts per TaskRun,
 and launches a provisioning TaskRun to set up SSH access.
+A host may set `host.<name>.ssh-config` for jumphost access. The controller copies
+that text into an immutable ConfigMap when the host is assigned and mounts the same
+snapshot on the provision and cleanup tasks.
 
 ### Dynamic Allocation — `pkg/reconciler/taskrun/dynamic.go`
 On-demand cloud instances (AWS EC2, IBM Power, IBM Z).
@@ -57,7 +60,8 @@ Instances persist across requests until their TTL expires, balancing cost and la
 2. **Host allocation** — dispatches to the configured strategy (local / static host pool / dynamic / dynamic pool)
 3. **Provisioning** — a `provision-shared-host` TaskRun is created that SSHes into the allocated host
    using the ConfigMap user, creates a new user and SSH key pair via `provision-shared-host.sh`,
-   then hands the username + SSH key to the OTP server
+   then hands the username + SSH key to the OTP server. When the host has SSH client config,
+   the task mounts the immutable snapshot at `/root/.ssh/config` and `ssh` uses `-F`
 4. **Secret creation** — the provisioning script creates a Kubernetes Secret with the OTP token
    (or raw SSH key if TLS is not configured) and host details, which the original TaskRun mounts
 5. **Cleanup** — finalizers ensure host and secret cleanup on TaskRun completion

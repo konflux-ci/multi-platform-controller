@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
+	"k8s.io/utils/ptr"
 	"k8s.io/utils/strings/slices"
 	"knative.dev/pkg/apis"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -65,7 +66,22 @@ const (
 
 	UserTaskName      = "build.appstudio.redhat.com/user-task-name"
 	UserTaskNamespace = "build.appstudio.redhat.com/user-task-namespace"
+)
 
+const (
+	// sshConfigSnapshotAnnotation names the immutable SSH client config captured when a host is assigned.
+	sshConfigSnapshotAnnotation = "build.appstudio.redhat.com/ssh-config-snapshot"
+	// sshConfigSourceAnnotation records the user TaskRun that a named snapshot was created for.
+	sshConfigSourceAnnotation = "build.appstudio.redhat.com/ssh-config-source"
+	// provisionSharedHostTaskName is the Tekton Task that provisions Linux shared hosts.
+	provisionSharedHostTaskName = "provision-shared-host"
+	// sshConfigWorkspaceName is the optional workspace that carries a custom SSH client config.
+	sshConfigWorkspaceName = "ssh-config"
+	// sshConfigFileName is the key and path of the SSH client config snapshot mounted at /root/.ssh/config.
+	sshConfigFileName = "config"
+)
+
+const (
 	FinishedWaitingLabel = "build.appstudio.redhat.com/finished-waiting"
 	PipelineFinalizer    = "appstudio.io/multi-platform-finalizer"
 	HostConfig           = "host-config"
@@ -109,7 +125,7 @@ type ReconcileTaskRun struct {
 //+kubebuilder:rbac:groups="tekton.dev",resources=taskruns/status,verbs=create;delete;deletecollection;get;list;patch;update;watch
 //+kubebuilder:rbac:groups="apiextensions.k8s.io",resources=customresourcedefinitions,verbs=get
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
+//+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;patch;delete
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
@@ -169,8 +185,8 @@ func (r *ReconcileTaskRun) handleTaskRunReceived(ctx context.Context, tr *tekton
 				log.Info("Reconciling provision task")
 				return r.handleProvisionTask(ctx, tr)
 			case TaskTypeUpdate:
-				log.V(1).Info("Ignoring update task")
-				return reconcile.Result{}, nil
+				log.Info("Reconciling update task")
+				return r.handleUpdateTask(ctx, tr)
 			default:
 				log.V(1).Info("Unknown task type, ignoring", "taskType", taskType)
 				return reconcile.Result{}, nil
@@ -234,9 +250,62 @@ func (r *ReconcileTaskRun) handleCleanTask(ctx context.Context, tr *tektonapi.Ta
 	}
 	//leave the failed TR for an hour to view logs
 	if success || tr.Status.CompletionTime.Add(time.Hour).Before(time.Now()) {
+		if err := r.deleteSSHConfigSnapshot(ctx, tr); err != nil {
+			return reconcile.Result{}, err
+		}
 		return reconcile.Result{}, r.client.Delete(ctx, tr)
 	}
 	return reconcile.Result{RequeueAfter: time.Hour}, nil
+}
+
+func (r *ReconcileTaskRun) handleUpdateTask(ctx context.Context, tr *tektonapi.TaskRun) (reconcile.Result, error) {
+	// Update tasks are created only in the operator namespace. A TaskRun in another
+	// namespace can carry the same label, and its workspace must not choose a ConfigMap to delete.
+	if tr.Namespace != r.operatorNamespace || !tr.DeletionTimestamp.IsZero() || tr.Status.CompletionTime == nil {
+		return reconcile.Result{}, nil
+	}
+	success := tr.Status.GetCondition(apis.ConditionSucceeded).IsTrue()
+	// Keep a failed update task for an hour so its logs can be read. The snapshot
+	// stays until then because the update pod may still be the thing mounting it.
+	if !success && tr.Status.CompletionTime.Add(time.Hour).After(time.Now()) {
+		return reconcile.Result{RequeueAfter: time.Hour}, nil
+	}
+	if err := r.deleteOwnedUpdateSnapshot(ctx, tr); err != nil {
+		return reconcile.Result{}, err
+	}
+	return reconcile.Result{}, r.client.Delete(ctx, tr)
+}
+
+// deleteOwnedUpdateSnapshot removes the ssh-config ConfigMap this update TaskRun owns.
+// The workspace name is only a lookup key. A ConfigMap is deleted when an owner reference matches this TaskRun.
+// The lookup uses the API reader because snapshot ConfigMaps are not in the manager cache.
+func (r *ReconcileTaskRun) deleteOwnedUpdateSnapshot(ctx context.Context, tr *tektonapi.TaskRun) error {
+	log := logr.FromContextOrDiscard(ctx)
+	for _, binding := range tr.Spec.Workspaces {
+		if binding.Name != sshConfigWorkspaceName || binding.ConfigMap == nil || binding.ConfigMap.Name == "" {
+			continue
+		}
+		cm := &kubecore.ConfigMap{}
+		err := r.apiReader.Get(ctx, types.NamespacedName{Namespace: r.operatorNamespace, Name: binding.ConfigMap.Name}, cm)
+		if k8serrors.IsNotFound(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		owned, err := controllerutil.HasOwnerReference(cm.GetOwnerReferences(), tr, r.scheme)
+		if err != nil {
+			return err
+		}
+		if !owned {
+			log.Info("skipping ssh-config ConfigMap that this update task does not own", "configMap", cm.Name)
+			continue
+		}
+		if err := r.client.Delete(ctx, cm); err != nil && !k8serrors.IsNotFound(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonapi.TaskRun) (reconcile.Result, error) {
@@ -303,6 +372,13 @@ func (r *ReconcileTaskRun) handleProvisionTask(ctx context.Context, tr *tektonap
 				failed = append(failed, assigned)
 				userTr.Annotations[FailedHosts] = strings.Join(failed, ",")
 				delete(userTr.Labels, constant.AssignedHost)
+				// Drop this attempt's snapshot so the next host can store different SSH config
+				// under the same deterministic name. Delete that generated name, never the raw
+				// annotation, which a user can change.
+				if err = r.deleteNamedSSHConfigSnapshot(ctx, sshConfigSnapshotName(userTr.Namespace, userTr.Name)); err != nil {
+					return reconcile.Result{}, err
+				}
+				delete(userTr.Annotations, sshConfigSnapshotAnnotation)
 				err = UpdateTaskRunWithRetry(ctx, r.client, r.apiReader, &userTr)
 				if err != nil {
 					return reconcile.Result{}, err
@@ -825,22 +901,29 @@ func (r *ReconcileTaskRun) getPlatformConfig(ctx context.Context, targetPlatform
 		hostNames[name] = true
 	}
 
-	// Parse each host and add to pool if it matches our platform
+	// Hosts for another platform are ignored, so their config cannot block this pool.
+	// On this platform, rejected ssh-config drops that host. Any other invalid field
+	// still fails the pool, as it did before ssh-config existed.
 	for hostName := range hostNames {
+		if strings.TrimSpace(data["host."+hostName+".platform"]) != targetPlatform {
+			continue
+		}
 		hostConfig, err := config.ParseStaticHostConfig(data, hostName)
 		if err != nil {
+			if errors.Is(err, config.ErrInvalidSSHConfig) {
+				log.Error(err, "skipping static host with invalid ssh-config", "host", hostName)
+				continue
+			}
 			return nil, fmt.Errorf("failed to parse static host '%s': %w", hostName, err)
 		}
-		// Only add hosts that match our target platform
-		if hostConfig.Platform == targetPlatform {
-			ret.hosts[hostName] = &Host{
-				Name:        hostName,
-				Address:     hostConfig.Address,
-				User:        hostConfig.User,
-				Platform:    hostConfig.Platform,
-				Secret:      hostConfig.Secret,
-				Concurrency: hostConfig.Concurrency,
-			}
+		ret.hosts[hostName] = &Host{
+			Name:        hostName,
+			Address:     hostConfig.Address,
+			User:        hostConfig.User,
+			Platform:    hostConfig.Platform,
+			Secret:      hostConfig.Secret,
+			Concurrency: hostConfig.Concurrency,
+			SSHConfig:   hostConfig.SSHConfig,
 		}
 	}
 
@@ -989,16 +1072,20 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 	provision.Name = kmeta.ChildName(tr.Name, "-prov-"+short)
 	provision.Namespace = r.operatorNamespace
 	provision.Labels = map[string]string{TaskTypeLabel: TaskTypeProvision, constant.TargetPlatformLabel: platformLabel(platform), UserTaskNamespace: tr.Namespace, UserTaskName: tr.Name, constant.AssignedHost: tr.Labels[constant.AssignedHost]}
-	provision.Spec.TaskRef = &tektonapi.TaskRef{Name: "provision-shared-host"}
+	provision.Spec.TaskRef = &tektonapi.TaskRef{Name: provisionSharedHostTaskName}
 	switch {
 	case strings.HasPrefix(platform, "windows"):
 		provision.Spec.TaskRef.Name = "provision-host-windows"
 	case strings.HasPrefix(platform, "macos"):
 		provision.Spec.TaskRef.Name = "provision-host-macos"
 	default:
-		// Keep default "provision-shared-host"
+		// Keep default provisionSharedHostTaskName
 	}
-	provision.Spec.Workspaces = []tektonapi.WorkspaceBinding{{Name: "ssh", Secret: &kubecore.SecretVolumeSource{SecretName: sshSecret}}}
+	workspaces := []tektonapi.WorkspaceBinding{{Name: "ssh", Secret: &kubecore.SecretVolumeSource{SecretName: sshSecret}}}
+	if snapshotName := recordedSSHConfigSnapshotName(r.operatorNamespace, tr); snapshotName != "" && provision.Spec.TaskRef.Name == provisionSharedHostTaskName {
+		workspaces = append(workspaces, sshConfigWorkspaceBinding(snapshotName))
+	}
+	provision.Spec.Workspaces = workspaces
 	computeRequests := map[kubecore.ResourceName]resource.Quantity{kubecore.ResourceCPU: resource.MustParse("100m"), kubecore.ResourceMemory: resource.MustParse("256Mi")}
 	computeLimits := map[kubecore.ResourceName]resource.Quantity{kubecore.ResourceCPU: resource.MustParse("100m"), kubecore.ResourceMemory: resource.MustParse("512Mi")}
 	provision.Spec.ComputeResources = &kubecore.ResourceRequirements{Requests: computeRequests, Limits: computeLimits}
@@ -1048,9 +1135,183 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 	err = r.client.Create(ctx, &provision)
 	if k8serrors.IsAlreadyExists(err) {
 		log.Info("provision task already exists, continuing")
-		return nil // Not an error
+		return nil
 	}
 	return err
+}
+
+func sshConfigSnapshotName(namespace, taskName string) string {
+	// Twenty-five hex characters fit in a ConfigMap name and distinguish TaskRuns
+	// that share a name across namespaces.
+	// #nosec G401 -- MD5 used only for non-cryptographic uniqueness.
+	sum := md5.Sum([]byte(namespace + "/" + taskName))
+	return kmeta.ChildName(taskName, "-ssh-"+hex.EncodeToString(sum[:])[:25])
+}
+
+// sshConfigSnapshotNameFrom returns the snapshot name recorded on tr.
+// The value is not checked against the name this controller generated.
+func sshConfigSnapshotNameFrom(tr *tektonapi.TaskRun) string {
+	if tr.Annotations == nil {
+		return ""
+	}
+	return tr.Annotations[sshConfigSnapshotAnnotation]
+}
+
+// expectedSSHConfigSnapshotName is the only ConfigMap name the controller will
+// mount or delete for tr. A task in the operator namespace names the user TaskRun
+// through its labels. A user TaskRun uses its own namespace and name, so labels
+// on that object cannot point the controller at a different ConfigMap.
+func expectedSSHConfigSnapshotName(operatorNamespace string, tr *tektonapi.TaskRun) string {
+	if tr.Namespace == operatorNamespace && tr.Labels != nil {
+		userNamespace := tr.Labels[UserTaskNamespace]
+		userName := tr.Labels[UserTaskName]
+		if userNamespace != "" && userName != "" {
+			return sshConfigSnapshotName(userNamespace, userName)
+		}
+	}
+	return sshConfigSnapshotName(tr.Namespace, tr.Name)
+}
+
+// recordedSSHConfigSnapshotName returns that generated name when the annotation
+// matches it. Any other annotation value is ignored.
+func recordedSSHConfigSnapshotName(operatorNamespace string, tr *tektonapi.TaskRun) string {
+	expected := expectedSSHConfigSnapshotName(operatorNamespace, tr)
+	if sshConfigSnapshotNameFrom(tr) != expected {
+		return ""
+	}
+	return expected
+}
+
+func (r *ReconcileTaskRun) ensureUserSSHConfigSnapshot(ctx context.Context, tr *tektonapi.TaskRun, sshConfig string) error {
+	name := sshConfigSnapshotName(tr.Namespace, tr.Name)
+	source := tr.Namespace + "/" + tr.Name
+	if _, err := createNamedSSHConfigMap(ctx, r.client, r.apiReader, r.operatorNamespace, name, sshConfig, source); err != nil {
+		return err
+	}
+	if tr.Annotations == nil {
+		tr.Annotations = map[string]string{}
+	}
+	tr.Annotations[sshConfigSnapshotAnnotation] = name
+	return nil
+}
+
+func (r *ReconcileTaskRun) deleteSSHConfigSnapshot(ctx context.Context, tr *tektonapi.TaskRun) error {
+	if sshConfigSnapshotNameFrom(tr) == "" {
+		return nil
+	}
+	// A non-empty annotation means a snapshot was recorded. Delete the generated
+	// name for that user TaskRun, not the annotation value itself.
+	return r.deleteNamedSSHConfigSnapshot(ctx, expectedSSHConfigSnapshotName(r.operatorNamespace, tr))
+}
+
+func (r *ReconcileTaskRun) deleteNamedSSHConfigSnapshot(ctx context.Context, name string) error {
+	cm := &kubecore.ConfigMap{}
+	cm.Name = name
+	cm.Namespace = r.operatorNamespace
+	return client.IgnoreNotFound(r.client.Delete(ctx, cm))
+}
+
+// snapshotSSHConfig stores sshConfig in an immutable ConfigMap with a generated name.
+// Periodic host updates use this. Provision and cleanup use the named snapshot recorded on the user TaskRun.
+func snapshotSSHConfig(ctx context.Context, c client.Client, namespace, sshConfig string) (*kubecore.ConfigMap, tektonapi.WorkspaceBinding, error) {
+	cm, err := newSSHConfigMap(ctx, c, namespace, sshConfig)
+	if err != nil {
+		return nil, tektonapi.WorkspaceBinding{}, err
+	}
+	return cm, sshConfigWorkspaceBinding(cm.Name), nil
+}
+
+func createNamedSSHConfigMap(ctx context.Context, c client.Client, reader client.Reader, namespace, name, sshConfig, source string) (*kubecore.ConfigMap, error) {
+	for attempt := 0; ; attempt++ {
+		cm := &kubecore.ConfigMap{}
+		cm.Namespace = namespace
+		cm.Immutable = ptr.To(true)
+		cm.Data = map[string]string{sshConfigFileName: sshConfig}
+		cm.Name = name
+		if source != "" {
+			cm.Annotations = map[string]string{sshConfigSourceAnnotation: source}
+		}
+		err := c.Create(ctx, cm)
+		if err == nil {
+			return cm, nil
+		}
+		if !k8serrors.IsAlreadyExists(err) {
+			return nil, err
+		}
+		existing := &kubecore.ConfigMap{}
+		if getErr := reader.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, existing); getErr != nil {
+			return nil, getErr
+		}
+		// A cleanup task for an earlier TaskRun with this name can still own the object.
+		// Reusing or replacing it lets that cleanup delete the new build's config.
+		if len(existing.OwnerReferences) > 0 {
+			return nil, fmt.Errorf("ssh-config ConfigMap %s is still in use", name)
+		}
+		if existing.Data[sshConfigFileName] == sshConfig {
+			return existing, nil
+		}
+		// A failed earlier assignment can leave this deterministic name behind. Replace it
+		// once when it belongs to this TaskRun. A different source means another build.
+		recorded := ""
+		if existing.Annotations != nil {
+			recorded = existing.Annotations[sshConfigSourceAnnotation]
+		}
+		if recorded != "" && recorded != source {
+			return nil, fmt.Errorf("ssh-config ConfigMap %s already exists with different contents", name)
+		}
+		if attempt > 0 {
+			return nil, fmt.Errorf("ssh-config ConfigMap %s already exists with different contents", name)
+		}
+		if delErr := c.Delete(ctx, existing); delErr != nil && !k8serrors.IsNotFound(delErr) {
+			return nil, delErr
+		}
+	}
+}
+
+func newSSHConfigMap(ctx context.Context, c client.Client, namespace, sshConfig string) (*kubecore.ConfigMap, error) {
+	cm := &kubecore.ConfigMap{}
+	cm.Namespace = namespace
+	cm.Immutable = ptr.To(true)
+	cm.Data = map[string]string{sshConfigFileName: sshConfig}
+	cm.GenerateName = "ssh-config-"
+	if err := c.Create(ctx, cm); err != nil {
+		return nil, err
+	}
+	return cm, nil
+}
+
+func setSSHConfigMapOwner(ctx context.Context, c client.Client, scheme *k8sRuntime.Scheme, owner client.Object, cm *kubecore.ConfigMap) error {
+	base := cm.DeepCopy()
+	if err := controllerutil.SetOwnerReference(owner, cm, scheme); err != nil {
+		return err
+	}
+	// Strategic merge adds this owner by uid and does not replace the rest of the ConfigMap.
+	patch := client.StrategicMergeFrom(base)
+	data, err := patch.Data(cm)
+	if err != nil {
+		return err
+	}
+	if len(data) == 0 || string(data) == "{}" {
+		return nil
+	}
+	return c.Patch(ctx, cm, patch)
+}
+
+func sshConfigWorkspaceBinding(configMapName string) tektonapi.WorkspaceBinding {
+	mode := int32(0600)
+	return tektonapi.WorkspaceBinding{
+		Name:    sshConfigWorkspaceName,
+		SubPath: sshConfigFileName,
+		ConfigMap: &kubecore.ConfigMapVolumeSource{
+			LocalObjectReference: kubecore.LocalObjectReference{Name: configMapName},
+			DefaultMode:          &mode,
+			Items: []kubecore.KeyToPath{{
+				Key:  sshConfigFileName,
+				Path: sshConfigFileName,
+				Mode: &mode,
+			}},
+		},
+	}
 }
 
 type Host struct {
@@ -1060,6 +1321,7 @@ type Host struct {
 	Concurrency int
 	Platform    string
 	Secret      string
+	SSHConfig   string
 	StartTime   *time.Time // Only used for the dynamic pool
 }
 
@@ -1111,6 +1373,7 @@ var (
 		CloudInstanceId,
 		ProvisionTaskProcessed,
 		AllocationStartTimeAnnotation,
+		sshConfigSnapshotAnnotation,
 	}
 )
 

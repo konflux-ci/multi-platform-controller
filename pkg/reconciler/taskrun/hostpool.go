@@ -122,12 +122,22 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 	}
 
 	log.Info("allocated host", "host", selected.Name)
+	if selected.SSHConfig != "" {
+		if err = r.ensureUserSSHConfigSnapshot(ctx, tr, selected.SSHConfig); err != nil {
+			return reconcile.Result{}, err
+		}
+	}
 	tr.Labels[constant.AssignedHost] = selected.Name
 	delete(tr.Labels, constant.WaitingForPlatformLabel)
 	//add a finalizer to clean up the secret
 	controllerutil.AddFinalizer(tr, PipelineFinalizer)
 	err = UpdateTaskRunWithRetry(ctx, r.client, r.apiReader, tr)
 	if err != nil {
+		if selected.SSHConfig != "" {
+			if delErr := r.deleteNamedSSHConfigSnapshot(ctx, sshConfigSnapshotName(tr.Namespace, tr.Name)); delErr != nil {
+				log.Error(delErr, "failed to delete ssh-config snapshot")
+			}
+		}
 		return reconcile.Result{}, err
 	}
 
@@ -136,6 +146,11 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 	if err != nil {
 		//ugh, try and unassign
 		log.Error(err, "failed to launch provisioning task, unassigning host")
+		if delErr := r.deleteSSHConfigSnapshot(ctx, tr); delErr != nil {
+			log.Error(delErr, "failed to delete ssh-config snapshot")
+		} else if tr.Annotations != nil {
+			delete(tr.Annotations, sshConfigSnapshotAnnotation)
+		}
 		delete(tr.Labels, constant.AssignedHost)
 		controllerutil.RemoveFinalizer(tr, PipelineFinalizer)
 		updateErr := UpdateTaskRunWithRetry(ctx, r.client, r.apiReader, tr)
@@ -151,58 +166,83 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.TaskRun, secretName string, selectedHost string) error {
 	log := logr.FromContextOrDiscard(ctx)
 	selected := hp.hosts[selectedHost]
-	if selected != nil {
-		labelMap := map[string]string{TaskTypeLabel: TaskTypeClean, UserTaskName: tr.Name, UserTaskNamespace: tr.Namespace, constant.TargetPlatformLabel: platformLabel(hp.targetPlatform)}
-		list := v1.TaskRunList{}
-		err := r.client.List(ctx, &list, client.MatchingLabels(labelMap))
-		if err != nil {
-			log.Error(err, "failed to check for existing cleanup task")
-		} else {
-			if len(list.Items) > 0 {
-				log.Info("cleanup task already exists")
-				return nil
-			}
-		}
+	if selected == nil {
+		// The host was removed or its config is no longer valid, so no cleanup task can be
+		// started. Drop the snapshot before the user TaskRun finalizer is removed.
+		return r.deleteSSHConfigSnapshot(ctx, tr)
+	}
+	labelMap := map[string]string{TaskTypeLabel: TaskTypeClean, UserTaskName: tr.Name, UserTaskNamespace: tr.Namespace, constant.TargetPlatformLabel: platformLabel(hp.targetPlatform)}
+	list := v1.TaskRunList{}
+	err := r.client.List(ctx, &list, client.MatchingLabels(labelMap))
+	if err != nil {
+		log.Error(err, "failed to check for existing cleanup task")
+	} else if len(list.Items) > 0 {
+		log.Info("cleanup task already exists")
+		return ensureExistingSSHConfigOwner(ctx, r, tr, &list.Items[0])
+	}
 
-		log.Info("starting cleanup task")
-		//kick off the clean task
-		cleanup := v1.TaskRun{}
-		// #nosec G401 -- MD5 used only for non-cryptographic uniqueness
-		hash := md5.Sum([]byte(selected.Address))
-		short := hex.EncodeToString(hash[:])[:5]
-		cleanup.Name = kmeta.ChildName(tr.Name, "-cleanup-"+short)
-		cleanup.Namespace = r.operatorNamespace
-		cleanup.Labels = labelMap
-		cleanup.Spec.TaskRef = &v1.TaskRef{Name: "clean-shared-host"}
-		cleanup.Spec.Retries = 3
-		compute := map[v12.ResourceName]resource.Quantity{v12.ResourceCPU: resource.MustParse("100m"), v12.ResourceMemory: resource.MustParse("128Mi")}
-		cleanup.Spec.ComputeResources = &v12.ResourceRequirements{Requests: compute}
-		cleanup.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: selected.Secret}}}
-		cleanup.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
-		cleanup.Spec.Params = []v1.Param{
-			{
-				Name:  "SECRET_NAME",
-				Value: *v1.NewStructuredValues(secretName),
-			},
-			{
-				Name:  "TASKRUN_NAME",
-				Value: *v1.NewStructuredValues(tr.Name),
-			},
-			{
-				Name:  "NAMESPACE",
-				Value: *v1.NewStructuredValues(tr.Namespace),
-			},
-			{
-				Name:  "HOST",
-				Value: *v1.NewStructuredValues(selected.Address),
-			},
-			{
-				Name:  "USER",
-				Value: *v1.NewStructuredValues(selected.User),
-			},
+	log.Info("starting cleanup task")
+	//kick off the clean task
+	cleanup := v1.TaskRun{}
+	// #nosec G401 -- MD5 used only for non-cryptographic uniqueness
+	hash := md5.Sum([]byte(selected.Address))
+	short := hex.EncodeToString(hash[:])[:5]
+	cleanup.Name = kmeta.ChildName(tr.Name, "-cleanup-"+short)
+	cleanup.Namespace = r.operatorNamespace
+	cleanup.Labels = labelMap
+	cleanup.Spec.TaskRef = &v1.TaskRef{Name: "clean-shared-host"}
+	cleanup.Spec.Retries = 3
+	compute := map[v12.ResourceName]resource.Quantity{v12.ResourceCPU: resource.MustParse("100m"), v12.ResourceMemory: resource.MustParse("128Mi")}
+	cleanup.Spec.ComputeResources = &v12.ResourceRequirements{Requests: compute}
+	cleanup.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: selected.Secret}}}
+	snapshotName := recordedSSHConfigSnapshotName(r.operatorNamespace, tr)
+	if snapshotName != "" {
+		if cleanup.Annotations == nil {
+			cleanup.Annotations = map[string]string{}
 		}
-		err = r.client.Create(ctx, &cleanup)
+		cleanup.Annotations[sshConfigSnapshotAnnotation] = snapshotName
+		cleanup.Spec.Workspaces = append(cleanup.Spec.Workspaces, sshConfigWorkspaceBinding(snapshotName))
+	}
+	cleanup.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
+	cleanup.Spec.Params = []v1.Param{
+		{
+			Name:  "SECRET_NAME",
+			Value: *v1.NewStructuredValues(secretName),
+		},
+		{
+			Name:  "TASKRUN_NAME",
+			Value: *v1.NewStructuredValues(tr.Name),
+		},
+		{
+			Name:  "NAMESPACE",
+			Value: *v1.NewStructuredValues(tr.Namespace),
+		},
+		{
+			Name:  "HOST",
+			Value: *v1.NewStructuredValues(selected.Address),
+		},
+		{
+			Name:  "USER",
+			Value: *v1.NewStructuredValues(selected.User),
+		},
+	}
+	err = r.client.Create(ctx, &cleanup)
+	if client.IgnoreAlreadyExists(err) != nil {
 		return err
 	}
-	return nil
+	return ensureExistingSSHConfigOwner(ctx, r, tr, &cleanup)
+}
+
+// ensureExistingSSHConfigOwner makes the cleanup TaskRun own the snapshot captured for the user TaskRun.
+func ensureExistingSSHConfigOwner(ctx context.Context, r *ReconcileTaskRun, userTask, cleanup *v1.TaskRun) error {
+	name := recordedSSHConfigSnapshotName(r.operatorNamespace, userTask)
+	if name == "" {
+		return nil
+	}
+	cm := &v12.ConfigMap{}
+	if err := r.apiReader.Get(ctx, client.ObjectKey{Namespace: r.operatorNamespace, Name: name}, cm); err != nil {
+		// The snapshot can be removed after allocation. Cleanup still proceeds.
+		return client.IgnoreNotFound(err)
+	}
+	return setSSHConfigMapOwner(ctx, r.client, r.scheme, cleanup, cm)
 }
