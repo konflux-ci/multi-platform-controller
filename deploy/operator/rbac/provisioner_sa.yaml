@@ -3,3 +3,4 @@ kind: ServiceAccount
 metadata:
   name: provisioner
   namespace: multi-platform-controller
+automountServiceAccountToken: true
