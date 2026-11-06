@@ -86,7 +86,7 @@ func UpdateHostPools(operatorNamespace string, client client.Client, log *logr.L
 			provision.Spec.Workspaces = []v1.WorkspaceBinding{{Name: "ssh", Secret: &v12.SecretVolumeSource{SecretName: host.Secret}}}
 			compute := map[v12.ResourceName]resource.Quantity{v12.ResourceCPU: resource.MustParse("100m"), v12.ResourceMemory: resource.MustParse("256Mi")}
 			provision.Spec.ComputeResources = &v12.ResourceRequirements{Requests: compute, Limits: compute}
-			provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
+			provision.Spec.ServiceAccountName = TaskRunnerServiceAccountName
 			provision.Spec.Params = []v1.Param{
 				{
 					Name:  "HOST",

@@ -55,6 +55,7 @@ var _ = Describe("Test Dynamic Host Provisioning", func() {
 		It("should allocate a cloud host correctly", func(ctx SpecContext) {
 			tr := runUserPipeline(ctx, client, reconciler, "test-dynamic-alloc")
 			provision := getProvisionTaskRun(ctx, client, tr)
+			Expect(provision.Spec.ServiceAccountName).Should(Equal(ProvisionerServiceAccountName))
 			params := map[string]string{}
 			for _, i := range provision.Spec.Params {
 				params[i.Name] = i.Value.StringVal
