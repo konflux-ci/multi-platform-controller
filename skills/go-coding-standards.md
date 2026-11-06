@@ -26,7 +26,27 @@ result := ctrl.Result{RequeueAfter: time.Minute}
 return result, nil
 ```
 
-### 2. DRY — Extract Repeated Logic into Helpers
+### 2. Prefer Value Types Over Pointers
+
+Use `string`, `int`, `bool` instead of `*string`, `*int`, `*bool` unless you need to distinguish zero-value from absent (e.g., an API where `nil` means "don't update" vs `""` means "clear").
+When the consumer treats nil and zero-value identically, the pointer adds nil-check complexity for no benefit.
+
+```go
+// Prefer
+type Config struct {
+    User string
+}
+func (c Config) EffectiveUser() string {
+    return cmp.Or(c.User, "default")
+}
+
+// Avoid
+type Config struct {
+    User *string
+}
+```
+
+### 3. DRY — Extract Repeated Logic into Helpers
 
 ```go
 func labelSelector(key, value string) client.MatchingLabels {
@@ -34,7 +54,7 @@ func labelSelector(key, value string) client.MatchingLabels {
 }
 ```
 
-### 3. Modularize — Small, Reusable Pieces
+### 4. Modularize — Small, Reusable Pieces
 
 One concept per file. Break large functions into focused helpers.
 
@@ -49,7 +69,7 @@ One concept per file. Break large functions into focused helpers.
 `X_helpers.go` keeps reusable utility functions (multi-caller or written for DRY purposes).
 The same pattern applies to test files: `X_test.go` and `X_helpers_test.go`.
 
-### 4. Single Responsibility — One Function, One Task
+### 5. Single Responsibility — One Function, One Task
 
 ```go
 func (r *ReconcileTaskRun) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
@@ -61,7 +81,7 @@ func (r *ReconcileTaskRun) Reconcile(ctx context.Context, req reconcile.Request)
 }
 ```
 
-### 5. Return Early — Guard Clauses Over Nesting
+### 6. Return Early — Guard Clauses Over Nesting
 
 Fail fast at the top; keep the happy path at the lowest indentation level.
 
@@ -95,6 +115,7 @@ Reconcile loops run frequently under load — these patterns matter.
 | Principle | Do | Don't |
 |-----------|----|-------|
 | Brevity | `return ctrl.Result{}, err` | Assign to temp var, then return |
+| Value types | `User string` with `cmp.Or` fallback | `User *string` with nil guard |
 | DRY | Helper for repeated label selectors | Copy-paste the same 3 lines |
 | Modularity | One strategy per file | 500-line god function |
 | Single responsibility | Reconciler dispatches, helper executes | Reconciler does everything inline |
@@ -111,6 +132,7 @@ see the Go-Specific Pitfalls table in `skills/testing-standards.md`.
 Before submitting code, verify:
 
 - [ ] No unnecessary comments on unexported functions with clear names
+- [ ] Pointer types justified — `*string`/`*int`/`*bool` only when nil vs zero-value has distinct meaning
 - [ ] No duplicated logic that should be a helper
 - [ ] Functions each have a single, clear responsibility
 - [ ] Guard clauses used instead of deep nesting
