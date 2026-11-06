@@ -119,3 +119,8 @@ Releases go through the `redhat-appstudio/infra-deployments` GitHub repo (GitOps
 3. **Soak ~24 hours** monitoring staging and private prod for issues.
 4. **Public production:** manual PRs per cluster, updating image SHA in
    `components/multi-platform-controller/production/<cluster-name>/kustomization.yaml`.
+
+**Manifest-only changes:** If the merged PR adds new Kubernetes resources (SAs, Roles,
+RoleBindings, etc.), the infra-deployments component overlay must reference a manifest
+revision that includes those resources. An image SHA bump alone is not sufficient — verify
+the rendered resources are present in each ring before enabling the new controller image.

@@ -53,6 +53,12 @@ Watches TaskRuns, provisions hosts via AWS/IBM Cloud, and manages SSH credential
 - **Constants are split across two files** — `pkg/reconciler/taskrun/taskrun.go` has `SecretPrefix`,
   `ConfigMapLabel`, `MultiPlatformSecretLabel`, `FailedHosts`, `CloudInstanceId`;
   `pkg/constant/constant.go` has `AssignedHost`, `TargetPlatformLabel`, `WaitingForPlatformLabel`.
+- **Manifest changes require coordinated infra-deployments updates** — PRs that add or modify
+  Kubernetes resources (ServiceAccounts, ClusterRoles, ClusterRoleBindings, ConfigMaps, CRDs)
+  require the `infra-deployments` manifests to include those resources before or alongside the
+  controller image SHA bump. An image-only rollout referencing resources that haven't been
+  deployed yet will fail at runtime. Flag this in PR descriptions and coordinate the
+  infra-deployments update across all deployment rings.
 
 ## Skills
 
