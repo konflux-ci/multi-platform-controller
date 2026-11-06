@@ -2,6 +2,7 @@ package aws
 
 import (
 	"encoding/base64"
+	"errors"
 
 	"github.com/konflux-ci/multi-platform-controller/pkg/cloud"
 	. "github.com/onsi/ginkgo/v2"
@@ -19,9 +20,8 @@ import (
 
 var _ = Describe("AWS EC2 Helper Functions", func() {
 	Describe("validateIPAddress", func() {
-		ecConfig := AWSEc2DynamicConfig{}
-
 		It("should return error when instance has no IP addresses or DNS name", func(ctx SpecContext) {
+			ecConfig := AWSEc2DynamicConfig{}
 			instance := &types.Instance{
 				InstanceId:       aws.String("koko_hazamar"),
 				PrivateIpAddress: nil,
@@ -36,28 +36,45 @@ var _ = Describe("AWS EC2 Helper Functions", func() {
 			Expect(err.Error()).Should(ContainSubstring("koko_hazamar"))
 			Expect(ip).Should(BeEmpty())
 		})
-	})
 
-	// This test is only here to check AWS connectivity in a very primitive and quick way until assertion testing
-	// work starts
-	Describe("Testing pingIpAddress", func() {
-		DescribeTable("Testing the ability to ping a remote AWS ec2 instance via SSH",
-			func(testInstanceIP string, shouldFail bool) {
-
-				err := pingIPAddress(testInstanceIP)
-
-				if !shouldFail {
-					Expect(err).ShouldNot(HaveOccurred())
-				} else {
-					Expect(err).Should(HaveOccurred())
+		When("with mock pingFunc", func() {
+			It("should return IP when pingFunc succeeds", func(ctx SpecContext) {
+				var pingedIP string
+				ecConfig := AWSEc2DynamicConfig{
+					pingFunc: func(ip string) error { pingedIP = ip; return nil },
+				}
+				instance := &types.Instance{
+					InstanceId:      aws.String("i-test"),
+					PublicIpAddress: aws.String("203.0.113.10"),
 				}
 
-			},
-			Entry("Positive test - IP address", "169.48.19.34", false),
-			Entry("Negative test - no such IP address", "192.168.4.231", true),
-			Entry("Negative test - no such DNS name", "not a DNS name, that's for sure", true),
-			Entry("Negative test - not an IP address", "Not an IP address", true),
-		)
+				ip, err := ecConfig.validateIPAddress(ctx, instance)
+
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(ip).Should(Equal("203.0.113.10"))
+				Expect(pingedIP).Should(Equal("203.0.113.10"))
+			})
+
+			It("should return error when pingFunc fails", func(ctx SpecContext) {
+				var pingedIP string
+				ecConfig := AWSEc2DynamicConfig{
+					pingFunc: func(ip string) error {
+						pingedIP = ip
+						return errors.New("connection refused")
+					},
+				}
+				instance := &types.Instance{
+					InstanceId:      aws.String("i-test"),
+					PublicIpAddress: aws.String("203.0.113.10"),
+				}
+
+				_, err := ecConfig.validateIPAddress(ctx, instance)
+
+				Expect(err).Should(HaveOccurred())
+				Expect(err.Error()).Should(ContainSubstring("failed to resolve IP address"))
+				Expect(pingedIP).Should(Equal("203.0.113.10"))
+			})
+		})
 	})
 	// A unit test for configureInstance. Bypasses CreateEc2CloudConfig's logic to isolate cases where its logic may be
 	// faulty, hence the helper function newDefaultValidEC2ConfigForInstance which provides a neutral all-good
