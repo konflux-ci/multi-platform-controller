@@ -40,6 +40,7 @@ var _ = Describe("Test Dynamic Pool Host Provisioning", func() {
 	It("should allocate a cloud host with dynamic pool correctly", func(ctx SpecContext) {
 		tr := runUserPipeline(ctx, client, reconciler, "test-dyn-pool")
 		provision := getProvisionTaskRun(ctx, client, tr)
+		Expect(provision.Spec.ServiceAccountName).Should(Equal(ProvisionerServiceAccountName))
 		params := map[string]string{}
 		for _, i := range provision.Spec.Params {
 			params[i.Name] = i.Value.StringVal

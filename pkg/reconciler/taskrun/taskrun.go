@@ -42,7 +42,7 @@ import (
 )
 
 const (
-	//TODO eventually we'll need to decide if we want to make this tuneable
+	// TODO eventually we'll need to decide if we want to make this tuneable
 	contextTimeout = 300 * time.Second
 
 	SecretPrefix   = "multi-platform-ssh-"
@@ -58,9 +58,9 @@ const (
 	ProvisionTaskProcessed = "build.appstudio.redhat.com/provision-task-processed"
 	// ProvisionTaskFinalizer = "build.appstudio.redhat.com/provision-task-finalizer"
 
-	//AllocationStartTimeAnnotation Some allocations can take multiple calls, we track the actual start time in this annotation
+	// AllocationStartTimeAnnotation Some allocations can take multiple calls, we track the actual start time in this annotation
 	AllocationStartTimeAnnotation = "build.appstudio.redhat.com/allocation-start-time"
-	//BuildStartTimeAnnotation The time the build actually starts
+	// BuildStartTimeAnnotation The time the build actually starts
 	BuildStartTimeAnnotation = "build.appstudio.redhat.com/build-start-time"
 
 	UserTaskName      = "build.appstudio.redhat.com/user-task-name"
