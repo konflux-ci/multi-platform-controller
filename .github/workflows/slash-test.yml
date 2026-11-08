@@ -91,7 +91,10 @@ jobs:
                   ;;
               esac
             else
-              echo "::error::Permission API call failed for $COMMENT_USER_LOGIN: $(cat "$api_err")"
+              # Sanitize gh stderr before emitting a workflow command: raw
+              # newlines and '::' would otherwise inject extra annotations.
+              api_error=$(tr -d '\r\n' < "$api_err" | sed 's/::/-:/g')
+              echo "::error::Permission API call failed for $COMMENT_USER_LOGIN: $api_error"
               exit 1
             fi
             rm -f "$api_err"
