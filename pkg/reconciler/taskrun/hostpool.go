@@ -203,7 +203,7 @@ func (hp HostPool) Deallocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.T
 		cleanup.Annotations[sshConfigSnapshotAnnotation] = snapshotName
 		cleanup.Spec.Workspaces = append(cleanup.Spec.Workspaces, sshConfigWorkspaceBinding(snapshotName))
 	}
-	cleanup.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
+	cleanup.Spec.ServiceAccountName = TaskRunnerServiceAccountName
 	cleanup.Spec.Params = []v1.Param{
 		{
 			Name:  "SECRET_NAME",

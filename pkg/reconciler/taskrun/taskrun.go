@@ -43,7 +43,7 @@ import (
 )
 
 const (
-	//TODO eventually we'll need to decide if we want to make this tuneable
+	// TODO eventually we'll need to decide if we want to make this tuneable
 	contextTimeout = 300 * time.Second
 
 	SecretPrefix   = "multi-platform-ssh-"
@@ -59,9 +59,9 @@ const (
 	ProvisionTaskProcessed = "build.appstudio.redhat.com/provision-task-processed"
 	// ProvisionTaskFinalizer = "build.appstudio.redhat.com/provision-task-finalizer"
 
-	//AllocationStartTimeAnnotation Some allocations can take multiple calls, we track the actual start time in this annotation
+	// AllocationStartTimeAnnotation Some allocations can take multiple calls, we track the actual start time in this annotation
 	AllocationStartTimeAnnotation = "build.appstudio.redhat.com/allocation-start-time"
-	//BuildStartTimeAnnotation The time the build actually starts
+	// BuildStartTimeAnnotation The time the build actually starts
 	BuildStartTimeAnnotation = "build.appstudio.redhat.com/build-start-time"
 
 	UserTaskName      = "build.appstudio.redhat.com/user-task-name"
@@ -91,7 +91,11 @@ const (
 	TaskTypeUpdate    = "update"
 	TaskTypeClean     = "clean"
 
-	ServiceAccountName = "multi-platform-controller-controller-manager"
+	// ProvisionerServiceAccountName is used by provision TaskRuns that create tenant Secrets via kubectl.
+	ProvisionerServiceAccountName = "multi-platform-controller-provisioner"
+	// TaskRunnerServiceAccountName is used by cleanup/update TaskRuns that only SSH; the SA has
+	// automountServiceAccountToken: false and no RoleBindings.
+	TaskRunnerServiceAccountName = "multi-platform-controller-task-runner"
 
 	PlatformParam          = "PLATFORM"
 	LocalPlatforms         = "local-platforms"
@@ -1089,7 +1093,7 @@ func launchProvisioningTask(r *ReconcileTaskRun, ctx context.Context, tr *tekton
 	computeRequests := map[kubecore.ResourceName]resource.Quantity{kubecore.ResourceCPU: resource.MustParse("100m"), kubecore.ResourceMemory: resource.MustParse("256Mi")}
 	computeLimits := map[kubecore.ResourceName]resource.Quantity{kubecore.ResourceCPU: resource.MustParse("100m"), kubecore.ResourceMemory: resource.MustParse("512Mi")}
 	provision.Spec.ComputeResources = &kubecore.ResourceRequirements{Requests: computeRequests, Limits: computeLimits}
-	provision.Spec.ServiceAccountName = ServiceAccountName //TODO: special service account for this
+	provision.Spec.ServiceAccountName = ProvisionerServiceAccountName
 
 	hostCfg := kubecore.ConfigMap{}
 	instanceTag := ""

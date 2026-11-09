@@ -9,6 +9,7 @@ ignore:
   - "docs/**"
   - "*.md"
   - "*.toml"
+  - "test/**"
 
 coverage:
   status:
@@ -19,8 +20,8 @@ coverage:
         informational: true
     patch:
       default:
-        target: 80%
-        informational: true
+        target: 85%
+        informational: false
 
 flags:
   unit-tests:

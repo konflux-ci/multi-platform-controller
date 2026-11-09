@@ -4,5 +4,7 @@ kind: Kustomization
 commonLabels:
   app: multi-platform-otp-server
 resources:
-  - otp-deployment.yaml
-  - service.yaml
+- otp-deployment.yaml
+- service.yaml
+- issuer.yaml
+- certificate.yaml

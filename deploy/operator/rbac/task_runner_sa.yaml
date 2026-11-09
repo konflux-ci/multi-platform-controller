@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: task-runner
+  namespace: multi-platform-controller
+# Cleanup and update TaskRuns only SSH to hosts; they must not receive an API token.
+automountServiceAccountToken: false

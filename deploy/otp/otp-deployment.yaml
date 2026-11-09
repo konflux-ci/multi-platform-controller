@@ -12,6 +12,7 @@ spec:
     metadata:
       labels:
         app: multi-platform-otp-server
+        app.kubernetes.io/instance: multi-platform-otp-server
     spec:
       containers:
         - name: multi-platform-otp-server
