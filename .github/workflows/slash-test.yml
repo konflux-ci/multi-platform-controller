@@ -106,8 +106,9 @@ jobs:
           # First word of the FIRST LINE is the command (checked by the
           # job-level if), the second word is the optional suite argument.
           # Multi-line bodies ignore everything after line 1.
-          cmd=$(printf '%s' "$COMMENT_BODY" | head -1 | awk '{print $1}')
-          args=$(printf '%s' "$COMMENT_BODY" | head -1 | awk '{print $2}')
+          first_line=$(printf '%s' "$COMMENT_BODY" | head -1 | tr -d '\r') 
+          cmd=$(printf '%s' "$first_line" | head -1 | awk '{print $1}')
+          args=$(printf '%s' "$first_line" | head -1 | awk '{print $2}')
           if [ "$cmd" != "/test" ]; then
             # Comment merely started with "/test" (e.g. "/testfoo"); no-op.
             exit 0
