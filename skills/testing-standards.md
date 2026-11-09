@@ -153,3 +153,12 @@ but they must exist during development to catch pitfalls early.
 - **Reconciler tests**: Simulate full workflows with fake K8s clients in `pkg/reconciler/taskrun/`.
 - **Allocation coverage**: New strategies need tests in `provision_*_test.go`.
 - **Run tests**: `make test` or target a package with `ginkgo ./pkg/aws/`.
+
+## Test Scope Boundaries
+
+- **`make test`** runs unit tests over `./cmd/...` and `./pkg/...` only.
+- **`test/`** contains e2e infrastructure. These helpers are validated by
+  `make test-e2e`, not by unit tests. Do not add `test/` paths to `make test`
+  or recommend unit tests for e2e helper code.
+- **codecov** ignores `test/**` by design — e2e code coverage is tracked
+  separately via the `e2e-tests` flag with `carryforward: true`.
