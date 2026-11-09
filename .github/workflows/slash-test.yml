@@ -76,10 +76,10 @@ jobs:
           COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
           set -euo pipefail
-          # Authorization via the collaborator permission API (admin|maintain|write),
-          # mirroring has_repo_permission() in fullsend.yaml (ADR 0054):
-          # author_association is too generous (anyone with a merged PR is a
-          # "contributor") and too coarse for org members with private membership.
+          # Authorization via the collaborator permission API (admin|maintain|write):
+          # author_association is too generous (anyone with a single merged PR is a
+          # "contributor") and too coarse for org members with private membership;
+          # the permission API reflects actual repository access.
           if api_err=$(mktemp); then
             if role=$(gh api "repos/$REPO/collaborators/$COMMENT_USER_LOGIN/permission" \
               --jq '.role_name' 2>"$api_err"); then
@@ -106,9 +106,9 @@ jobs:
           # First word of the FIRST LINE is the command (checked by the
           # job-level if), the second word is the optional suite argument.
           # Multi-line bodies ignore everything after line 1.
-          first_line=$(printf '%s' "$COMMENT_BODY" | head -1 | tr -d '\r') 
-          cmd=$(printf '%s' "$first_line" | head -1 | awk '{print $1}')
-          args=$(printf '%s' "$first_line" | head -1 | awk '{print $2}')
+          first_line=$(printf '%s' "$COMMENT_BODY" | head -1 | tr -d '\r')
+          cmd=$(printf '%s' "$first_line" | awk '{print $1}')
+          args=$(printf '%s' "$first_line" | awk '{print $2}')
           if [ "$cmd" != "/test" ]; then
             # Comment merely started with "/test" (e.g. "/testfoo"); no-op.
             exit 0
