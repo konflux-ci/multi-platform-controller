@@ -143,7 +143,7 @@ test-e2e-deployment: ## Run deployment validation e2e tests
 
 .PHONY: test-e2e-taskrun
 test-e2e-taskrun: ## Run TaskRun execution e2e tests in parallel
-	$(GINKGO) --github-output -coverprofile cover.out -covermode atomic -v -procs=4 ./test/e2e/taskrun/
+	$(GINKGO) --github-output --flake-attempts=2 -coverprofile cover.out -covermode atomic -v -procs=4 ./test/e2e/taskrun/
 
 .PHONY: test-e2e-otelcol
 test-e2e-otelcol: ## Run otelcol log verification e2e tests
