@@ -28,8 +28,9 @@ on:
     branches: [ main ]
 
 # Keep runs of the same PR (or the same called run) from cancelling each other.
-# For workflow_call runs inputs.ref is the PR head SHA, so different PRs never
-# collide; standalone triggers keep their previous grouping.
+# For workflow_call runs inputs.ref is the PR head ref path
+# (refs/pull/<n>/head), so different PRs never collide; standalone triggers
+# keep their previous grouping.
 concurrency:
   group: ${{ github.workflow }}-${{ inputs.ref || (github.event_name == 'pull_request' && github.event.pull_request.number) || github.ref }}
   cancel-in-progress: true

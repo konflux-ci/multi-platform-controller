@@ -57,7 +57,6 @@ jobs:
 
       - name: Clone the code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
         # When called via workflow_call (e.g. the /test command), test the
         # caller-provided ref instead of the default context. Empty for
         # standalone triggers, which keeps the default checkout.
