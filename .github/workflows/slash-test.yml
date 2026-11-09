@@ -8,7 +8,7 @@
 #   /test e2e    - run the e2e workflow on the PR head
 #   /test all    - same as /test
 #
-# Security model (mirrors fullsend's ADR 0054 in fullsend.yaml):
+# Security model:
 # - issue_comment events fire in this repo's context with access to repo
 #   secrets and the OIDC token, so the authorization check below is the
 #   gate. It uses the collaborator permission API (admin|maintain|write),
