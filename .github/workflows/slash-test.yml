@@ -1,7 +1,7 @@
 # /test slash command: manually run unit tests, e2e tests, or both on a PR.
 # Restricted to the konflux-ci infrastructure team: the commenter, the PR
 # author, and (for fork PRs) the fork owner must all appear in the
-# `/test allowlist:` line of .github/CODEOWNERS on the base branch.
+# `/test allowlist:` line of .github/CODEOWNERS on the default branch.
 #
 # Usage (as a PR comment):
 #   /test        - run both suites on the PR head
@@ -17,7 +17,7 @@
 #   no organization Members permission, so it cannot query
 #   GET /orgs/{org}/teams/{team}/memberships/{user}. Team membership is
 #   therefore asserted from the static allowlist in CODEOWNERS, read from
-#   the base branch so a PR cannot change it.
+#   the repository default branch so a PR cannot change it.
 # - The tested code only runs as *test subject*: the reusable workflows
 #   check out the PR head ref and run the project's own make targets.
 #   The command's own steps never execute code from the PR.
@@ -36,7 +36,7 @@
 #
 # Portability: to reuse in another repo, point the two `uses:` paths at
 # that repo's test workflows and keep their `workflow_call` `ref` input.
-name: test slash command
+name: Test slash command
 
 on:
   issue_comment:
@@ -54,13 +54,14 @@ concurrency:
 jobs:
   test:
     name: /test
-    # Only '/test' commands (bare or with args) on pull requests from non-bots.
-    # The authoritative team-membership check happens inside the job.
+    # Only comments starting with '/test' on pull requests from non-bots; the
+    # run block rejects lookalikes (e.g. '/testfoo') and ignores everything
+    # after the first line, so a multi-line '/test' body still matches here.
     if: >-
       github.event_name == 'issue_comment'
         && github.event.issue.pull_request
         && github.event.comment.user.type != 'Bot'
-        && (startsWith(github.event.comment.body, '/test ') || github.event.comment.body == '/test')
+        && startsWith(github.event.comment.body, '/test')
     runs-on: ubuntu-latest
     permissions:
       # CODEOWNERS allowlist + PR metadata lookup + posting comments.
@@ -76,6 +77,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.issue.number }}
+          # Trusted governance source: never read the allowlist from a
+          # non-default base branch.
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           COMMENT_USER_LOGIN: ${{ github.event.comment.user.login }}
           # Passed through env, never interpolated inline: comment bodies are
           # user input and must not reach the shell as code.
@@ -92,20 +96,25 @@ jobs:
           # is org-level only (MEMBER), and GITHUB_TOKEN is repository-scoped
           # (its `permissions:` keys have no organization "Members" scope), so it
           # cannot call GET /orgs/{org}/teams/{team}/memberships/{user}.
-          # The allowlist is read from CODEOWNERS on the base branch, which the
-          # PR cannot alter. Keep it in sync with
+          # The allowlist is read from CODEOWNERS on the repository's default
+          # branch, which the PR cannot alter. The default branch is used even
+          # when a PR targets another branch: a non-default base branch could
+          # carry a different, less-trusted allowlist.
+          # Keep it in sync with
           # https://github.com/orgs/konflux-ci/teams/infrastructure
+          [ -n "$DEFAULT_BRANCH" ] || fail "Repository default branch is unavailable"
           codeowners=""
           for path in .github/CODEOWNERS CODEOWNERS docs/CODEOWNERS; do
-            if codeowners=$(gh api -H 'Accept: application/vnd.github.raw' \
-              "repos/$REPO/contents/$path" 2>/dev/null); then
+            if codeowners=$(gh api --method GET \
+              -H 'Accept: application/vnd.github.raw' \
+              "repos/$REPO/contents/$path" -f ref="$DEFAULT_BRANCH" 2>/dev/null); then
               break
             fi
             # gh writes the HTTP error body to stdout on 404; reset so a
             # missing path cannot shadow the real "not found" error.
             codeowners=""
           done
-          [ -n "$codeowners" ] || fail "CODEOWNERS not found on the base branch"
+          [ -n "$codeowners" ] || fail "CODEOWNERS not found on the default branch"
 
           # The allowlist is the first '# /test allowlist:' line; only plain
           # @user tokens are accepted (a @org/team handle cannot be expanded).

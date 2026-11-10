@@ -1,7 +1,13 @@
 # Infrastructure team owns this repository.
 #
+# The `*` rule at the bottom is deliberate: it makes the infrastructure
+# team the repository code owner, so GitHub requests the team for review.
+# Merge gating by code owners additionally requires the
+# `require_code_owner_review` ruleset setting (currently off).
+#
 # The /test slash command (.github/workflows/slash-test.yml) reads the
-# `/test allowlist:` line below and authorizes only the listed users:
+# `/test allowlist:` line below from the default branch and authorizes only
+# the listed users:
 # the commenter, the PR author, and (for fork PRs) the fork owner must
 # all appear there. GitHub Actions cannot read team membership
 # (GITHUB_TOKEN is repository-scoped and has no organization Members

@@ -58,7 +58,8 @@ e2e results on their PRs.
 
 Infrastructure team members can bypass the gate by commenting `/test e2e` on the PR.
 The `slash-test.yml` workflow authorizes only users listed in the `/test allowlist:`
-line of `.github/CODEOWNERS` (commenter, PR author, and fork owner for fork PRs),
+line of `.github/CODEOWNERS` on the default branch (commenter, PR author, and fork
+owner for fork PRs),
 then dispatches `test-e2e.yml` against `refs/pull/<n>/head`, which resolves for
 fork PRs too. GitHub Actions cannot read team membership (GITHUB_TOKEN is
 repository-scoped and has no organization Members permission), so the allowlist

@@ -51,7 +51,8 @@ Watches TaskRuns, provisions hosts via AWS/IBM Cloud, and manages SSH credential
   operating from forks with unrecognized identities will never see e2e results on their PRs.
   Infrastructure team members can bypass this by commenting `/test e2e` on the PR;
   the `/test` gate requires the commenter, PR author, and (for forks) fork owner to be
-  listed in the `/test allowlist:` line of `.github/CODEOWNERS`. Keep that list in sync
+  listed in the `/test allowlist:` line of `.github/CODEOWNERS` on the default
+  branch. Keep that list in sync
   with https://github.com/orgs/konflux-ci/teams/infrastructure.
   If e2e was skipped on the PR but fails after merge, fix immediately — main must stay green.
 - **Constants are split across two files** — `pkg/reconciler/taskrun/taskrun.go` has `SecretPrefix`,
