@@ -12,10 +12,18 @@
 #
 # /test allowlist: @celeztyne @eisraeli @enkeefe00 @filariow @gbenhaim @gcpsoares @glevi-rh @hugares @manish-jangra @mcada @meyrevived @mshaposhnik @oswcab @sadlerap @vsokolen-redhat @wbrefvem
 #
-# The `*` rule below requests reviews only from the core reviewers: the top
-# four infrastructure-team contributors by commit count plus meyrevived.
-# The rest of the team is authorized for /test but is not auto-requested as a
-# reviewer. Merge gating by code owners additionally requires the
-# `require_code_owner_review` ruleset setting (currently off).
+# Review ownership:
+# - The /test gate definition is owned by the whole infrastructure team, so
+#   changing it requires a team review.
+# - Every other file is owned by the core reviewers below. The rest of the
+#   team is authorized for /test but is not auto-requested for review.
+#
+# CODEOWNERS applies the LAST matching pattern, so the `*` rule must come
+# before the workflow-specific rule.
+#
+# Individual owners need direct write access; team-derived admin is not enough
+# for GitHub's CODEOWNERS validation. The team handle is valid because the
+# infrastructure team has admin.
 
-* @mshaposhnik @meyrevived @enkeefe00 @sadlerap @glevi-rh
+* @mshaposhnik @meyrevived @enkeefe00 @sadlerap @glevi-rh @filariow @oswcab
+/.github/workflows/slash-test.yml @konflux-ci/infrastructure
