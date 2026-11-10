@@ -29,9 +29,15 @@ push to the PR branch can swap the code being tested.
   "verify the requester is trusted" and "check out the code" is exploitable if
   the checkout uses a mutable ref.
 - **Mutable refs after authorization.** `refs/pull/N/head`, branch names, and
-  `github.event.pull_request.head.sha` (in `pull_request_target` context) all
-  resolve at read time, not at authorization time. A push between the two
-  changes what they resolve to.
+  values re-fetched from the API (e.g., `gh api .../pulls/N`) all resolve at
+  read time, not at authorization time. A push between the two changes what
+  they resolve to.
+- **Attacker-controlled payload values.** In a `pull_request_target` workflow,
+  `github.event.pull_request.head.sha` is fixed within the run (it comes from
+  the webhook payload and does not change on subsequent pushes), but it still
+  points to attacker-controlled code — any external contributor can open a PR.
+  Authorization must happen before checking out that SHA, even though the ref
+  itself is immutable for the duration of the workflow run.
 - **Reusable workflow calls without pinned refs.** When the authorization job
   passes a ref to a `workflow_call` callee, the callee must use that exact ref
   — not re-resolve `refs/pull/N/head`.
@@ -70,7 +76,7 @@ their `ref` input. The reusable workflows check out that exact SHA. This
 prevents a malicious push from changing the tested code after the commenter
 was authorized.
 
-### Review checklist
+### Review Checklist
 
 - [ ] Authorization and code execution use the same SHA, captured once
 - [ ] No step between authorization and execution re-resolves a mutable ref
@@ -193,8 +199,10 @@ Any value controlled by an external actor:
 
 - Any `${{ }}` expression inside a `run:` block that references untrusted
   event data. These should be passed through `env:` instead.
-- `::set-output::` and `::set-env::` (deprecated but still functional) with
-  untrusted inputs — these can inject workflow commands.
+- `::set-output::` (deprecated but still functional) and `::set-env::` (disabled
+  by default since November 2020 per CVE-2020-15228; only re-enabled when
+  `ACTIONS_ALLOW_UNSECURE_COMMANDS=true` is set) with untrusted inputs — these
+  can inject workflow commands.
 - Untrusted inputs used in `if:` conditions that contain `contains()` or
   `startsWith()` — these are generally safe (expression evaluation, not shell),
   but verify they are not passed to shell steps.
