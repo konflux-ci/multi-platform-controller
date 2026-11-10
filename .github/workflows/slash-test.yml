@@ -101,6 +101,9 @@ jobs:
               "repos/$REPO/contents/$path" 2>/dev/null); then
               break
             fi
+            # gh writes the HTTP error body to stdout on 404; reset so a
+            # missing path cannot shadow the real "not found" error.
+            codeowners=""
           done
           [ -n "$codeowners" ] || fail "CODEOWNERS not found on the base branch"
 
