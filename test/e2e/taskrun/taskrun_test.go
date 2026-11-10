@@ -248,7 +248,11 @@ var _ = Describe("TaskRun execution", func() {
 		runTaskRunPlatformTest(ctx, "linux/arm64", "aarch64", generateVerifyPlatformScript("aarch64"))
 	})
 
-	It("should successfully run a TaskRun on windows/c4xlarge-amd64 platform", func(ctx context.Context) {
+	// Retry only the Windows spec: the residual failure mode is a dynamic host
+	// that never becomes reachable within its allocation timeout. Keeping the
+	// retry off the other specs means a genuine cross-platform regression still
+	// fails the suite on the first attempt.
+	It("should successfully run a TaskRun on windows/c4xlarge-amd64 platform", FlakeAttempts(2), func(ctx context.Context) {
 		runTaskRunPlatformTest(ctx, "windows/c4xlarge-amd64", "AMD64", generateVerifyWindowsPlatformScript("AMD64"))
 	})
 })
