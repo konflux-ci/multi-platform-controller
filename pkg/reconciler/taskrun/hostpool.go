@@ -124,6 +124,9 @@ func (hp HostPool) Allocate(r *ReconcileTaskRun, ctx context.Context, tr *v1.Tas
 	log.Info("allocated host", "host", selected.Name)
 	if selected.SSHConfig != "" {
 		if err = r.ensureUserSSHConfigSnapshot(ctx, tr, selected.SSHConfig); err != nil {
+			if errors.Is(err, errStaleSSHConfigSnapshot) {
+				return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
+			}
 			return reconcile.Result{}, err
 		}
 	}

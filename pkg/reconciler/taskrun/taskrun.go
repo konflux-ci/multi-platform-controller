@@ -269,10 +269,12 @@ func (r *ReconcileTaskRun) handleUpdateTask(ctx context.Context, tr *tektonapi.T
 		return reconcile.Result{}, nil
 	}
 	success := tr.Status.GetCondition(apis.ConditionSucceeded).IsTrue()
-	// Keep a failed update task for an hour so its logs can be read. The snapshot
-	// stays until then because the update pod may still be the thing mounting it.
-	if !success && tr.Status.CompletionTime.Add(time.Hour).After(time.Now()) {
-		return reconcile.Result{RequeueAfter: time.Hour}, nil
+	// Keep a failed update task until an hour after it finished so its logs can be read.
+	// The snapshot stays until then because the update pod may still be the thing mounting it.
+	// Requeue only for the time that remains, so a later reconcile does not add another hour.
+	retainUntil := tr.Status.CompletionTime.Add(time.Hour)
+	if !success && retainUntil.After(time.Now()) {
+		return reconcile.Result{RequeueAfter: time.Until(retainUntil)}, nil
 	}
 	if err := r.deleteOwnedUpdateSnapshot(ctx, tr); err != nil {
 		return reconcile.Result{}, err
@@ -1225,51 +1227,51 @@ func snapshotSSHConfig(ctx context.Context, c client.Client, namespace, sshConfi
 	return cm, sshConfigWorkspaceBinding(cm.Name), nil
 }
 
+// errStaleSSHConfigSnapshot means a replaceable snapshot was deleted.
+// The caller requeues so the next reconcile creates the current config.
+var errStaleSSHConfigSnapshot = errors.New("stale ssh-config snapshot deleted")
+
 func createNamedSSHConfigMap(ctx context.Context, c client.Client, reader client.Reader, namespace, name, sshConfig, source string) (*kubecore.ConfigMap, error) {
-	for attempt := 0; ; attempt++ {
-		cm := &kubecore.ConfigMap{}
-		cm.Namespace = namespace
-		cm.Immutable = ptr.To(true)
-		cm.Data = map[string]string{sshConfigFileName: sshConfig}
-		cm.Name = name
-		if source != "" {
-			cm.Annotations = map[string]string{sshConfigSourceAnnotation: source}
-		}
-		err := c.Create(ctx, cm)
-		if err == nil {
-			return cm, nil
-		}
-		if !k8serrors.IsAlreadyExists(err) {
-			return nil, err
-		}
-		existing := &kubecore.ConfigMap{}
-		if getErr := reader.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, existing); getErr != nil {
-			return nil, getErr
-		}
-		// A cleanup task for an earlier TaskRun with this name can still own the object.
-		// Reusing or replacing it lets that cleanup delete the new build's config.
-		if len(existing.OwnerReferences) > 0 {
-			return nil, fmt.Errorf("ssh-config ConfigMap %s is still in use", name)
-		}
-		if existing.Data[sshConfigFileName] == sshConfig {
-			return existing, nil
-		}
-		// A failed earlier assignment can leave this deterministic name behind. Replace it
-		// once when it belongs to this TaskRun. A different source means another build.
-		recorded := ""
-		if existing.Annotations != nil {
-			recorded = existing.Annotations[sshConfigSourceAnnotation]
-		}
-		if recorded != "" && recorded != source {
-			return nil, fmt.Errorf("ssh-config ConfigMap %s already exists with different contents", name)
-		}
-		if attempt > 0 {
-			return nil, fmt.Errorf("ssh-config ConfigMap %s already exists with different contents", name)
-		}
-		if delErr := c.Delete(ctx, existing); delErr != nil && !k8serrors.IsNotFound(delErr) {
-			return nil, delErr
-		}
+	cm := &kubecore.ConfigMap{}
+	cm.Namespace = namespace
+	cm.Immutable = ptr.To(true)
+	cm.Data = map[string]string{sshConfigFileName: sshConfig}
+	cm.Name = name
+	if source != "" {
+		cm.Annotations = map[string]string{sshConfigSourceAnnotation: source}
 	}
+	err := c.Create(ctx, cm)
+	if err == nil {
+		return cm, nil
+	}
+	if !k8serrors.IsAlreadyExists(err) {
+		return nil, err
+	}
+	existing := &kubecore.ConfigMap{}
+	if getErr := reader.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, existing); getErr != nil {
+		return nil, getErr
+	}
+	// A cleanup task for an earlier TaskRun with this name can still own the object.
+	// Reusing or replacing it lets that cleanup delete the new build's config.
+	if len(existing.OwnerReferences) > 0 {
+		return nil, fmt.Errorf("ssh-config ConfigMap %s is still in use", name)
+	}
+	if existing.Data[sshConfigFileName] == sshConfig {
+		return existing, nil
+	}
+	// A failed earlier assignment can leave this deterministic name behind.
+	// Delete it and let the caller requeue. A different source means another build.
+	recorded := ""
+	if existing.Annotations != nil {
+		recorded = existing.Annotations[sshConfigSourceAnnotation]
+	}
+	if recorded != "" && recorded != source {
+		return nil, fmt.Errorf("ssh-config ConfigMap %s already exists with different contents", name)
+	}
+	if delErr := c.Delete(ctx, existing); delErr != nil && !k8serrors.IsNotFound(delErr) {
+		return nil, delErr
+	}
+	return nil, errStaleSSHConfigSnapshot
 }
 
 func newSSHConfigMap(ctx context.Context, c client.Client, namespace, sshConfig string) (*kubecore.ConfigMap, error) {

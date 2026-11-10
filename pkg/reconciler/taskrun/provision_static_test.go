@@ -398,7 +398,7 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(k8serrors.IsNotFound(err)).Should(BeTrue())
 		})
 
-		It("should replace a stale ssh-config snapshot", func(ctx SpecContext) {
+		It("should delete a stale ssh-config snapshot and create it on the next attempt", func(ctx SpecContext) {
 			name := "test-stale-snapshot"
 			snapshotName := sshConfigSnapshotName(userNamespace, name)
 			stale := &v1.ConfigMap{}
@@ -410,6 +410,11 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(client.Create(ctx, stale)).Should(Succeed())
 
 			created, err := createNamedSSHConfigMap(ctx, client, client, systemNamespace, snapshotName, sshConfigText, "")
+			Expect(err).Should(MatchError(errStaleSSHConfigSnapshot))
+			Expect(created).Should(BeNil())
+			Expect(k8serrors.IsNotFound(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: snapshotName}, &v1.ConfigMap{}))).Should(BeTrue())
+
+			created, err = createNamedSSHConfigMap(ctx, client, client, systemNamespace, snapshotName, sshConfigText, "")
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(created.Data).Should(HaveKeyWithValue(sshConfigFileName, sshConfigText))
 
@@ -418,6 +423,35 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(stored.Data).Should(HaveKeyWithValue(sshConfigFileName, sshConfigText))
 			Expect(stored.Immutable).ShouldNot(BeNil())
 			Expect(*stored.Immutable).Should(BeTrue())
+		})
+
+		It("should requeue allocation after deleting a stale ssh-config snapshot", func(ctx SpecContext) {
+			name := "test-stale-requeue"
+			snapshotName := sshConfigSnapshotName(userNamespace, name)
+			stale := &v1.ConfigMap{}
+			stale.Name = snapshotName
+			stale.Namespace = systemNamespace
+			immutable := true
+			stale.Immutable = &immutable
+			stale.Data = map[string]string{sshConfigFileName: "Host *\n  ProxyJump old.example.com"}
+			stale.Annotations = map[string]string{sshConfigSourceAnnotation: userNamespace + "/" + name}
+			Expect(client.Create(ctx, stale)).Should(Succeed())
+			createUserTaskRun(ctx, client, name, "linux/arm64")
+
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(result.RequeueAfter).Should(Equal(5 * time.Second))
+			Expect(getUserTaskRun(ctx, client, name).Labels[AssignedHost]).Should(BeEmpty())
+			Expect(k8serrors.IsNotFound(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: snapshotName}, &v1.ConfigMap{}))).Should(BeTrue())
+
+			result, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: userNamespace, Name: name}})
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(result.RequeueAfter).Should(BeZero())
+			tr := getUserTaskRun(ctx, client, name)
+			Expect(tr.Labels[AssignedHost]).ShouldNot(BeEmpty())
+			stored := &v1.ConfigMap{}
+			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: snapshotName}, stored)).Should(Succeed())
+			Expect(stored.Data).Should(HaveKeyWithValue(sshConfigFileName, sshConfigText))
 		})
 
 		It("should return the snapshot delete error when a stale snapshot cannot be replaced", func(ctx SpecContext) {
@@ -555,11 +589,13 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(stored.Data).Should(HaveKeyWithValue(sshConfigFileName, "Host *\n  ProxyJump old.example.com"))
 		})
 
-		It("should return an error when a replaced snapshot still has different content", func(ctx SpecContext) {
+		It("should ask for another reconcile when a stale snapshot is still present after deletion", func(ctx SpecContext) {
 			snapshotName := sshConfigSnapshotName(userNamespace, "test-stale-snapshot-again")
 			wrapped := mismatchAfterReplace{Client: client}
 			_, err := createNamedSSHConfigMap(ctx, wrapped, wrapped, systemNamespace, snapshotName, sshConfigText, "")
-			Expect(err).Should(MatchError(ContainSubstring("already exists with different contents")))
+			Expect(err).Should(MatchError(errStaleSSHConfigSnapshot))
+			_, err = createNamedSSHConfigMap(ctx, wrapped, wrapped, systemNamespace, snapshotName, sshConfigText, "")
+			Expect(err).Should(MatchError(errStaleSSHConfigSnapshot))
 		})
 
 		It("should snapshot the next host when the first provision fails", func(ctx SpecContext) {
@@ -726,11 +762,12 @@ var _ = Describe("Test Static Host Provisioning", func() {
 			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: snapshotName}, &v1.ConfigMap{})).Should(Succeed())
 		})
 
-		It("should keep a recently failed update task", func(ctx SpecContext) {
-			createFinishedUpdate(ctx, "update-failed-recent", time.Now(), v1.ConditionFalse)
+		It("should keep a recently failed update task until an hour after it finished", func(ctx SpecContext) {
+			completed := time.Now().Add(-20 * time.Minute)
+			createFinishedUpdate(ctx, "update-failed-recent", completed, v1.ConditionFalse)
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: systemNamespace, Name: "update-failed-recent"}})
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(result.RequeueAfter).Should(Equal(time.Hour))
+			Expect(result.RequeueAfter).Should(BeNumerically("~", time.Until(completed.Add(time.Hour)), time.Second))
 			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: "update-failed-recent"}, &pipelinev1.TaskRun{})).Should(Succeed())
 			Expect(client.Get(ctx, types.NamespacedName{Namespace: systemNamespace, Name: snapshotName}, &v1.ConfigMap{})).Should(Succeed())
 		})
