@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       ref:
-        description: Git ref to test (defaults to the caller's context ref)
+        description: Git ref or commit SHA to test (defaults to the caller's context ref)
         type: string
         required: false
 

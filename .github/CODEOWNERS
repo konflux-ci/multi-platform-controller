@@ -1,22 +1,21 @@
-# Infrastructure team owns this repository.
+# /test authorization and code ownership are separate lists.
 #
-# The `*` rule at the bottom is deliberate: it makes the infrastructure
-# team the repository code owner, so GitHub requests the team for review.
-# Merge gating by code owners additionally requires the
-# `require_code_owner_review` ruleset setting (currently off).
-#
-# The /test slash command (.github/workflows/slash-test.yml) reads the
-# `/test allowlist:` line below from the default branch and authorizes only
-# the listed users:
-# the commenter, the PR author, and (for fork PRs) the fork owner must
-# all appear there. GitHub Actions cannot read team membership
+# The `/test allowlist:` line authorizes every infrastructure-team member to
+# trigger /test: the commenter, the PR author, and (for fork PRs) the fork
+# owner must appear there. GitHub Actions cannot read team membership
 # (GITHUB_TOKEN is repository-scoped and has no organization Members
-# permission), so the team has to be listed explicitly; a team handle
-# cannot be expanded by the workflow.
+# permission), so the team has to be listed explicitly; a team handle cannot
+# be expanded by the workflow.
 #
 # Keep the allowlist in sync with the team membership:
 # https://github.com/orgs/konflux-ci/teams/infrastructure
 #
 # /test allowlist: @celeztyne @eisraeli @enkeefe00 @filariow @gbenhaim @gcpsoares @glevi-rh @hugares @manish-jangra @mcada @meyrevived @mshaposhnik @oswcab @sadlerap @vsokolen-redhat @wbrefvem
+#
+# The `*` rule below requests reviews only from the core reviewers: the top
+# four infrastructure-team contributors by commit count plus meyrevived.
+# The rest of the team is authorized for /test but is not auto-requested as a
+# reviewer. Merge gating by code owners additionally requires the
+# `require_code_owner_review` ruleset setting (currently off).
 
-* @konflux-ci/infrastructure
+* @mshaposhnik @meyrevived @enkeefe00 @sadlerap @glevi-rh
