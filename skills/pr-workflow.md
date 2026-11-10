@@ -27,7 +27,7 @@ make test         # unit tests (Ginkgo, race, coverage)
 | **Validate PR - golang CI** | `go-ci.yaml` | golangci-lint, `go mod tidy` cleanliness, format check |
 | **Validate PR - Testing Phase** | `mpc-test.yaml` | `make build` + `make test` with coverage upload to Codecov |
 | **E2E Tests** | `test-e2e.yml` | End-to-end tests on a Kind cluster with AWS resources |
-| **Test slash command** | `slash-test.yml` | `/test [unit\|e2e\|all]` PR comment: dispatches the unit or e2e workflow against the PR head, any PR (fork included); requires commenter write access |
+| **Test slash command** | `slash-test.yml` | `/test [unit\|e2e\|all]` PR comment: dispatches the unit or e2e workflow against the PR head; requires the commenter, PR author, and (for forks) fork owner to be listed in the `.github/CODEOWNERS` allowlist |
 
 The three PR-validation workflows trigger on pull requests targeting `main` (including
 drafts) and on merge-group checks. `slash-test.yml` triggers on `issue_comment` and
@@ -56,11 +56,15 @@ If neither condition is met, e2e tests **skip silently** -- no failure, no statu
 check. Agents operating from forks with unrecognized identities will never see
 e2e results on their PRs.
 
-A user with repository write access (or above) can bypass the gate by commenting
-`/test e2e` on the PR. The `slash-test.yml` workflow checks the commenter's
-collaborator permission and dispatches `test-e2e.yml` against `refs/pull/<n>/head`,
-which resolves for fork PRs too. Agents cannot self-authorize this; ask a
-maintainer to trigger it.
+Infrastructure team members can bypass the gate by commenting `/test e2e` on the PR.
+The `slash-test.yml` workflow authorizes only users listed in the `/test allowlist:`
+line of `.github/CODEOWNERS` (commenter, PR author, and fork owner for fork PRs),
+then dispatches `test-e2e.yml` against `refs/pull/<n>/head`, which resolves for
+fork PRs too. GitHub Actions cannot read team membership (GITHUB_TOKEN is
+repository-scoped and has no organization Members permission), so the allowlist
+must be kept in sync with
+https://github.com/orgs/konflux-ci/teams/infrastructure. Agents cannot
+self-authorize this; ask an infrastructure team member to trigger it.
 
 ## Agentic Workflow (Autonomous, No Human)
 

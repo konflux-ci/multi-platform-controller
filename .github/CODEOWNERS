@@ -1,0 +1,16 @@
+# Infrastructure team owns this repository.
+#
+# The /test slash command (.github/workflows/slash-test.yml) reads the
+# `/test allowlist:` line below and authorizes only the listed users:
+# the commenter, the PR author, and (for fork PRs) the fork owner must
+# all appear there. GitHub Actions cannot read team membership
+# (GITHUB_TOKEN is repository-scoped and has no organization Members
+# permission), so the team has to be listed explicitly; a team handle
+# cannot be expanded by the workflow.
+#
+# Keep the allowlist in sync with the team membership:
+# https://github.com/orgs/konflux-ci/teams/infrastructure
+#
+# /test allowlist: @celeztyne @eisraeli @enkeefe00 @filariow @gbenhaim @gcpsoares @glevi-rh @hugares @manish-jangra @mcada @meyrevived @mshaposhnik @oswcab @sadlerap @vsokolen-redhat @wbrefvem
+
+* @konflux-ci/infrastructure

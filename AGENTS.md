@@ -49,7 +49,10 @@ Watches TaskRuns, provisions hosts via AWS/IBM Cloud, and manages SSH credential
 - **E2E tests skip silently for unrecognized authors** — e2e only runs if the PR author is
   OWNER/MEMBER/COLLABORATOR in konflux-ci, or the branch is on the repo (not a fork). Agents
   operating from forks with unrecognized identities will never see e2e results on their PRs.
-  A user with write access can bypass this by commenting `/test e2e` on the PR.
+  Infrastructure team members can bypass this by commenting `/test e2e` on the PR;
+  the `/test` gate requires the commenter, PR author, and (for forks) fork owner to be
+  listed in the `/test allowlist:` line of `.github/CODEOWNERS`. Keep that list in sync
+  with https://github.com/orgs/konflux-ci/teams/infrastructure.
   If e2e was skipped on the PR but fails after merge, fix immediately — main must stay green.
 - **Constants are split across two files** — `pkg/reconciler/taskrun/taskrun.go` has `SecretPrefix`,
   `ConfigMapLabel`, `MultiPlatformSecretLabel`, `FailedHosts`, `CloudInstanceId`;
