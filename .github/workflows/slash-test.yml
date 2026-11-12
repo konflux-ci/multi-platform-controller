@@ -66,9 +66,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       # CODEOWNERS allowlist + PR metadata lookup + posting comments.
+      # A PR timeline comment needs pull-requests: write on GITHUB_TOKEN;
+      # issues: write alone is rejected with "Resource not accessible by
+      # integration (addComment)" (observed on the first /test run, PR #1156).
       contents: read
-      issues: write
-      pull-requests: read
+      pull-requests: write
     outputs:
       suites: ${{ steps.parse.outputs.suites }}
       head_sha: ${{ steps.parse.outputs.head_sha }}
@@ -241,7 +243,9 @@ jobs:
         && (needs.test.outputs.suites != '' || needs.test.result == 'failure')
     runs-on: ubuntu-latest
     permissions:
-      issues: write
+      # PR timeline comment: pull-requests: write (issues: write alone is
+      # rejected with "Resource not accessible by integration" on PRs).
+      pull-requests: write
     steps:
       - name: Comment on PR
         # Only when suites were selected — otherwise the command was a
