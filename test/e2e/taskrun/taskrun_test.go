@@ -101,35 +101,35 @@ if [ "$OS" != "Windows_NT" ]; then
 	echo "Expected OS to be Windows_NT, got: $OS"
 	exit 1
 fi
-	# Windows reports architecture as "AMD64" for x86_64/amd64
-	# Accept both the expected architecture and "AMD64" (Windows standard)
-	if [ "$ARCH" != "` + expectedArch + `" ]; then
-		if [ "$ARCH" != "AMD64" ]; then
-			echo "Expected architecture to be ` + expectedArch + ` or AMD64, got: $ARCH"
-			exit 1
-		fi
-	fi
-
-	# A provisioned Windows host must be able to run containers: MPC opens
-	# port 22 only after the Docker setup completes.
-	DOCKER_RC=0
-	DOCKER_INFO=$(ssh $SSH_ARGS $SSH_HOST powershell -Command "docker info --format '{{.ServerVersion}}'" 2>&1) || DOCKER_RC=$?
-	DOCKER_INFO=$(printf '%s' "$DOCKER_INFO" | tr -d '\r')
-	if [ "$DOCKER_RC" -ne 0 ] || [ -z "$DOCKER_INFO" ]; then
-		echo "Docker daemon is not usable: $DOCKER_INFO"
+# Windows reports architecture as "AMD64" for x86_64/amd64
+# Accept both the expected architecture and "AMD64" (Windows standard)
+if [ "$ARCH" != "` + expectedArch + `" ]; then
+	if [ "$ARCH" != "AMD64" ]; then
+		echo "Expected architecture to be ` + expectedArch + ` or AMD64, got: $ARCH"
 		exit 1
 	fi
+fi
 
-	DOCKER_RC=0
-	DOCKER_RUN=$(ssh $SSH_ARGS $SSH_HOST powershell -Command "docker run --rm mcr.microsoft.com/windows/nanoserver:ltsc2025 cmd /c echo docker-ok" 2>&1) || DOCKER_RC=$?
-	DOCKER_RUN=$(printf '%s' "$DOCKER_RUN" | tr -d '\r')
-	if [ "$DOCKER_RC" -ne 0 ] || ! printf '%s\n' "$DOCKER_RUN" | grep -q "docker-ok"; then
-		echo "Docker could not run a container: $DOCKER_RUN"
-		exit 1
-	fi
-	echo "Docker verification successful: server $DOCKER_INFO"
+# A provisioned Windows host must be able to run containers: MPC opens
+# port 22 only after the Docker setup completes.
+DOCKER_RC=0
+DOCKER_INFO=$(ssh $SSH_ARGS $SSH_HOST powershell -Command "docker info --format '{{.ServerVersion}}'" 2>&1) || DOCKER_RC=$?
+DOCKER_INFO=$(printf '%s' "$DOCKER_INFO" | tr -d '\r')
+if [ "$DOCKER_RC" -ne 0 ] || [ -z "$DOCKER_INFO" ]; then
+	echo "Docker daemon is not usable: $DOCKER_INFO"
+	exit 1
+fi
 
-	echo "Platform verification successful: $OS/$ARCH"
+DOCKER_RC=0
+DOCKER_RUN=$(ssh $SSH_ARGS $SSH_HOST powershell -Command "docker run --rm mcr.microsoft.com/windows/nanoserver:ltsc2025 cmd /c echo docker-ok" 2>&1) || DOCKER_RC=$?
+DOCKER_RUN=$(printf '%s' "$DOCKER_RUN" | tr -d '\r')
+if [ "$DOCKER_RC" -ne 0 ] || ! printf '%s\n' "$DOCKER_RUN" | grep -q "docker-ok"; then
+	echo "Docker could not run a container: $DOCKER_RUN"
+	exit 1
+fi
+echo "Docker verification successful: server $DOCKER_INFO"
+
+echo "Platform verification successful: $OS/$ARCH"
 `
 }
 
@@ -268,10 +268,13 @@ var _ = Describe("TaskRun execution", func() {
 		runTaskRunPlatformTest(ctx, "linux/arm64", "aarch64", generateVerifyPlatformScript("aarch64"))
 	})
 
-	// Retry only the Windows spec: the residual failure mode is a dynamic host
-	// that never becomes reachable within its allocation timeout. Keeping the
-	// retry off the other specs means a genuine cross-platform regression still
-	// fails the suite on the first attempt.
+	// FlakeAttempts(2) retries this whole spec once, on any failure. The failure
+	// mode it absorbs is a dynamic host that never becomes reachable within its
+	// allocation timeout; the cost is that a Windows-only regression which fails
+	// intermittently can pass on the second attempt. The Linux specs are not
+	// retried, so a cross-platform regression still fails on the first attempt.
+	// Worst case is 2 x taskRunWaitTimeout (25 min), inside the Ginkgo CLI's
+	// default 1 h suite timeout.
 	It("should successfully run a TaskRun on windows/c4xlarge-amd64 platform", FlakeAttempts(2), func(ctx context.Context) {
 		runTaskRunPlatformTest(ctx, "windows/c4xlarge-amd64", "AMD64", generateVerifyWindowsPlatformScript("AMD64"))
 	})
