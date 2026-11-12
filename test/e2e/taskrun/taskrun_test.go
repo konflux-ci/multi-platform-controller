@@ -101,15 +101,35 @@ if [ "$OS" != "Windows_NT" ]; then
 	echo "Expected OS to be Windows_NT, got: $OS"
 	exit 1
 fi
-# Windows reports architecture as "AMD64" for x86_64/amd64
-# Accept both the expected architecture and "AMD64" (Windows standard)
-if [ "$ARCH" != "` + expectedArch + `" ]; then
-	if [ "$ARCH" != "AMD64" ]; then
-		echo "Expected architecture to be ` + expectedArch + ` or AMD64, got: $ARCH"
+	# Windows reports architecture as "AMD64" for x86_64/amd64
+	# Accept both the expected architecture and "AMD64" (Windows standard)
+	if [ "$ARCH" != "` + expectedArch + `" ]; then
+		if [ "$ARCH" != "AMD64" ]; then
+			echo "Expected architecture to be ` + expectedArch + ` or AMD64, got: $ARCH"
+			exit 1
+		fi
+	fi
+
+	# A provisioned Windows host must be able to run containers: MPC opens
+	# port 22 only after the Docker setup completes.
+	DOCKER_RC=0
+	DOCKER_INFO=$(ssh $SSH_ARGS $SSH_HOST powershell -Command "docker info --format '{{.ServerVersion}}'" 2>&1) || DOCKER_RC=$?
+	DOCKER_INFO=$(printf '%s' "$DOCKER_INFO" | tr -d '\r')
+	if [ "$DOCKER_RC" -ne 0 ] || [ -z "$DOCKER_INFO" ]; then
+		echo "Docker daemon is not usable: $DOCKER_INFO"
 		exit 1
 	fi
-fi
-echo "Platform verification successful: $OS/$ARCH"
+
+	DOCKER_RC=0
+	DOCKER_RUN=$(ssh $SSH_ARGS $SSH_HOST powershell -Command "docker run --rm mcr.microsoft.com/windows/nanoserver:ltsc2025 cmd /c echo docker-ok" 2>&1) || DOCKER_RC=$?
+	DOCKER_RUN=$(printf '%s' "$DOCKER_RUN" | tr -d '\r')
+	if [ "$DOCKER_RC" -ne 0 ] || ! printf '%s\n' "$DOCKER_RUN" | grep -q "docker-ok"; then
+		echo "Docker could not run a container: $DOCKER_RUN"
+		exit 1
+	fi
+	echo "Docker verification successful: server $DOCKER_INFO"
+
+	echo "Platform verification successful: $OS/$ARCH"
 `
 }
 

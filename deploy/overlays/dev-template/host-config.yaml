@@ -47,7 +47,7 @@ data:
   dynamic.windows-c4xlarge-amd64.security-group-id: sg-0dac40dc35d0bf1c4
   dynamic.windows-c4xlarge-amd64.max-instances: "4"
   dynamic.windows-c4xlarge-amd64.subnet-id: subnet-02b7d6698c619e5a2
-  dynamic.windows-c4xlarge-amd64.allocation-timeout: "600"
+  dynamic.windows-c4xlarge-amd64.allocation-timeout: "900"
   dynamic.windows-c4xlarge-amd64.strict-public-address: "true"
   dynamic.windows-c4xlarge-amd64.user-data: |-
       <powershell>
@@ -209,30 +209,11 @@ data:
         rm "${tempKey}.pub"
       }
 
-      ## -------------------------------------------------
-      ## --------- Open SSH Port in the Firewall ---------
-      ## -------------------------------------------------
-      # Opened after the konflux-builder user and key exist (the provision task
-      # consumes C:\Users\Administrator\konflux-builder), but before the Docker/
-      # Containers install. This keeps the guard introduced in #1102 while
-      # removing the Docker install and its reboot path from the readiness
-      # signal: install-docker-ce.ps1 -NoRestart exits the whole session when
-      # Windows reports a reboot is required, so a firewall rule placed after it
-      # may never be created and the host stays unreachable for the entire
-      # allocation timeout.
-      Remove-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' | Out-Null
-      New-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -DisplayName 'OpenSSH Server (sshd)' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 -RemoteAddress any -Profile Any
-      Write-Output "Firewall Rule 'OpenSSH-Server-In-TCP' updated"
-
       ## ---------------------------------------------
       ## --------- Enable Windows Containers ---------
       ## ---------------------------------------------
       Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/microsoft/Windows-Containers/Main/helpful_tools/Install-DockerCE/install-docker-ce.ps1" -o install-docker-ce.ps1
-      .\install-docker-ce.ps1 -NoRestart
-      if (${global:RebootRequired}) {
-        Restart-Computer
-        exit
-      }
+      .\install-docker-ce.ps1
 
       # Create docker-users group and add konflux-builder to it
       if ((Get-LocalGroup -Name 'docker-users') -eq $null) {
@@ -257,6 +238,16 @@ data:
       Add-MpPreference -ExclusionProcess "docker.exe"
       Add-MpPreference -ExclusionProcess "containerd.exe"
       Add-MpPreference -ExclusionProcess "vmcompute.exe"
+
+      ## -------------------------------------------------
+      ## --------- Open SSH Port in the Firewall ---------
+      ## -------------------------------------------------
+      # The controller's readiness signal is a TCP dial to :22, so the port is
+      # opened only once Docker, the konflux-builder user and its key are
+      # configured: a host counts as provisioned only when Docker is usable.
+      Remove-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' | Out-Null
+      New-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -DisplayName 'OpenSSH Server (sshd)' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 -RemoteAddress any -Profile Any
+      Write-Output "Firewall Rule 'OpenSSH-Server-In-TCP' updated"
       </powershell>
       <persist>true</persist>
 
