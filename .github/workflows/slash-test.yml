@@ -1,0 +1,287 @@
+# /test slash command: manually run unit tests, e2e tests, or both on a PR.
+# Restricted to the konflux-ci infrastructure team: the commenter, the PR
+# author, and (for fork PRs) the fork owner must all appear in the
+# `/test allowlist:` line of .github/CODEOWNERS on the default branch.
+#
+# Usage (as a PR comment):
+#   /test        - run both suites on the PR head
+#   /test unit   - run the unit-test workflow on the PR head
+#   /test e2e    - run the e2e workflow on the PR head
+#   /test all    - same as /test
+#
+# Security model:
+# - issue_comment events fire in this repo's context with access to repo
+#   secrets and the OIDC token, so the authorization check below is the
+#   gate. GitHub Actions has no team-membership context: author_association
+#   is org-level only (MEMBER), and GITHUB_TOKEN is repository-scoped with
+#   no organization Members permission, so it cannot query
+#   GET /orgs/{org}/teams/{team}/memberships/{user}. Team membership is
+#   therefore asserted from the static allowlist in CODEOWNERS, read from
+#   the repository default branch so a PR cannot change it.
+# - The tested code only runs as *test subject*: the reusable workflows
+#   check out the authorized PR head SHA and run the project's own make
+#   targets.
+#   The command's own steps never execute code from the PR.
+# - Fork PRs from infrastructure-team-owned forks are supported: the gate
+#   captures the PR head SHA, and the reusable workflows check out that exact
+#   SHA. The head is reachable from THIS repo for every PR (fork included,
+#   open or closed), so no fork remote is ever contacted.
+# - TRUST CAVEAT (deliberate decision): /test e2e builds and deploys the
+#   PR revision inside a job that holds AWS credentials and the OIDC
+#   token — the same exposure a same-repo PR gets from the regular
+#   test-e2e workflow today. The /test gate (infra team only) matches that
+#   trust: a fork author cannot self-trigger unless they are on the team,
+#   and the PR author/fork owner must also be on it. Checkouts that feed
+#   PR code do not persist credentials, and every job's permissions are
+#   scoped to what it needs.
+#
+# Portability: to reuse in another repo, point the two `uses:` paths at
+# that repo's test workflows and keep their `workflow_call` `ref` input.
+name: Test slash command
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+# All grants are job-scoped so they never leak into the called workflows.
+
+concurrency:
+  # One /test run per PR at a time; additional commands queue (up to 100)
+  # rather than replacing an earlier pending one.
+  group: slash-test-${{ github.event.issue.number }}
+  queue: max
+
+jobs:
+  test:
+    name: /test
+    # Only comments starting with '/test' on pull requests from non-bots; the
+    # run block rejects lookalikes (e.g. '/testfoo') and ignores everything
+    # after the first line, so a multi-line '/test' body still matches here.
+    if: >-
+      github.event_name == 'issue_comment'
+        && github.event.issue.pull_request
+        && github.event.comment.user.type != 'Bot'
+        && startsWith(github.event.comment.body, '/test')
+    runs-on: ubuntu-latest
+    permissions:
+      # CODEOWNERS allowlist + PR metadata lookup + posting comments.
+      contents: read
+      issues: write
+      pull-requests: read
+    outputs:
+      suites: ${{ steps.parse.outputs.suites }}
+      head_sha: ${{ steps.parse.outputs.head_sha }}
+    steps:
+      - name: Authorize requester and parse command
+        id: parse
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          # Trusted governance source: never read the allowlist from a
+          # non-default base branch.
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          COMMENT_USER_LOGIN: ${{ github.event.comment.user.login }}
+          # Passed through env, never interpolated inline: comment bodies are
+          # user input and must not reach the shell as code.
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+
+          fail() { echo "::error::$1"; exit 1; }
+          deny() { echo "::notice::$1"; exit 0; }
+          lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+
+          # --- Infrastructure-team allowlist --------------------------------
+          # GitHub Actions exposes no team-membership context: author_association
+          # is org-level only (MEMBER), and GITHUB_TOKEN is repository-scoped
+          # (its `permissions:` keys have no organization "Members" scope), so it
+          # cannot call GET /orgs/{org}/teams/{team}/memberships/{user}.
+          # The allowlist is read from CODEOWNERS on the repository's default
+          # branch, which the PR cannot alter. The default branch is used even
+          # when a PR targets another branch: a non-default base branch could
+          # carry a different, less-trusted allowlist.
+          # Keep it in sync with
+          # https://github.com/orgs/konflux-ci/teams/infrastructure
+          [ -n "$DEFAULT_BRANCH" ] || fail "Repository default branch is unavailable"
+          codeowners=""
+          for path in .github/CODEOWNERS CODEOWNERS docs/CODEOWNERS; do
+            if codeowners=$(gh api --method GET \
+              -H 'Accept: application/vnd.github.raw' \
+              "repos/$REPO/contents/$path" -f ref="$DEFAULT_BRANCH" 2>/dev/null); then
+              break
+            fi
+            # gh writes the HTTP error body to stdout on 404; reset so a
+            # missing path cannot shadow the real "not found" error.
+            codeowners=""
+          done
+          [ -n "$codeowners" ] || fail "CODEOWNERS not found on the default branch"
+
+          # The allowlist is the first '# /test allowlist:' line; only plain
+          # @user tokens are accepted (a @org/team handle cannot be expanded).
+          allowlist=$(printf '%s\n' "$codeowners" | awk '
+            match($0, "^[[:space:]]*#[[:space:]]*/test allowlist:[[:space:]]*") {
+              n = split(substr($0, RSTART + RLENGTH), owners, /[[:space:]]+/)
+              for (i = 1; i <= n; i++) {
+                if (owners[i] ~ /^@[A-Za-z0-9-]+$/) print tolower(substr(owners[i], 2))
+              }
+              exit
+            }
+          ' | sort -u)
+          [ -n "$allowlist" ] || fail "No '/test allowlist:' users found in CODEOWNERS"
+
+          is_allowed() {
+            grep -Fxq -- "$(lc "$1")" <<<"$allowlist"
+          }
+
+          # --- PR facts ------------------------------------------------------
+          # The comment payload does not carry the PR author, head repo, or
+          # head SHA. head.label (owner:branch) is the fallback when
+          # head.repo is null (deleted or inaccessible fork).
+          pr_meta=$(gh api "repos/$REPO/pulls/$PR_NUMBER" \
+            --jq '.user.login, (.head.repo.full_name // ""), (.head.repo.owner.login // ""), (.head.label // ""), (.head.sha // "")' \
+            2>/dev/null) || fail "Failed to fetch PR #$PR_NUMBER metadata"
+          # One field per line so empty fields (deleted/inaccessible fork)
+          # survive parsing; IFS=tab read would collapse them.
+          mapfile -t pr_fields <<<"$pr_meta"
+          pr_author=${pr_fields[0]:-}
+          head_repo=${pr_fields[1]:-}
+          head_owner=${pr_fields[2]:-}
+          head_label=${pr_fields[3]:-}
+          head_sha=${pr_fields[4]:-}
+          if [ -z "$head_owner" ]; then
+            head_owner=${head_label%%:*}
+          fi
+          if ! printf '%s' "$head_sha" | grep -Eq '^[0-9a-f]{40}$'; then
+            fail "PR head SHA is missing or invalid"
+          fi
+
+          # --- Authorization -------------------------------------------------
+          if ! is_allowed "$COMMENT_USER_LOGIN"; then
+            deny "$COMMENT_USER_LOGIN is not a member of the infrastructure team"
+          fi
+          if ! is_allowed "$pr_author"; then
+            deny "PR author $pr_author is not a member of the infrastructure team"
+          fi
+          if [ "$(lc "$head_repo")" != "$(lc "$REPO")" ]; then
+            if [ -z "$head_owner" ] || ! is_allowed "$head_owner"; then
+              deny "Fork owner ${head_owner:-<unknown>} is not a member of the infrastructure team"
+            fi
+          fi
+
+          # First word of the FIRST LINE is the command (checked by the
+          # job-level if), the second word is the optional suite argument.
+          # Multi-line bodies ignore everything after line 1.
+          first_line=$(printf '%s' "$COMMENT_BODY" | head -1 | tr -d '\r')
+          cmd=$(printf '%s' "$first_line" | awk '{print $1}')
+          args=$(printf '%s' "$first_line" | awk '{print $2}')
+          if [ "$cmd" != "/test" ]; then
+            # Comment merely started with "/test" (e.g. "/testfoo"); no-op.
+            exit 0
+          fi
+          case "$args" in
+            unit|e2e|all) suites="$args" ;;
+            '') suites="all" ;;
+            *)
+              gh pr comment "$PR_NUMBER" --repo "$REPO" --body \
+                "Unrecognized \`/test\` argument: \`$args\`. Use \`/test unit\`, \`/test e2e\`, or \`/test all\`."
+              exit 0
+              ;;
+          esac
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "suites=$suites" >> "$GITHUB_OUTPUT"
+
+  unit:
+    name: Unit tests (/test)
+    needs: test
+    if: needs.test.outputs.suites == 'unit' || needs.test.outputs.suites == 'all'
+    # Deliberately minimal: PR-controlled code runs inside (make build/test),
+    # so the unit job gets contents: read only — no id-token, no issues write.
+    # Only CODECOV_TOKEN is forwarded (the sole secret mpc-test.yaml uses);
+    # secrets: inherit would expose every repository secret to PR code.
+    permissions:
+      contents: read
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    uses: ./.github/workflows/mpc-test.yaml
+    with:
+      # Exact PR head SHA authorized by the gate; a later push cannot swap
+      # the tested code. Checkout fails closed if the SHA becomes unreachable.
+      ref: ${{ needs.test.outputs.head_sha }}
+
+  e2e:
+    name: E2E tests (/test)
+    needs: test
+    if: needs.test.outputs.suites == 'e2e' || needs.test.outputs.suites == 'all'
+    # Needs the AWS/Codecov OIDC token, hence id-token: write. See the trust
+    # caveat in this file's header for the deliberate residual exposure.
+    # No secrets are forwarded: test-e2e.yml needs none (AWS and Codecov
+    # both authenticate via OIDC role assumption).
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/test-e2e.yml
+    with:
+      # Same authorized SHA as the unit job: what the gate approved is what
+      # runs with the AWS/OIDC credentials.
+      ref: ${{ needs.test.outputs.head_sha }}
+
+  result:
+    name: Report result
+    needs: [test, unit, e2e]
+    # Report even when a suite was skipped, but stay silent when the command
+    # was a deliberate no-op (unauthorized user, unknown args, or a "/test…"
+    # lookalike): 'test' then exited 0 with empty suites.
+    # When 'test' itself FAILED (e.g. the CODEOWNERS read or PR lookup
+    # errored), the suites output is also empty — distinguish via
+    # needs.test.result so the commenter still gets feedback instead of silence.
+    if: >-
+      always()
+        && (needs.test.outputs.suites != '' || needs.test.result == 'failure')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Comment on PR
+        # Only when suites were selected — otherwise the command was a
+        # no-op or failed before parsing (handled by the next step).
+        if: needs.test.outputs.suites != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          SUITES: ${{ needs.test.outputs.suites }}
+          UNIT_RESULT: ${{ needs.unit.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+        run: |
+          set -euo pipefail
+          verdict() {
+            case "$1" in
+              success) echo "✅ passed" ;;
+              failure) echo "❌ failed" ;;
+              skipped) echo "⏭️ skipped" ;;
+              cancelled) echo "🚫 cancelled" ;;
+              *) echo "⚪ $1" ;;
+            esac
+          }
+          body="**/test $SUITES** on PR #$PR_NUMBER:"
+          body="$body
+          - unit: $(verdict "$UNIT_RESULT")"
+          body="$body
+          - e2e: $(verdict "$E2E_RESULT")"
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$body"
+
+      - name: Report command failure
+        # When the 'test' job itself failed (e.g. the CODEOWNERS read or
+        # PR lookup errored), suites is empty — the commenter still needs
+        # feedback.
+        if: needs.test.result == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body \
+            "⚠️ \`/test\` command failed before any suite ran — see the [run log](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."
