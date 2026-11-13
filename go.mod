@@ -21,7 +21,7 @@ require (
 	github.com/prometheus/client_golang v1.22.0
 	github.com/prometheus/client_model v0.6.2
 	github.com/spf13/cobra v1.8.1
-	github.com/tektoncd/pipeline v1.0.0
+	github.com/tektoncd/pipeline v1.0.2
 	go.uber.org/zap v1.27.1
 	golang.org/x/crypto v0.55.0
 	k8s.io/api v0.33.4
