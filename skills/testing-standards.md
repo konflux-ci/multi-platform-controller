@@ -153,3 +153,43 @@ but they must exist during development to catch pitfalls early.
 - **Reconciler tests**: Simulate full workflows with fake K8s clients in `pkg/reconciler/taskrun/`.
 - **Allocation coverage**: New strategies need tests in `provision_*_test.go`.
 - **Run tests**: `make test` or target a package with `ginkgo ./pkg/aws/`.
+
+## E2E Flake Handling
+
+E2E tests run against real cloud infrastructure, so transient failures are
+possible. This section defines when test-level retry budgets (e.g., Ginkgo's
+`--flake-attempts`) are appropriate and what alternatives to prefer.
+
+### 1. Fix the Root Cause First
+
+Before adding a test retry, investigate and fix the underlying transient
+failure. Prefer resilience fixes in this order:
+
+1. **Production-code resilience** — add retry-with-backoff in the code path
+   that hits the transient failure. This fixes the problem for real users,
+   not just tests. Example: [#1077](https://github.com/konflux-ci/multi-platform-controller/issues/1077)
+   proposes retry-with-backoff for SSH key retrieval in Windows provisioning
+   to eliminate a race condition that caused flaky e2e failures.
+2. **Test-fixture resilience** — add backoff or polling in test
+   setup/teardown (e.g., `BeforeEach`, `AfterEach`) to wait for
+   infrastructure readiness before asserting.
+3. **Test-assertion retry** (`--flake-attempts`) — use only as
+   defense-in-depth after applying a root-cause fix, not as a substitute
+   for one.
+
+### 2. Rules for `--flake-attempts`
+
+When `--flake-attempts` (or an equivalent test retry mechanism) is used:
+
+- **Link a tracking issue.** Every use must reference an open issue that
+  describes the underlying transient failure. Add the issue link as a
+  comment in the Makefile or test file next to the retry flag.
+- **Cap at 2.** The value must not exceed `--flake-attempts=2` without
+  explicit team discussion. Higher values mask real regressions — a
+  genuine bug in allocation logic would need to fail multiple consecutive
+  times before being reported.
+- **Scope narrowly.** Apply retries to the specific Ginkgo target that
+  needs them (e.g., `test-e2e-taskrun`), not to the entire e2e suite.
+- **Re-evaluate on resolution.** When the tracked issue is resolved,
+  re-evaluate whether `--flake-attempts` is still needed and remove it
+  if the root cause is fixed.
