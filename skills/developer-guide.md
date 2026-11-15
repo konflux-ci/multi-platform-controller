@@ -65,7 +65,7 @@ Instances persist across requests until their TTL expires, balancing cost and la
 ## Host Readiness Contract
 
 MPC determines whether a cloud host is ready to accept build work by performing a TCP dial to port 22.
-When this dial succeeds, MPC considers the host reachable and launches a provisioning task that SSHes in to create a builder user and configure SSH keys. Build tasks begin only after provisioning completes.
+When this dial succeeds, MPC considers the host reachable and launches a provisioning task that completes host setup (on Linux, this includes creating a builder user and configuring SSH keys; on Windows, these are pre-configured by user-data). Build tasks begin only after provisioning completes.
 
 - **AWS:** `pkg/aws/ec2_helpers.go` — `pingIPAddress()` dials `<ip>:22` with a 60-second timeout.
 - **IBM Z (s390x) and IBM Power (ppc64le):** `pkg/ibm/ibmz_helpers.go` — `checkIfIpIsLive()` resolves and dials `<ip>:22` with a 5-second timeout.
