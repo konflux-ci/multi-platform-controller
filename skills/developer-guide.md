@@ -65,7 +65,7 @@ Instances persist across requests until their TTL expires, balancing cost and la
 ## Host Readiness Contract
 
 MPC determines whether a cloud host is ready to accept build work by performing a TCP dial to port 22.
-When this dial succeeds, MPC treats the host as fully provisioned and begins SSH-ing in to run build tasks.
+When this dial succeeds, MPC considers the host reachable and launches a provisioning task that SSHes in to create a builder user and configure SSH keys. Build tasks begin only after provisioning completes.
 
 - **AWS:** `pkg/aws/ec2_helpers.go` — `pingIPAddress()` dials `<ip>:22` with a 60-second timeout.
 - **IBM Z and IBM Power:** `pkg/ibm/ibmz_helpers.go` — `checkIfIpIsLive()` resolves and dials `<ip>:22` with a 5-second timeout.
@@ -74,11 +74,11 @@ When this dial succeeds, MPC treats the host as fully provisioned and begins SSH
 
 All services required by build tasks — Docker engine, builder user creation, SSH key configuration — MUST be fully configured before port 22 becomes reachable from MPC. In user-data scripts, the step that opens port 22 (firewall rule or sshd start) must be the **last** step.
 
-### Why this matters
+### Why This Matters
 
 If port 22 opens before Docker is installed, MPC will connect and attempt Docker-dependent builds on a host where Docker is not ready. These failures present as transient SSH or build errors that are difficult to diagnose because the host appears reachable and healthy.
 
-### Platform-specific notes
+### Platform-Specific Notes
 
 - **Windows hosts:** The firewall rule (`New-NetFirewallRule` for port 22) controls reachability. The user-data script in `deploy/overlays/*/host-config.yaml` must place this rule after all provisioning steps (Docker install, user creation, key setup). See the inline comment in the dev-template overlay for the canonical example.
 - **Linux hosts:** Port 22 is typically available once sshd starts, so the user-data script ordering and sshd start timing serve the same gating function. Ensure sshd is started or restarted only after all provisioning is complete.
