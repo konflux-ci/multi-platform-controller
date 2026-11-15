@@ -70,18 +70,17 @@ When this dial succeeds, MPC considers the host reachable and launches a provisi
 - **AWS:** `pkg/aws/ec2_helpers.go` — `pingIPAddress()` dials `<ip>:22` with a 60-second timeout.
 - **IBM Z (s390x) and IBM Power (ppc64le):** `pkg/ibm/ibmz_helpers.go` — `checkIfIpIsLive()` resolves and dials `<ip>:22` with a 5-second timeout.
 
-### Invariant
+### Platform-Specific Provisioning Models
 
-All services required by build tasks — Docker engine, builder user creation, SSH key configuration — MUST be fully configured before port 22 becomes reachable from MPC. In user-data scripts, the step that opens port 22 (firewall rule or sshd start) must be the **last** step.
+Linux and Windows hosts follow different provisioning flows, which changes the role of the TCP dial.
 
-### Why This Matters
+**Linux hosts:** sshd is available from AMI boot. The TCP dial verifies SSH reachability, then MPC launches the provisioning task (`deploy/operator/provision-shared-host.sh`), which SSHes in and installs podman, creates the builder user, and generates SSH keys — all via the SSH connection. No user-data ordering constraint applies because the provisioning task itself handles service setup. Builds begin only after provisioning completes, so the container runtime is always available.
 
-If port 22 opens before Docker is installed, MPC will connect and attempt Docker-dependent builds on a host where Docker is not ready. These failures present as transient SSH or build errors that are difficult to diagnose because the host appears reachable and healthy.
+**Windows hosts:** User-data scripts handle all service setup (Docker install, user creation, SSH key generation) before port 22 becomes reachable. The firewall rule (`New-NetFirewallRule` for port 22) in `deploy/overlays/*/host-config.yaml` controls reachability, so it must be the **last** step in the user-data script. The provisioning task (`deploy/operator/provision-host-windows.sh`) only copies the SSH key and creates the Kubernetes secret — it does not install services.
 
-### Platform-Specific Notes
+### Invariant (Windows and User-Data Platforms)
 
-- **Windows hosts:** The firewall rule (`New-NetFirewallRule` for port 22) controls reachability. The user-data script in `deploy/overlays/*/host-config.yaml` must place this rule after all provisioning steps (Docker install, user creation, key setup). See the inline comment in the dev-template overlay for the canonical example.
-- **Linux hosts:** Port 22 is typically available once sshd starts, so the user-data script ordering and sshd start timing serve the same gating function. Ensure sshd is started or restarted only after all provisioning is complete.
+On platforms where services are configured via user-data scripts (Windows), all services required by build tasks — Docker engine, builder user, SSH keys — MUST be fully configured before port 22 becomes reachable from MPC. If the firewall rule opens port 22 before Docker is installed, MPC will connect successfully and the provisioning task will complete, but subsequent Docker-dependent builds will fail. These failures present as transient build errors that are difficult to diagnose because the host appears reachable and healthy.
 
 ## Constants — Split Across Two Files
 
@@ -120,7 +119,7 @@ WaitingForPlatformLabel = "build.appstudio.redhat.com/waiting-for-platform"
 | Secret not created | Platform label missing or config not found | Check `ConfigMapLabel` and `TargetPlatformLabel` annotations |
 | Cloud instance not cleaned up | Finalizer may have been removed or cleanup errored | `pkg/reconciler/taskrun/dynamic.go` — check cleanup path |
 | Metrics not reporting | Metrics endpoint not registered | `pkg/metrics/` — verify metric registration |
-| Build tasks fail with Docker errors on newly provisioned hosts | User-data script opens SSH port before Docker installation completes | `deploy/overlays/*/host-config.yaml` user-data section — verify firewall rule is after Docker install |
+| Build tasks fail with Docker errors on newly provisioned Windows hosts | User-data script opens firewall port 22 before Docker installation completes | `deploy/overlays/*/host-config.yaml` user-data section — verify firewall rule is after Docker install |
 
 ## Code Standards
 
