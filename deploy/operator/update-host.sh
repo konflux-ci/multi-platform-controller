@@ -20,6 +20,9 @@ cp "$SSH_WORKSPACE_PATH/id_rsa" /tmp/master_key
 chmod 0400 /tmp/master_key
 export SSH_HOST="$USER@$HOST"
 SSH_OPTS=(-i /tmp/master_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null)
+if [[ -f /root/.ssh/config ]]; then
+  SSH_OPTS=(-F /root/.ssh/config "${SSH_OPTS[@]}")
+fi
 
 SSH_UPDATE_OUTPUT=$(
     ssh "${SSH_OPTS[@]}" "$SSH_HOST" "sudo dnf update -y" 2>&1
