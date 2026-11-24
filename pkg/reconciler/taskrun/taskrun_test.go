@@ -107,6 +107,46 @@ var _ = Describe("TaskRun Reconciler General Tests", func() {
 			Expect(pool2.hosts).Should(HaveLen(3))
 			Expect(pool2.hosts).Should(HaveKey("host3"))
 		})
+
+		It("should ignore invalid ssh-config on a host for another platform", func(ctx SpecContext) {
+			objs := createHostConfig()
+			cm := objs[0].(*corev1.ConfigMap)
+			cm.Data["host.s390x.address"] = "192.0.2.9"
+			cm.Data["host.s390x.secret"] = "awskeys"
+			cm.Data["host.s390x.concurrency"] = "1"
+			cm.Data["host.s390x.user"] = "ec2-user"
+			cm.Data["host.s390x.platform"] = "linux/s390x"
+			cm.Data["host.s390x.ssh-config"] = "ProxyCommand ssh bastion -W %h:%p"
+			_, reconciler := setupClientAndReconciler(objs)
+
+			configIface, err := reconciler.getPlatformConfig(ctx, "linux/arm64", userNamespace)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(configIface.(HostPool).hosts).Should(HaveLen(2))
+		})
+
+		It("should skip a host whose ssh-config is not allowed", func(ctx SpecContext) {
+			objs := createHostConfig()
+			cm := objs[0].(*corev1.ConfigMap)
+			cm.Data["host.host1.ssh-config"] = "LocalForward 8080 localhost:8080"
+			_, reconciler := setupClientAndReconciler(objs)
+
+			configIface, err := reconciler.getPlatformConfig(ctx, "linux/arm64", userNamespace)
+			Expect(err).ShouldNot(HaveOccurred())
+			pool := configIface.(HostPool)
+			Expect(pool.hosts).Should(HaveLen(1))
+			Expect(pool.hosts).Should(HaveKey("host2"))
+		})
+
+		It("should fail when a static host has an invalid address", func(ctx SpecContext) {
+			objs := createHostConfig()
+			cm := objs[0].(*corev1.ConfigMap)
+			cm.Data["host.host1.address"] = "not-an-ip"
+			_, reconciler := setupClientAndReconciler(objs)
+
+			_, err := reconciler.getPlatformConfig(ctx, "linux/arm64", userNamespace)
+			Expect(err).Should(MatchError(ContainSubstring("failed to parse static host 'host1'")))
+			Expect(err).Should(MatchError(ContainSubstring("invalid address")))
+		})
 	})
 
 	// This section tests the controller's behavior in edge cases where no suitable
